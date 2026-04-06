@@ -56,19 +56,19 @@ function validate(data: FormData): string | null {
 }
 
 const inputClass =
-  "w-full bg-transparent border-b border-neutral-800 pb-3 pt-1 text-[15px] text-neutral-100 placeholder-neutral-700 outline-none transition duration-200 ease focus:border-amber-400 focus:placeholder-neutral-600";
+  "w-full bg-transparent border-b border-neutral-600 pb-3 pt-1 text-[15px] text-neutral-100 placeholder-neutral-600 outline-none transition duration-200 ease focus:border-amber-400 focus:placeholder-neutral-500";
 
 const labelClass =
-  "block font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-600 mb-2";
+  "block font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-500 mb-2";
 
 function SectionHeader({num, title}: {num: string; title: string}) {
   return (
     <div className="mb-8 flex items-center gap-4">
-      <span className="font-mono text-[11px] text-neutral-700">{num}</span>
-      <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-600">
+      <span className="font-mono text-[11px] text-neutral-500">{num}</span>
+      <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-400">
         {title}
       </span>
-      <div className="h-px flex-1 bg-neutral-800" />
+      <div className="h-px flex-1 bg-neutral-700" />
     </div>
   );
 }
@@ -327,11 +327,11 @@ export default function LeadForm() {
             value={formData.presupuesto}
             onChange={handleChange}
             style={{
-              background: `linear-gradient(to right, #f59e0b ${sliderPercent}%, #262626 ${sliderPercent}%)`,
+              background: `linear-gradient(to right, #f59e0b ${sliderPercent}%, #404040 ${sliderPercent}%)`,
             }}
             className="h-px w-full cursor-pointer appearance-none rounded-none outline-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-0 [&::-webkit-slider-thumb]:bg-amber-400 [&::-webkit-slider-thumb]:shadow-none [&::-webkit-slider-thumb]:transition [&::-webkit-slider-thumb]:duration-200 [&::-webkit-slider-thumb]:ease-[cubic-bezier(.25,.46,.45,.94)]"
           />
-          <div className="flex justify-between font-mono text-[11px] text-neutral-700">
+          <div className="flex justify-between font-mono text-[11px] text-neutral-500">
             <span>${PRESUPUESTO_MIN.toLocaleString("es-AR")}</span>
             <span>${PRESUPUESTO_MAX.toLocaleString("es-AR")}</span>
           </div>
@@ -352,9 +352,9 @@ export default function LeadForm() {
             placeholder="Describí brevemente en qué consiste tu proyecto…"
             value={formData.descripcion}
             onChange={handleChange}
-            className="w-full resize-y bg-transparent border-b border-neutral-800 pb-3 pt-1 text-[15px] text-neutral-100 placeholder-neutral-700 outline-none transition duration-200 ease focus:border-amber-400"
+            className="w-full resize-y bg-transparent border-b border-neutral-600 pb-3 pt-1 text-[15px] text-neutral-100 placeholder-neutral-600 outline-none transition duration-200 ease focus:border-amber-400"
           />
-          <p className="mt-2 font-mono text-[11px] text-neutral-700">
+          <p className="mt-2 font-mono text-[11px] text-neutral-500">
             {formData.descripcion.trim().length} / 20 mín.
           </p>
         </div>

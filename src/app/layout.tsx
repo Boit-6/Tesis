@@ -24,7 +24,7 @@ export default async function RootLayout({children}: {children: ReactNode}) {
         </header>
         {children}
         <footer className="py-8 text-center">
-          <p className="font-mono text-[11px] uppercase tracking-[0.25em] text-neutral-800">
+          <p className="font-mono text-[11px] uppercase tracking-[0.25em] text-neutral-600">
             © 2026
           </p>
         </footer>
