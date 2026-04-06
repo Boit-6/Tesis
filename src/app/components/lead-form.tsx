@@ -17,7 +17,6 @@ const URGENCIAS = [
   {value: "baja", label: "Baja — puedo esperar"},
   {value: "media", label: "Media — en las próximas semanas"},
   {value: "alta", label: "Alta — lo antes posible"},
-  {value: "critica", label: "Crítica — es urgente"},
 ];
 
 interface FormData {
