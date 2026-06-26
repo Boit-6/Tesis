@@ -141,6 +141,15 @@ export default function DashboardClient() {
   const [facturas, setFacturas] = useState<FacturaPendiente[]>([]);
 
   const cargarDatos = useCallback(async () => {
+    if (!supabase) {
+      setError(
+        "Faltan las variables NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+      );
+      setLoading(false);
+
+      return;
+    }
+
     try {
       setError(null);
 
@@ -186,14 +195,18 @@ export default function DashboardClient() {
   useEffect(() => {
     cargarDatos();
 
+    if (!supabase) return;
+
+    const client = supabase;
+
     // Bonus: refresca en vivo cuando entra/cambia un lead.
-    const channel = supabase
+    const channel = client
       .channel("leads-rt")
       .on("postgres_changes", {event: "*", schema: "public", table: "leads"}, () => cargarDatos())
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      client.removeChannel(channel);
     };
   }, [cargarDatos]);
 
