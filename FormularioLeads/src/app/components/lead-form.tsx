@@ -3,6 +3,7 @@
 import {type KeyboardEvent, useState} from "react";
 
 const N8N_BASE = process.env.NEXT_PUBLIC_N8N_BASE;
+const WEBHOOK_URL = `${N8N_BASE}/webhook/lead/nuevo`;
 
 const SERVICIOS = [
   "Desarrollo Web",
@@ -127,13 +128,13 @@ export default function LeadForm() {
     }
 
     if (!N8N_BASE) {
-      setError("Falta configurar NEXT_PUBLIC_N8N_BASE.");
+      setError("Falta la variable NEXT_PUBLIC_N8N_BASE.");
       return;
     }
 
     setLoading(true);
     try {
-      const response = await fetch(`${N8N_BASE}/webhook/lead/nuevo`, {
+      const response = await fetch(WEBHOOK_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

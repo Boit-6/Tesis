@@ -1,0 +1,58 @@
+%% Figura 1 — Arquitectura en tres capas (frontend -> n8n -> Supabase)
+%% Trabajo Final: Automatización de Sistema de Tickets para Freelancers con n8n
+flowchart TB
+    U(["Visitante / Freelancer"])
+
+    subgraph FE["① Capa de presentación — Next.js / React (Vercel)"]
+        direction LR
+        F1["Formulario público<br/>ruta /"]
+        F2["Aceptación de propuesta<br/>ruta /aceptar/:leadId"]
+        F3["Autenticación<br/>/login · /register · /auth/*"]
+        F4["Tablero de control<br/>/dashboard (protegido)"]
+    end
+
+    subgraph N8N["② Capa de orquestación — n8n · 71 nodos"]
+        direction LR
+        WH["Webhooks<br/>POST /lead/nuevo<br/>POST /lead-acepta<br/>GET /pago-confirmado<br/>POST /proyecto-cerrado"]
+        LG["Lógica de negocio<br/>normalización · scoring (HOT/WARM/COLD)<br/>propuesta · factura · cobro · cierre"]
+        CR["Procesos programados (cron)<br/>seguimiento · recordatorios · métricas"]
+    end
+
+    subgraph DB["③ Capa de persistencia — Supabase (PostgreSQL)"]
+        direction LR
+        AU["Supabase Auth"]
+        TB["Tablas<br/>leads · facturas · seguimientos · logs"]
+        VW["Vistas<br/>metrics_mensuales · facturas_pendientes"]
+    end
+
+    subgraph EXT["Servicios externos (invocados por n8n)"]
+        direction LR
+        GM["Gmail"]
+        TG["Telegram"]
+        NO["Notion"]
+        GT["Gotenberg<br/>HTML → PDF"]
+    end
+
+    U --> F1 & F2 & F3 & F4
+
+    F1 -->|"POST lead (JSON)"| WH
+    F2 -->|"token de un solo uso"| WH
+    F3 <-->|"login / registro / OTP"| AU
+    F4 -->|"valida sesión"| AU
+    F4 -->|"lectura sólo — anon key + sesión (RLS)"| VW
+    VW --- TB
+    TB -. "postgres_changes (tiempo real)" .-> F4
+
+    WH --> LG
+    CR --> LG
+    LG -->|"escritura única<br/>service_role · evade RLS"| TB
+    LG --> GM & TG & NO & GT
+
+    classDef pres fill:#fef3c7,stroke:#d97706,color:#111827;
+    classDef orch fill:#dbeafe,stroke:#2563eb,color:#111827;
+    classDef data fill:#dcfce7,stroke:#16a34a,color:#111827;
+    classDef ext  fill:#f3f4f6,stroke:#6b7280,color:#111827;
+    class F1,F2,F3,F4 pres;
+    class WH,LG,CR orch;
+    class AU,TB,VW data;
+    class GM,TG,NO,GT ext;

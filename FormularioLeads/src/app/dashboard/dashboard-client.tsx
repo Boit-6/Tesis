@@ -4,6 +4,8 @@ import {useCallback, useEffect, useState} from "react";
 
 import {createClient} from "@/lib/supabase/client";
 
+import TrabajoEstadoSelect from "./trabajo-estado-select";
+
 type LeadEstado =
   | "NUEVO"
   | "PROPUESTA_ENVIADA"
@@ -45,6 +47,13 @@ interface FacturaPendiente {
   moneda: string;
   fecha_vencimiento: string;
   dias_al_vencimiento: number;
+}
+
+interface Trabajo {
+  lead_id: string;
+  nombre: string;
+  servicio: string;
+  estado_trabajo: "PENDIENTE" | "EN_PROGRESO" | "EN_REVISION" | "ENTREGADO";
 }
 
 const FUNNEL_ORDER: LeadEstado[] = [
@@ -140,6 +149,7 @@ export default function DashboardClient() {
   const [funnel, setFunnel] = useState<Record<string, number>>({});
   const [leads, setLeads] = useState<Lead[]>([]);
   const [facturas, setFacturas] = useState<FacturaPendiente[]>([]);
+  const [trabajos, setTrabajos] = useState<Trabajo[]>([]);
 
   const cargarDatos = useCallback(async () => {
     if (!supabase) {
@@ -152,7 +162,7 @@ export default function DashboardClient() {
     try {
       setError(null);
 
-      const [resMetrics, resEstados, resLeads, resFacturas] = await Promise.all([
+      const [resMetrics, resEstados, resLeads, resFacturas, resTrabajos] = await Promise.all([
         supabase.from("metrics_mensuales").select("*").order("mes", {ascending: false}).limit(1),
         supabase.from("leads").select("estado"),
         supabase
@@ -161,9 +171,15 @@ export default function DashboardClient() {
           .order("fecha_ingreso", {ascending: false})
           .limit(20),
         supabase.from("facturas_pendientes").select("*").order("dias_al_vencimiento"),
+        supabase
+          .from("leads")
+          .select("lead_id,nombre,servicio,estado_trabajo")
+          .in("estado", ["ACEPTADO", "FACTURADO"])
+          .order("fecha_ingreso", {ascending: false}),
       ]);
 
-      const fallo = resMetrics.error ?? resEstados.error ?? resLeads.error ?? resFacturas.error;
+      const fallo =
+        resMetrics.error ?? resEstados.error ?? resLeads.error ?? resFacturas.error ?? resTrabajos.error;
 
       if (fallo) throw fallo;
 
@@ -178,6 +194,7 @@ export default function DashboardClient() {
       setFunnel(counts);
       setLeads((resLeads.data as Lead[] | null) ?? []);
       setFacturas((resFacturas.data as FacturaPendiente[] | null) ?? []);
+      setTrabajos((resTrabajos.data as Trabajo[] | null) ?? []);
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "No pudimos cargar el dashboard.");
@@ -356,6 +373,39 @@ export default function DashboardClient() {
                     </tr>
                   );
                 })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* E — Trabajos activos */}
+      <section>
+        <SectionHeader num="E" title="Trabajos activos" />
+        {trabajos.length === 0 ? (
+          <p className="font-mono text-[12px] text-neutral-500">No hay trabajos en curso.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-left text-[13px]">
+              <thead>
+                <tr className="border-b border-neutral-700 font-mono text-[10px] tracking-[0.15em] text-neutral-500 uppercase">
+                  <th className="py-3 pr-4 font-normal">Lead</th>
+                  <th className="py-3 pr-4 font-normal">Cliente</th>
+                  <th className="py-3 pr-4 font-normal">Servicio</th>
+                  <th className="py-3 font-normal">Estado del trabajo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trabajos.map((t) => (
+                  <tr key={t.lead_id} className="border-b border-neutral-900 text-neutral-300">
+                    <td className="py-3 pr-4 font-mono text-[12px] text-neutral-500">{t.lead_id}</td>
+                    <td className="py-3 pr-4 text-neutral-100">{t.nombre}</td>
+                    <td className="py-3 pr-4">{t.servicio?.replace(/_/g, " ")}</td>
+                    <td className="py-3">
+                      <TrabajoEstadoSelect inicial={t.estado_trabajo} leadId={t.lead_id} />
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
