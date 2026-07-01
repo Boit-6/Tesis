@@ -26,8 +26,9 @@ services:
       - WEBHOOK_URL=${N8N_PUBLIC_URL:-http://localhost:5678/}
       - GENERIC_TIMEZONE=America/Argentina/Buenos_Aires
       - TZ=America/Argentina/Buenos_Aires
-      # Persistencia de credenciales/workflows
-      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-cambiame-por-una-clave-larga}
+      # N8N_ENCRYPTION_KEY se OMITE a propósito: n8n toma la key que ya está
+      # guardada dentro del volumen n8n_data (la que encriptó tus credenciales).
+      # Si la seteás acá con un valor distinto, las credenciales dejan de desencriptar.
       # Variables reusables del workflow (poné los valores en el .env junto a este compose).
       # Así el chatId de Telegram y el database_id de Notion NO se hardcodean en cada nodo
       # y sobreviven a los re-imports del workflow.
@@ -51,7 +52,10 @@ services:
       - crm-net
 
 volumes:
+  # Volumen preexistente con tus credenciales/workflows (creado fuera de este compose).
+  # external: usa el volumen "n8n_data" tal cual, sin prefijo del proyecto.
   n8n_data:
+    external: true
 
 networks:
   crm-net:
