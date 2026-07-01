@@ -135,7 +135,10 @@ export default function LeadForm() {
     try {
       const response = await fetch(`${N8N_BASE}/webhook/lead/nuevo`, {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        headers: {
+          "Content-Type": "application/json",
+          "ngrok-skip-browser-warning": "true",
+        },
         body: JSON.stringify({
           ...formData,
           fuente: "formulario_web",
