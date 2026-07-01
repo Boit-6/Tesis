@@ -19,7 +19,11 @@ services:
       - N8N_HOST=localhost
       - N8N_PORT=5678
       - N8N_PROTOCOL=http
-      - WEBHOOK_URL=http://localhost:5678/
+      # URL pública con la que n8n se anuncia a sí mismo. En local queda en
+      # localhost; para producción/demo poné N8N_PUBLIC_URL (ej. la URL https
+      # de ngrok, con la barra final) en un archivo .env junto a este compose
+      # — está gitignoreado, así la URL descartable no va al repo.
+      - WEBHOOK_URL=${N8N_PUBLIC_URL:-http://localhost:5678/}
       - GENERIC_TIMEZONE=America/Argentina/Buenos_Aires
       - TZ=America/Argentina/Buenos_Aires
       # Persistencia de credenciales/workflows
