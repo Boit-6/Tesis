@@ -5,6 +5,7 @@ import DashboardView, {
   type FacturaPendiente,
   type Lead,
   type Metrics,
+  type Trabajo,
 } from "./dashboard-view";
 import RefreshButton from "./refresh-button";
 
@@ -19,13 +20,14 @@ async function cargarDashboard(): Promise<DashboardData> {
       metrics: null,
       funnel: {},
       leads: [],
+      trabajos: [],
       facturas: [],
       error: "Faltan las variables NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY.",
     };
   }
 
   try {
-    const [resMetrics, resEstados, resLeads, resFacturas] = await Promise.all([
+    const [resMetrics, resEstados, resLeads, resFacturas, resTrabajos] = await Promise.all([
       supabase.from("metrics_mensuales").select("*").order("mes", {ascending: false}).limit(1),
       supabase.from("leads").select("estado"),
       supabase
@@ -34,9 +36,15 @@ async function cargarDashboard(): Promise<DashboardData> {
         .order("fecha_ingreso", {ascending: false})
         .limit(20),
       supabase.from("facturas_pendientes").select("*").order("dias_al_vencimiento"),
+      supabase
+        .from("leads")
+        .select("lead_id,nombre,servicio,estado_trabajo")
+        .in("estado", ["ACEPTADO", "FACTURADO"])
+        .order("fecha_ingreso", {ascending: false}),
     ]);
 
-    const fallo = resMetrics.error ?? resEstados.error ?? resLeads.error ?? resFacturas.error;
+    const fallo =
+      resMetrics.error ?? resEstados.error ?? resLeads.error ?? resFacturas.error ?? resTrabajos.error;
 
     if (fallo) throw fallo;
 
@@ -50,6 +58,7 @@ async function cargarDashboard(): Promise<DashboardData> {
       metrics: (resMetrics.data?.[0] as Metrics) ?? null,
       funnel,
       leads: (resLeads.data as Lead[] | null) ?? [],
+      trabajos: (resTrabajos.data as Trabajo[] | null) ?? [],
       facturas: (resFacturas.data as FacturaPendiente[] | null) ?? [],
       error: null,
     };
@@ -60,6 +69,7 @@ async function cargarDashboard(): Promise<DashboardData> {
       metrics: null,
       funnel: {},
       leads: [],
+      trabajos: [],
       facturas: [],
       error: err instanceof Error ? err.message : "No pudimos cargar el dashboard.",
     };

@@ -1,5 +1,7 @@
 import type {ReactNode} from "react";
 
+import TrabajoEstadoSelect from "./trabajo-estado-select";
+
 export type LeadEstado =
   | "NUEVO"
   | "PROPUESTA_ENVIADA"
@@ -33,6 +35,15 @@ export interface Lead {
   fecha_ingreso: string;
 }
 
+export type TrabajoEstado = "PENDIENTE" | "EN_PROGRESO" | "EN_REVISION" | "ENTREGADO";
+
+export interface Trabajo {
+  lead_id: string;
+  nombre: string;
+  servicio: string;
+  estado_trabajo: TrabajoEstado;
+}
+
 export interface FacturaPendiente {
   factura_id: string;
   cliente: string;
@@ -47,6 +58,7 @@ export interface DashboardData {
   metrics: Metrics | null;
   funnel: Record<string, number>;
   leads: Lead[];
+  trabajos: Trabajo[];
   facturas: FacturaPendiente[];
   error: string | null;
 }
@@ -136,7 +148,7 @@ function Tag({children, className = ""}: {children: ReactNode; className?: strin
   );
 }
 
-export default function DashboardView({metrics, funnel, leads, facturas, error}: DashboardData) {
+export default function DashboardView({metrics, funnel, leads, trabajos, facturas, error}: DashboardData) {
   const funnelMax = Math.max(1, ...FUNNEL_ORDER.map((estado) => funnel[estado] ?? 0));
 
   return (
@@ -281,6 +293,39 @@ export default function DashboardView({metrics, funnel, leads, facturas, error}:
                     </tr>
                   );
                 })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      {/* E — Trabajos activos */}
+      <section>
+        <SectionHeader num="E" title="Trabajos activos" />
+        {trabajos.length === 0 ? (
+          <p className="font-mono text-[12px] text-neutral-500">No hay trabajos en curso.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-left text-[13px]">
+              <thead>
+                <tr className="border-b border-neutral-700 font-mono text-[10px] uppercase tracking-[0.15em] text-neutral-500">
+                  <th className="py-3 pr-4 font-normal">Lead</th>
+                  <th className="py-3 pr-4 font-normal">Cliente</th>
+                  <th className="py-3 pr-4 font-normal">Servicio</th>
+                  <th className="py-3 font-normal">Estado del trabajo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {trabajos.map((t) => (
+                  <tr key={t.lead_id} className="border-b border-neutral-900 text-neutral-300">
+                    <td className="py-3 pr-4 font-mono text-[12px] text-neutral-500">{t.lead_id}</td>
+                    <td className="py-3 pr-4 text-neutral-100">{t.nombre}</td>
+                    <td className="py-3 pr-4">{t.servicio?.replace(/_/g, " ")}</td>
+                    <td className="py-3">
+                      <TrabajoEstadoSelect leadId={t.lead_id} inicial={t.estado_trabajo} />
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
