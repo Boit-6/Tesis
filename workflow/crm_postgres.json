@@ -823,7 +823,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const l = $input.first().json;\n//const BASE = 'http://localhost:5678';\nconst primerNombre = String(l.nombre || 'Cliente').split(' ')[0];\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst tiempo = (l.urgencia === 'alta') ? '3-5 dias habiles' : '1-2 semanas';\nconst FRONT_BASE = 'https://formulario-leads-psi.vercel.app';\nconst acceptUrl = FRONT_BASE + '/aceptar/' + encodeURIComponent(l.lead_id) + '?token=' + encodeURIComponent(l.accept_token);\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#333'><div style='background:#1a1a1a;color:#fff;padding:30px;text-align:center'><h1>Propuesta</h1></div><div style='padding:30px;border:1px solid #eee'><p>Hola <b>${primerNombre}</b>,</p><p>Te envio la propuesta para el servicio de <b>${svc}</b>:</p><div style='background:#f9fafb;border:1px solid #ddd;border-radius:8px;padding:15px;margin:20px 0'><p>Servicio: <b>${svc}</b></p><p>Entrega: <b>${tiempo}</b></p><p>Inversion: <b>$${l.presupuesto} USD</b></p></div><p style='text-align:center'><a href='${acceptUrl}' style='display:inline-block;background:#2563eb;color:#fff;padding:15px 30px;border-radius:6px;text-decoration:none;font-weight:700'>Aceptar y comenzar</a></p><p>Saludos,<br><b>Soderos S.A.</b></p></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { propuesta_html: html, accept_url: acceptUrl }) }];"
+        "jsCode": "const l = $input.first().json;\nconst primerNombre = String(l.nombre || 'Cliente').split(' ')[0];\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst tiempo = (l.urgencia === 'alta') ? '3-5 dias habiles' : '1-2 semanas';\nconst FRONT_BASE = 'https://formulario-leads-psi.vercel.app';\nconst acceptUrl = FRONT_BASE + '/aceptar/' + encodeURIComponent(l.lead_id) + '?token=' + encodeURIComponent(l.accept_token);\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head><body style='margin:0;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif;color:#27272a'><div style='max-width:600px;margin:0 auto;background:#ffffff'><div style='background:#111827;padding:32px 40px'><div style='color:#fbbf24;font-size:20px;font-weight:800;letter-spacing:1px'>SODEROS S.A.</div><div style='color:#9ca3af;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:4px'>Propuesta de trabajo</div></div><div style='padding:40px'><p style='font-size:16px;margin:0 0 8px'>Hola <b>${primerNombre}</b>,</p><p style='font-size:15px;line-height:1.6;color:#52525b;margin:0 0 28px'>Gracias por tu interes. Preparamos una propuesta para tu proyecto de <b>${svc}</b>:</p><table style='width:100%;border-collapse:collapse;margin:0 0 28px'><tr><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;color:#71717a;font-size:13px'>Servicio</td><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;text-align:right;font-weight:700'>${svc}</td></tr><tr><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;color:#71717a;font-size:13px'>Tiempo de entrega</td><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;text-align:right;font-weight:700'>${tiempo}</td></tr><tr><td style='padding:14px 0;color:#71717a;font-size:13px'>Inversion</td><td style='padding:14px 0;text-align:right;font-weight:800;font-size:18px;color:#111827'>$${l.presupuesto} USD</td></tr></table><div style='text-align:center;margin:0 0 24px'><a href='${acceptUrl}' style='display:inline-block;background:#fbbf24;color:#111827;padding:16px 40px;border-radius:8px;text-decoration:none;font-weight:800;font-size:15px'>Ver propuesta y responder</a></div><p style='font-size:13px;line-height:1.6;color:#a1a1aa;text-align:center;margin:0'>Desde el enlace vas a poder <b>aceptar</b>, <b>pedir cambios</b> o <b>rechazar</b> la propuesta.</p></div><div style='background:#fafafa;padding:24px 40px;border-top:1px solid #e4e4e7'><p style='margin:0;font-size:13px;color:#71717a'>Saludos,<br><b style='color:#27272a'>Equipo Soderos S.A.</b></p></div></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { propuesta_html: html, accept_url: acceptUrl }) }];"
       },
       "id": "b9af8421-c555-4320-a2d7-09912761c111",
       "name": "Code - Generar Propuesta",
@@ -2260,6 +2260,331 @@
         2016,
         3328
       ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-rechaza",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
+        }
+      },
+      "id": "f1a20001-0000-4001-8001-bb0000000001",
+      "name": "❌ Webhook - Rechazar Propuesta",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        1900
+      ],
+      "webhookId": "lead-rechaza"
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $input.first().json.body || {};\nif (!b.lead_id || !b.token) throw new Error('Faltan parametros');\nreturn [{ json: { lead_id: b.lead_id, token: b.token } }];"
+      },
+      "id": "f1a20002-0000-4002-8002-bb0000000002",
+      "name": "Code - Leer Rechazo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        1900
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET estado = 'PERDIDO' WHERE lead_id = $1 AND accept_token::text = $2 AND estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO') RETURNING *;",
+        "options": {
+          "queryReplacement": "={{ $json.lead_id }},{{ $json.token }}"
+        }
+      },
+      "id": "f1a20003-0000-4003-8003-bb0000000003",
+      "name": "Postgres - Marcar Rechazado",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2480,
+        1900
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.lead_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f1a20004-0000-4004-8004-bb0000000004",
+      "name": "IF - Rechazo OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2704,
+        1900
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "REEMPLAZAR_CHAT_ID",
+        "text": "=❌ <b>Propuesta RECHAZADA</b>\nCliente: {{ $json.nombre }}\nLead: {{ $json.lead_id }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "f1a20005-0000-4005-8005-bb0000000005",
+      "name": "Telegram - Lead Rechazado",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2928,
+        1820
+      ],
+      "webhookId": "f1a20005-0000-4005-8005-bb0000000005",
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"ok\", \"mensaje\": \"Gracias por avisarnos. Cerramos la propuesta.\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "f1a20006-0000-4006-8006-bb0000000006",
+      "name": "Respond - Rechazo OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2928,
+        1980
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"invalido\", \"mensaje\": \"Enlace no valido o la propuesta ya no esta disponible.\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "f1a20007-0000-4007-8007-bb0000000007",
+      "name": "Respond - Rechazo Invalido",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2704,
+        2120
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-modifica",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
+        }
+      },
+      "id": "f1a20011-0000-4011-8011-bb0000000011",
+      "name": "✏️ Webhook - Pedir Cambios",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        2400
+      ],
+      "webhookId": "lead-modifica"
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $input.first().json.body || {};\nif (!b.lead_id || !b.token) throw new Error('Faltan parametros');\nreturn [{ json: { lead_id: b.lead_id, token: b.token, mensaje: String(b.mensaje || '').slice(0, 1000) } }];"
+      },
+      "id": "f1a20012-0000-4012-8012-bb0000000012",
+      "name": "Code - Leer Modifica",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        2400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET estado = 'EN_SEGUIMIENTO' WHERE lead_id = $1 AND accept_token::text = $2 AND estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO') RETURNING *;",
+        "options": {
+          "queryReplacement": "={{ $json.lead_id }},{{ $json.token }}"
+        }
+      },
+      "id": "f1a20013-0000-4013-8013-bb0000000013",
+      "name": "Postgres - Marcar En Seguimiento",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2480,
+        2400
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.lead_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f1a20014-0000-4014-8014-bb0000000014",
+      "name": "IF - Modifica OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2704,
+        2400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "leads"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "lead_id": "={{ $json.lead_id }}",
+            "notas": "={{ $('Code - Leer Modifica').item.json.mensaje }}"
+          },
+          "matchingColumns": [
+            "lead_id"
+          ],
+          "schema": []
+        }
+      },
+      "id": "f1a20015-0000-4015-8015-bb0000000015",
+      "name": "Postgres - Guardar Pedido",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2928,
+        2300
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "REEMPLAZAR_CHAT_ID",
+        "text": "=✏️ <b>Pedido de CAMBIOS</b>\nCliente: {{ $json.nombre }}\nLead: {{ $json.lead_id }}\n\n\"{{ $('Code - Leer Modifica').item.json.mensaje }}\"",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "f1a20016-0000-4016-8016-bb0000000016",
+      "name": "Telegram - Pedido Cambios",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2928,
+        2440
+      ],
+      "webhookId": "f1a20016-0000-4016-8016-bb0000000016",
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"ok\", \"mensaje\": \"Recibimos tu pedido. Te contactamos para ajustar la propuesta.\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "f1a20017-0000-4017-8017-bb0000000017",
+      "name": "Respond - Modifica OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        3152,
+        2440
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"invalido\", \"mensaje\": \"Enlace no valido o la propuesta ya no esta disponible.\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "f1a20018-0000-4018-8018-bb0000000018",
+      "name": "Respond - Modifica Invalido",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2704,
+        2560
+      ]
     }
   ],
   "connections": {
@@ -2955,6 +3280,123 @@
         [
           {
             "node": "Code - Formatear Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "❌ Webhook - Rechazar Propuesta": {
+      "main": [
+        [
+          {
+            "node": "Code - Leer Rechazo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Leer Rechazo": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Marcar Rechazado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Marcar Rechazado": {
+      "main": [
+        [
+          {
+            "node": "IF - Rechazo OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Rechazo OK?": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Lead Rechazado",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Respond - Rechazo OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Rechazo Invalido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✏️ Webhook - Pedir Cambios": {
+      "main": [
+        [
+          {
+            "node": "Code - Leer Modifica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Leer Modifica": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Marcar En Seguimiento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Marcar En Seguimiento": {
+      "main": [
+        [
+          {
+            "node": "IF - Modifica OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Modifica OK?": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Guardar Pedido",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram - Pedido Cambios",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Respond - Modifica OK",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Modifica Invalido",
             "type": "main",
             "index": 0
           }
