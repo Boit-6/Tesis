@@ -11,8 +11,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        1984,
-        3616
+        150,
+        100
       ],
       "webhookId": "p5-01"
     },
@@ -25,8 +25,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2208,
-        3616
+        450,
+        100
       ]
     },
     {
@@ -42,8 +42,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2432,
-        3616
+        750,
+        100
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -80,13 +80,13 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        2656,
-        3616
+        1050,
+        100
       ]
     },
     {
       "parameters": {
-        "chatId": "REEMPLAZAR_CHAT_ID",
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
         "text": "=💳 <b>Pago recibido (simulacion)</b>\nFactura: {{ $json.factura_id }}\nCliente: {{ $json.cliente }}\nMonto: ${{ $json.monto }} {{ $json.moneda }}",
         "additionalFields": {
           "appendAttribution": false,
@@ -98,8 +98,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        2880,
-        3536
+        1350,
+        100
       ],
       "webhookId": "tg-pago-recibido",
       "credentials": {
@@ -130,8 +130,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        3104,
-        3536
+        1350,
+        280
       ]
     },
     {
@@ -155,21 +155,21 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        2656,
-        3776
+        1350,
+        640
       ]
     },
     {
       "parameters": {
-        "jsCode": "const l = $('Code - Generar Propuesta').first().json;\nconst DATABASE_ID = 'REEMPLAZAR_DATABASE_ID'\nconst body = {\n  parent: { database_id: DATABASE_ID },\n  properties: {\n    Name: { title: [{ text: { content: String(l.nombre || 'Lead') } }] },\n    Estado: { select: { name: 'PROPUESTA_ENVIADA' } },\n    Tier: { select: { name: String(l.tier || 'COLD') } },\n    Servicio: { select: { name: String(l.servicio || 'otro') } },\n    Email: { email: String(l.email || 'sin@email.com') },\n    Presupuesto: { number: Number(l.presupuesto) || 0 },\n    Score: { number: Number(l.score) || 0 },\n    'Lead ID': { rich_text: [{ text: { content: String(l.lead_id || '') } }] }\n  }\n};\nreturn [{ json: { lead_id: l.lead_id, notion_body: body } }];"
+        "jsCode": "const l = $('Code - Generar Propuesta').first().json;\nconst DATABASE_ID = $env.NOTION_DATABASE_ID || 'REEMPLAZAR_DATABASE_ID'\nconst body = {\n  parent: { database_id: DATABASE_ID },\n  properties: {\n    Name: { title: [{ text: { content: String(l.nombre || 'Lead') } }] },\n    Estado: { select: { name: 'PROPUESTA_ENVIADA' } },\n    Tier: { select: { name: String(l.tier || 'COLD') } },\n    Servicio: { select: { name: String(l.servicio || 'otro') } },\n    Email: { email: String(l.email || 'sin@email.com') },\n    Presupuesto: { number: Number(l.presupuesto) || 0 },\n    Score: { number: Number(l.score) || 0 },\n    'Lead ID': { rich_text: [{ text: { content: String(l.lead_id || '') } }] }\n  }\n};\nreturn [{ json: { lead_id: l.lead_id, notion_body: body } }];"
       },
       "id": "6f6f8741-c420-4b9f-9eb6-557687c3a37d",
       "name": "Code - Preparar Card Notion",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3600,
-        64
+        2550,
+        1250
       ]
     },
     {
@@ -197,8 +197,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
-        3824,
-        64
+        2850,
+        1250
       ],
       "credentials": {
         "notionApi": {
@@ -220,8 +220,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        4048,
-        64
+        3150,
+        1250
       ],
       "credentials": {
         "postgres": {
@@ -255,8 +255,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
-        2928,
-        560
+        1650,
+        2580
       ],
       "credentials": {
         "notionApi": {
@@ -290,8 +290,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
-        2704,
-        2320
+        1050,
+        3730
       ],
       "credentials": {
         "notionApi": {
@@ -325,8 +325,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
-        3600,
-        1120
+        2550,
+        10630
       ],
       "credentials": {
         "notionApi": {
@@ -351,8 +351,8 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        2144,
-        2848
+        150,
+        9300
       ]
     },
     {
@@ -368,8 +368,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        2032,
-        240
+        150,
+        1250
       ],
       "webhookId": "p1-01"
     },
@@ -382,8 +382,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2256,
-        240
+        450,
+        1250
       ]
     },
     {
@@ -767,8 +767,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2704,
-        240
+        1050,
+        1250
       ],
       "credentials": {
         "postgres": {
@@ -786,8 +786,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2480,
-        240
+        750,
+        1250
       ]
     },
     {
@@ -819,8 +819,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        2928,
-        240
+        1350,
+        1250
       ]
     },
     {
@@ -832,13 +832,13 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3152,
-        208
+        1650,
+        1250
       ]
     },
     {
       "parameters": {
-        "chatId": "REEMPLAZAR_CHAT_ID",
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
         "text": "=❄️ <b>Lead COLD</b>\nNombre: {{ $json.nombre }}\nScore: {{ $json.score }}/100\nPresupuesto: ${{ $json.presupuesto }}",
         "additionalFields": {
           "appendAttribution": false,
@@ -850,8 +850,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        3152,
-        384
+        1650,
+        1430
       ],
       "webhookId": "tg-lead-frio",
       "credentials": {
@@ -875,8 +875,8 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2,
       "position": [
-        3376,
-        208
+        1950,
+        1250
       ],
       "webhookId": "gm-propuesta",
       "credentials": {
@@ -899,8 +899,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        3600,
-        208
+        2250,
+        1250
       ],
       "credentials": {
         "postgres": {
@@ -1050,8 +1050,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        4048,
-        208
+        3750,
+        1250
       ],
       "credentials": {
         "postgres": {
@@ -1062,7 +1062,7 @@
     },
     {
       "parameters": {
-        "chatId": "REEMPLAZAR_CHAT_ID",
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
         "text": "=📤 <b>Propuesta enviada</b>\n\nCliente: {{ $('Code - Generar Propuesta').item.json.nombre }}\nServicio: {{ $('Code - Generar Propuesta').item.json.servicio }}\nMonto: ${{ $('Code - Generar Propuesta').item.json.presupuesto }}\nScore: {{ $('Code - Generar Propuesta').item.json.score }} ({{ $('Code - Generar Propuesta').item.json.tier }})",
         "additionalFields": {
           "appendAttribution": false,
@@ -1074,8 +1074,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        3824,
-        208
+        3450,
+        1250
       ],
       "webhookId": "tg-propuesta",
       "credentials": {
@@ -1099,8 +1099,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        2032,
-        800
+        150,
+        2400
       ],
       "webhookId": "p3-01"
     },
@@ -1113,8 +1113,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2256,
-        800
+        450,
+        2400
       ]
     },
     {
@@ -1130,8 +1130,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2480,
-        800
+        750,
+        2400
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -1176,8 +1176,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        2704,
-        800
+        1050,
+        2400
       ]
     },
     {
@@ -1193,8 +1193,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2928,
-        720
+        1350,
+        2400
       ],
       "credentials": {
         "postgres": {
@@ -1216,8 +1216,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        2928,
-        1104
+        1350,
+        2760
       ]
     },
     {
@@ -1229,8 +1229,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2928,
-        944
+        1350,
+        2580
       ]
     },
     {
@@ -1244,8 +1244,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        3152,
-        944
+        1650,
+        2760
       ]
     },
     {
@@ -1257,8 +1257,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3152,
-        720
+        1650,
+        2400
       ]
     },
     {
@@ -1290,8 +1290,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
-        3376,
-        720
+        1950,
+        2400
       ]
     },
     {
@@ -1315,8 +1315,8 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2,
       "position": [
-        3600,
-        720
+        2250,
+        2400
       ],
       "webhookId": "gm-factura",
       "credentials": {
@@ -1360,8 +1360,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        3824,
-        720
+        2550,
+        2400
       ],
       "credentials": {
         "postgres": {
@@ -1383,8 +1383,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        4048,
-        720
+        2850,
+        2400
       ],
       "credentials": {
         "postgres": {
@@ -1395,7 +1395,7 @@
     },
     {
       "parameters": {
-        "chatId": "REEMPLAZAR_CHAT_ID",
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
         "text": "=🎉 <b>¡LEAD ACEPTADO!</b>\n\nCliente: {{ $('Code - Generar Factura HTML').item.json.nombre }}\nServicio: {{ $('Code - Generar Factura HTML').item.json.servicio }}\nMonto: ${{ $('Code - Generar Factura HTML').item.json.presupuesto }} USD",
         "additionalFields": {
           "appendAttribution": false,
@@ -1407,8 +1407,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        4272,
-        720
+        3150,
+        2400
       ],
       "webhookId": "tg-acepto",
       "credentials": {
@@ -1449,8 +1449,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        4496,
-        720
+        3450,
+        2400
       ],
       "credentials": {
         "postgres": {
@@ -1475,8 +1475,8 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        2032,
-        1360
+        150,
+        10450
       ]
     },
     {
@@ -1490,8 +1490,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2256,
-        1360
+        450,
+        10450
       ],
       "credentials": {
         "postgres": {
@@ -1509,8 +1509,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2480,
-        1360
+        750,
+        10450
       ]
     },
     {
@@ -1527,8 +1527,8 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2,
       "position": [
-        2704,
-        1360
+        1050,
+        10450
       ],
       "webhookId": "gm-followup",
       "credentials": {
@@ -1568,8 +1568,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2928,
-        1360
+        1350,
+        10450
       ],
       "credentials": {
         "postgres": {
@@ -1591,8 +1591,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        3152,
-        1360
+        1650,
+        10450
       ],
       "credentials": {
         "postgres": {
@@ -1631,8 +1631,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        3376,
-        1360
+        1950,
+        10450
       ]
     },
     {
@@ -1648,8 +1648,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        3600,
-        1280
+        2250,
+        10450
       ],
       "credentials": {
         "postgres": {
@@ -1665,13 +1665,13 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        3600,
-        1440
+        2250,
+        10630
       ]
     },
     {
       "parameters": {
-        "chatId": "REEMPLAZAR_CHAT_ID",
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
         "text": "=📉 <b>Lead PERDIDO</b>\nCliente: {{ $('Code - Preparar Follow-up').item.json.nombre }}\nScore: {{ $('Code - Preparar Follow-up').item.json.score }}\n3 seguimientos sin respuesta",
         "additionalFields": {
           "appendAttribution": false,
@@ -1683,8 +1683,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        3824,
-        1280
+        2550,
+        10450
       ],
       "webhookId": "tg-perdido",
       "credentials": {
@@ -1710,8 +1710,8 @@
       "type": "n8n-nodes-base.scheduleTrigger",
       "typeVersion": 1.2,
       "position": [
-        2032,
-        1920
+        150,
+        11600
       ]
     },
     {
@@ -1725,8 +1725,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2256,
-        1920
+        450,
+        11600
       ],
       "credentials": {
         "postgres": {
@@ -1744,8 +1744,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2480,
-        1920
+        750,
+        11600
       ]
     },
     {
@@ -1762,8 +1762,8 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2,
       "position": [
-        2704,
-        1920
+        1050,
+        11600
       ],
       "webhookId": "gm-recordatorio",
       "credentials": {
@@ -1786,8 +1786,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2928,
-        1920
+        1350,
+        11600
       ],
       "credentials": {
         "postgres": {
@@ -1823,13 +1823,13 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        3152,
-        1920
+        1650,
+        11600
       ]
     },
     {
       "parameters": {
-        "chatId": "REEMPLAZAR_CHAT_ID",
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
         "text": "=🔴 <b>PAGO URGENTE</b>\nCliente: {{ $('Code - Filtrar Vencimientos').item.json.cliente }}\nFactura: {{ $('Code - Filtrar Vencimientos').item.json.factura_id }}\nMonto: ${{ $('Code - Filtrar Vencimientos').item.json.monto }} USD",
         "additionalFields": {
           "appendAttribution": false,
@@ -1841,8 +1841,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        3376,
-        1840
+        1950,
+        11600
       ],
       "webhookId": "tg-pago-urgente",
       "credentials": {
@@ -1859,8 +1859,8 @@
       "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
       "position": [
-        3376,
-        2000
+        1950,
+        11780
       ]
     },
     {
@@ -1874,8 +1874,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        2032,
-        2480
+        150,
+        3550
       ],
       "webhookId": "p4-01"
     },
@@ -1888,8 +1888,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2256,
-        2480
+        450,
+        3550
       ]
     },
     {
@@ -1905,8 +1905,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2480,
-        2480
+        750,
+        3550
       ],
       "credentials": {
         "postgres": {
@@ -1928,8 +1928,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2704,
-        2480
+        1050,
+        3550
       ],
       "credentials": {
         "postgres": {
@@ -1940,7 +1940,7 @@
     },
     {
       "parameters": {
-        "chatId": "REEMPLAZAR_CHAT_ID",
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
         "text": "=🎊 <b>¡PROYECTO CERRADO!</b>\nCliente: {{ $('Postgres - Lead Cerrado').item.json.nombre }}\nCobrado: ${{ $('Postgres - Lead Cerrado').item.json.presupuesto }} USD\nDias del ciclo: {{ $('Postgres - Lead Cerrado').item.json.dias_ciclo_completo }}",
         "additionalFields": {
           "appendAttribution": false,
@@ -1952,8 +1952,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        2928,
-        2480
+        1350,
+        3550
       ],
       "webhookId": "tg-cerrado",
       "credentials": {
@@ -1972,8 +1972,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        3152,
-        2480
+        1650,
+        3550
       ]
     },
     {
@@ -1990,8 +1990,8 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2,
       "position": [
-        3376,
-        2480
+        1950,
+        3550
       ],
       "webhookId": "gm-testimonio",
       "credentials": {
@@ -2032,8 +2032,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        3600,
-        2480
+        2250,
+        3550
       ],
       "credentials": {
         "postgres": {
@@ -2053,8 +2053,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2368,
-        2848
+        450,
+        9300
       ],
       "credentials": {
         "postgres": {
@@ -2065,7 +2065,7 @@
     },
     {
       "parameters": {
-        "chatId": "REEMPLAZAR_CHAT_ID",
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
         "text": "=📊 <b>Reporte {{ $json.mes }}</b>\n\n👥 Leads: {{ $json.total_leads }} | 🔥 {{ $json.leads_hot }}\n✅ Cerrados: {{ $json.leads_cerrados }} | Perdidos: {{ $json.leads_perdidos }}\n📈 Conversion: {{ $json.conversion_pct }}%\n⏱ Prom. cierre: {{ $json.tiempo_prom_dias }} dias\n\n💰 Facturado: ${{ $json.facturacion }} USD\n✅ Cobrado: ${{ $json.cobrado }} USD\n⏳ Pendiente: ${{ $json.pendiente }} USD\n📊 Tasa cobro: {{ $json.tasa_cobro_pct }}%",
         "additionalFields": {
           "appendAttribution": false,
@@ -2077,8 +2077,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        2592,
-        2848
+        750,
+        9300
       ],
       "webhookId": "tg-reporte",
       "credentials": {
@@ -2097,8 +2097,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2240,
-        3328
+        450,
+        12750
       ]
     },
     {
@@ -2133,8 +2133,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2464,
-        3328
+        750,
+        12750
       ],
       "credentials": {
         "postgres": {
@@ -2145,7 +2145,7 @@
     },
     {
       "parameters": {
-        "chatId": "REEMPLAZAR_CHAT_ID",
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
         "text": "=🚨 <b>ERROR CRITICO</b>\nWorkflow: {{ $('Code - Formatear Error').item.json.wf_origen }}\nDetalle: {{ $('Code - Formatear Error').item.json.detalle }}\nError: {{ $('Code - Formatear Error').item.json.error_msg }}",
         "additionalFields": {
           "appendAttribution": false,
@@ -2157,8 +2157,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        2688,
-        3328
+        1050,
+        12750
       ],
       "webhookId": "tg-error",
       "credentials": {
@@ -2182,8 +2182,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        2032,
-        1600
+        150,
+        4700
       ],
       "webhookId": "p3-00"
     },
@@ -2196,8 +2196,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2256,
-        1600
+        450,
+        4700
       ]
     },
     {
@@ -2213,8 +2213,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2480,
-        1600
+        750,
+        4700
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -2233,8 +2233,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2704,
-        1600
+        1050,
+        4700
       ]
     },
     {
@@ -2248,8 +2248,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        2928,
-        1600
+        1350,
+        4700
       ]
     },
     {
@@ -2259,8 +2259,8 @@
       "type": "n8n-nodes-base.errorTrigger",
       "typeVersion": 1,
       "position": [
-        2016,
-        3328
+        150,
+        12750
       ]
     },
     {
@@ -2277,8 +2277,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        2032,
-        1900
+        150,
+        5850
       ],
       "webhookId": "lead-rechaza"
     },
@@ -2291,8 +2291,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2256,
-        1900
+        450,
+        5850
       ]
     },
     {
@@ -2308,8 +2308,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2480,
-        1900
+        750,
+        5850
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -2346,13 +2346,13 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        2704,
-        1900
+        1050,
+        5850
       ]
     },
     {
       "parameters": {
-        "chatId": "REEMPLAZAR_CHAT_ID",
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
         "text": "=❌ <b>Propuesta RECHAZADA</b>\nCliente: {{ $json.nombre }}\nLead: {{ $json.lead_id }}",
         "additionalFields": {
           "parse_mode": "HTML"
@@ -2363,8 +2363,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        2928,
-        1820
+        1350,
+        5850
       ],
       "webhookId": "f1a20005-0000-4005-8005-bb0000000005",
       "credentials": {
@@ -2387,8 +2387,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        2928,
-        1980
+        1350,
+        6030
       ]
     },
     {
@@ -2404,8 +2404,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        2704,
-        2120
+        1350,
+        6390
       ]
     },
     {
@@ -2422,8 +2422,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        2032,
-        2400
+        150,
+        7000
       ],
       "webhookId": "lead-modifica"
     },
@@ -2436,8 +2436,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2256,
-        2400
+        450,
+        7000
       ]
     },
     {
@@ -2453,8 +2453,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2480,
-        2400
+        750,
+        7000
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -2491,8 +2491,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        2704,
-        2400
+        1050,
+        7000
       ]
     },
     {
@@ -2520,8 +2520,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2928,
-        2300
+        1350,
+        7000
       ],
       "credentials": {
         "postgres": {
@@ -2532,7 +2532,7 @@
     },
     {
       "parameters": {
-        "chatId": "REEMPLAZAR_CHAT_ID",
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
         "text": "=✏️ <b>Pedido de CAMBIOS</b>\nCliente: {{ $json.nombre }}\nLead: {{ $json.lead_id }}\n\n\"{{ $('Code - Leer Modifica').item.json.mensaje }}\"",
         "additionalFields": {
           "parse_mode": "HTML"
@@ -2543,8 +2543,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        2928,
-        2440
+        1350,
+        7180
       ],
       "webhookId": "f1a20016-0000-4016-8016-bb0000000016",
       "credentials": {
@@ -2567,8 +2567,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        3152,
-        2440
+        1350,
+        7360
       ]
     },
     {
@@ -2584,8 +2584,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        2704,
-        2560
+        1350,
+        7540
       ]
     },
     {
@@ -2602,8 +2602,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        2032,
-        2850
+        150,
+        8150
       ],
       "webhookId": "trabajo-estado"
     },
@@ -2616,8 +2616,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2256,
-        2850
+        450,
+        8150
       ]
     },
     {
@@ -2633,8 +2633,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2480,
-        2850
+        750,
+        8150
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -2657,8 +2657,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        2704,
-        2760
+        1050,
+        8150
       ]
     },
     {
@@ -2688,8 +2688,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        2704,
-        2960
+        1050,
+        8330
       ]
     },
     {
@@ -2717,8 +2717,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
-        2928,
-        2960
+        1350,
+        8150
       ],
       "credentials": {
         "notionApi": {
@@ -2752,8 +2752,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
-        3152,
-        1820
+        1350,
+        6210
       ],
       "credentials": {
         "notionApi": {
@@ -2775,8 +2775,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        3152,
-        120
+        1350,
+        460
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -2811,8 +2811,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
-        3376,
-        120
+        1650,
+        100
       ],
       "credentials": {
         "notionApi": {

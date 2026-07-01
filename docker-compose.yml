@@ -28,6 +28,13 @@ services:
       - TZ=America/Argentina/Buenos_Aires
       # Persistencia de credenciales/workflows
       - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-cambiame-por-una-clave-larga}
+      # Variables reusables del workflow (poné los valores en el .env junto a este compose).
+      # Así el chatId de Telegram y el database_id de Notion NO se hardcodean en cada nodo
+      # y sobreviven a los re-imports del workflow.
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - NOTION_DATABASE_ID=${NOTION_DATABASE_ID:-}
+      # Permite leer $env dentro de los nodos Code (necesario para NOTION_DATABASE_ID)
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
     volumes:
       - n8n_data:/home/node/.n8n
     networks:
