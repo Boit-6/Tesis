@@ -796,15 +796,17 @@
           "options": {
             "caseSensitive": true,
             "leftValue": "",
-            "typeValidation": "strict"
+            "typeValidation": "loose",
+            "version": 2
           },
           "conditions": [
             {
-              "leftValue": "={{ $json.tier }}",
-              "rightValue": "COLD",
+              "id": "hotwarm-por-score",
+              "leftValue": "={{ $json.score }}",
+              "rightValue": 40,
               "operator": {
-                "type": "string",
-                "operation": "notEquals"
+                "type": "number",
+                "operation": "gte"
               }
             }
           ],
