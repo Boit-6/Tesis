@@ -5,6 +5,7 @@ import Link from "next/link";
 import {useRouter} from "next/navigation";
 
 import {createClient} from "@/lib/supabase/client";
+import {translateAuthError} from "@/lib/supabase/auth-errors";
 
 const inputClass =
   "w-full bg-transparent border-b border-neutral-600 pb-3 pt-1 text-[15px] text-neutral-100 placeholder-neutral-600 outline-none transition duration-200 ease focus:border-amber-400 focus:placeholder-neutral-500";
@@ -44,7 +45,7 @@ export default function LoginForm() {
       router.push(redirectTo || "/dashboard");
       router.refresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No pudimos iniciar sesión.");
+      setError(translateAuthError(err, "No pudimos iniciar sesión."));
     } finally {
       setLoading(false);
     }
