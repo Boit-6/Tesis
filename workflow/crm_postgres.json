@@ -268,7 +268,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "=https://api.notion.com/v1/pages/{{ $json.card_id }}",
+        "url": "=https://api.notion.com/v1/pages/{{ $('Postgres - Lead Cerrado').item.json.card_id }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "notionApi",
         "sendHeaders": true,
@@ -359,7 +359,9 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "lead/nuevo",
-        "options": {}
+        "options": {
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
+        }
       },
       "id": "8a11afd6-695a-4ae7-bc8e-f4a7ab860dad",
       "name": "🔵 Webhook - Nuevo Lead",
@@ -821,7 +823,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const l = $input.first().json;\n//const BASE = 'http://localhost:5678';\nconst primerNombre = String(l.nombre || 'Cliente').split(' ')[0];\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst tiempo = (l.urgencia === 'alta') ? '3-5 dias habiles' : '1-2 semanas';\nconst FRONT_BASE = 'http://localhost:3000';\nconst acceptUrl = FRONT_BASE + '/aceptar/' + encodeURIComponent(l.lead_id) + '?token=' + encodeURIComponent(l.accept_token);\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#333'><div style='background:#1a1a1a;color:#fff;padding:30px;text-align:center'><h1>Propuesta</h1></div><div style='padding:30px;border:1px solid #eee'><p>Hola <b>${primerNombre}</b>,</p><p>Te envio la propuesta para el servicio de <b>${svc}</b>:</p><div style='background:#f9fafb;border:1px solid #ddd;border-radius:8px;padding:15px;margin:20px 0'><p>Servicio: <b>${svc}</b></p><p>Entrega: <b>${tiempo}</b></p><p>Inversion: <b>$${l.presupuesto} USD</b></p></div><p style='text-align:center'><a href='${acceptUrl}' style='display:inline-block;background:#2563eb;color:#fff;padding:15px 30px;border-radius:6px;text-decoration:none;font-weight:700'>Aceptar y comenzar</a></p><p>Saludos,<br><b>Soderos S.A.</b></p></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { propuesta_html: html, accept_url: acceptUrl }) }];"
+        "jsCode": "const l = $input.first().json;\n//const BASE = 'http://localhost:5678';\nconst primerNombre = String(l.nombre || 'Cliente').split(' ')[0];\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst tiempo = (l.urgencia === 'alta') ? '3-5 dias habiles' : '1-2 semanas';\nconst FRONT_BASE = 'https://formulario-leads-psi.vercel.app';\nconst acceptUrl = FRONT_BASE + '/aceptar/' + encodeURIComponent(l.lead_id) + '?token=' + encodeURIComponent(l.accept_token);\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#333'><div style='background:#1a1a1a;color:#fff;padding:30px;text-align:center'><h1>Propuesta</h1></div><div style='padding:30px;border:1px solid #eee'><p>Hola <b>${primerNombre}</b>,</p><p>Te envio la propuesta para el servicio de <b>${svc}</b>:</p><div style='background:#f9fafb;border:1px solid #ddd;border-radius:8px;padding:15px;margin:20px 0'><p>Servicio: <b>${svc}</b></p><p>Entrega: <b>${tiempo}</b></p><p>Inversion: <b>$${l.presupuesto} USD</b></p></div><p style='text-align:center'><a href='${acceptUrl}' style='display:inline-block;background:#2563eb;color:#fff;padding:15px 30px;border-radius:6px;text-decoration:none;font-weight:700'>Aceptar y comenzar</a></p><p>Saludos,<br><b>Soderos S.A.</b></p></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { propuesta_html: html, accept_url: acceptUrl }) }];"
       },
       "id": "b9af8421-c555-4320-a2d7-09912761c111",
       "name": "Code - Generar Propuesta",
@@ -1087,7 +1089,7 @@
         "path": "lead-acepta",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "http://localhost:3000"
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
         }
       },
       "id": "12ec8c4f-8e53-4bfb-87ce-395293462536",
@@ -1246,7 +1248,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const l = $input.first().json;\nconst fid = 'FAC-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);\nconst vencISO = new Date(Date.now() + 15 * 86400000).toISOString();\nconst BASE = 'http://localhost:5678';\nconst payUrl = BASE + '/webhook/pago-confirmado?factura_id=' + fid + '&lead_id=' + l.lead_id;\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst hoy = new Date().toLocaleDateString('es-AR');\nconst venc = new Date(vencISO).toLocaleDateString('es-AR');\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body style='font-family:Arial,sans-serif;padding:40px;color:#222'><div style='display:flex;justify-content:space-between;border-bottom:3px solid #0f3460;padding-bottom:20px'><div><div style='font-size:22px;font-weight:700;color:#0f3460'>[TU NOMBRE / EMPRESA]</div><div>[tu@email.com]</div></div><div style='text-align:right'><h2>FACTURA</h2><p>N: <b>${fid}</b></p><p>Emision: ${hoy}</p><p>Vencimiento: ${venc}</p></div></div><p><b>Cliente:</b> ${l.nombre}<br><b>Email:</b> ${l.email}</p><table style='width:100%;border-collapse:collapse;margin:25px 0'><tr style='background:#0f3460;color:#fff'><th style='padding:10px;text-align:left'>Descripcion</th><th style='padding:10px'>Cant.</th><th style='padding:10px'>Total</th></tr><tr><td style='padding:10px;border-bottom:1px solid #eee'>${svc}</td><td style='padding:10px;border-bottom:1px solid #eee'>1</td><td style='padding:10px;border-bottom:1px solid #eee'>$${l.presupuesto}</td></tr><tr style='font-weight:700;background:#f5f5f5'><td colspan='2' style='padding:10px;text-align:right'>TOTAL:</td><td style='padding:10px'>$${l.presupuesto} USD</td></tr></table><p style='text-align:center;margin:25px 0'><a href='${payUrl}' style='display:inline-block;background:#009ee3;color:#fff;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:700'>💳 Pagar ahora (simulacion)</a></p><div style='background:#f8f9ff;border-left:4px solid #0f3460;padding:15px'><b>Datos de pago:</b><br>[Tu CBU / Alias / PayPal]</div></body></html>`;\nconst b64 = Buffer.from(html, 'utf8').toString('base64');\nreturn [{ json: Object.assign({}, l, { factura_id: fid, fecha_emision_iso: new Date().toISOString(), fecha_vencimiento_iso: vencISO }), binary: { factura_html_file: { data: b64, mimeType: 'text/html', fileName: 'index.html', fileExtension: 'html' } } }];"
+        "jsCode": "const l = $input.first().json;\nconst fid = 'FAC-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);\nconst vencISO = new Date(Date.now() + 15 * 86400000).toISOString();\nconst BASE = 'https://unison-frolic-untainted.ngrok-free.dev';\nconst payUrl = BASE + '/webhook/pago-confirmado?factura_id=' + fid + '&lead_id=' + l.lead_id;\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst hoy = new Date().toLocaleDateString('es-AR');\nconst venc = new Date(vencISO).toLocaleDateString('es-AR');\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body style='font-family:Arial,sans-serif;padding:40px;color:#222'><div style='display:flex;justify-content:space-between;border-bottom:3px solid #0f3460;padding-bottom:20px'><div><div style='font-size:22px;font-weight:700;color:#0f3460'>[TU NOMBRE / EMPRESA]</div><div>[tu@email.com]</div></div><div style='text-align:right'><h2>FACTURA</h2><p>N: <b>${fid}</b></p><p>Emision: ${hoy}</p><p>Vencimiento: ${venc}</p></div></div><p><b>Cliente:</b> ${l.nombre}<br><b>Email:</b> ${l.email}</p><table style='width:100%;border-collapse:collapse;margin:25px 0'><tr style='background:#0f3460;color:#fff'><th style='padding:10px;text-align:left'>Descripcion</th><th style='padding:10px'>Cant.</th><th style='padding:10px'>Total</th></tr><tr><td style='padding:10px;border-bottom:1px solid #eee'>${svc}</td><td style='padding:10px;border-bottom:1px solid #eee'>1</td><td style='padding:10px;border-bottom:1px solid #eee'>$${l.presupuesto}</td></tr><tr style='font-weight:700;background:#f5f5f5'><td colspan='2' style='padding:10px;text-align:right'>TOTAL:</td><td style='padding:10px'>$${l.presupuesto} USD</td></tr></table><p style='text-align:center;margin:25px 0'><a href='${payUrl}' style='display:inline-block;background:#009ee3;color:#fff;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:700'>💳 Pagar ahora (simulacion)</a></p><div style='background:#f8f9ff;border-left:4px solid #0f3460;padding:15px'><b>Datos de pago:</b><br>[Tu CBU / Alias / PayPal]</div></body></html>`;\nconst b64 = Buffer.from(html, 'utf8').toString('base64');\nreturn [{ json: Object.assign({}, l, { factura_id: fid, fecha_emision_iso: new Date().toISOString(), fecha_vencimiento_iso: vencISO }), binary: { factura_html_file: { data: b64, mimeType: 'text/html', fileName: 'index.html', fileExtension: 'html' } } }];"
       },
       "id": "fbd489b7-a2c5-46a1-9c92-922c8caff89f",
       "name": "Code - Generar Factura HTML",
@@ -1498,7 +1500,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const l = $input.first().json;\nconst numSeg = (parseInt(l.seguimientos) || 0) + 1;\nconst nombre = String(l.nombre || 'Cliente').split(' ')[0];\nconst servicio = String(l.servicio || 'proyecto').replace(/_/g, ' ');\nconst tpls = {\n  1: 'Hola ' + nombre + ', queria saber si pudiste ver la propuesta de ' + servicio + '. Quedo a disposicion por cualquier duda.',\n  2: 'Hola de nuevo ' + nombre + ', la propuesta de ' + servicio + ' sigue vigente. Hay algo que quieras ajustar o revisar?',\n  3: 'Ultimo contacto por el proyecto de ' + servicio + '. Si mas adelante decidis retomarlo, con gusto lo hablamos. Saludos!'\n};\nconst esUltimo = numSeg >= 3;\nreturn [{ json: Object.assign({}, l, { num_seg: numSeg, email_subject: 'Seguimiento: Propuesta ' + servicio, email_body: tpls[numSeg], es_ultimo: esUltimo }) }];"
+        "jsCode": "const items = $input.all();\nconst out = [];\nfor (let i = 0; i < items.length; i++) {\n  const l = items[i].json;\n  const numSeg = (parseInt(l.seguimientos) || 0) + 1;\n  const nombre = String(l.nombre || 'Cliente').split(' ')[0];\n  const servicio = String(l.servicio || 'proyecto').replace(/_/g, ' ');\n  const tpls = {\n    1: 'Hola ' + nombre + ', queria saber si pudiste ver la propuesta de ' + servicio + '. Quedo a disposicion por cualquier duda.',\n    2: 'Hola de nuevo ' + nombre + ', la propuesta de ' + servicio + ' sigue vigente. Hay algo que quieras ajustar o revisar?',\n    3: 'Ultimo contacto por el proyecto de ' + servicio + '. Si mas adelante decidis retomarlo, con gusto lo hablamos. Saludos!'\n  };\n  const esUltimo = numSeg >= 3;\n  out.push({ json: Object.assign({}, l, { num_seg: numSeg, email_subject: 'Seguimiento: Propuesta ' + servicio, email_body: tpls[numSeg], es_ultimo: esUltimo }), pairedItem: { item: i } });\n}\nreturn out;"
       },
       "id": "7ffed6f5-0fde-4e8e-8758-5f8eb64c8b5a",
       "name": "Code - Preparar Follow-up",
@@ -1961,7 +1963,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const l = $('Postgres - Lead Cerrado').first().json;\nconst svc = String(l.servicio || 'proyecto').replace(/_/g, ' ');\nconst nombre = String(l.nombre || '').split(' ')[0];\nconst formUrl = 'https://forms.gle/TU-FORMULARIO';\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body style='font-family:Arial,sans-serif;max-width:560px;margin:0 auto'><div style='background:#0f3460;color:#fff;padding:30px;text-align:center'><h2>¡Proyecto completado! 🎉</h2></div><div style='padding:30px'><p>Hola <b>${nombre}</b>,</p><p>Fue un gusto trabajar en tu proyecto de <b>${svc}</b>.</p><p>Te animas a dejarme una resena rapida?</p><p><a href='${formUrl}' style='display:inline-block;background:#0f3460;color:#fff;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:600'>Dejar mi resena (2 min)</a></p></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { testimonio_html: html }) }];"
+        "jsCode": "const l = $('Postgres - Lead Cerrado').first().json;\nconst svc = String(l.servicio || 'proyecto').replace(/_/g, ' ');\nconst nombre = String(l.nombre || '').split(' ')[0];\nconst formUrl = 'https://forms.gle/TU-FORMULARIO';\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body style='font-family:Arial,sans-serif;max-width:560px;margin:0 auto'><div style='background:#0f3460;color:#fff;padding:30px;text-align:center'><h2>¡Proyecto completado! 🎉</h2></div><div style='padding:30px'><p>Hola <b>${nombre}</b>,</p><p>Fue un gusto trabajar en tu proyecto de <b>${svc}</b>.</p><p>¿Te animás a dejarme una reseña rápida?</p><p><a href='${formUrl}' style='display:inline-block;background:#0f3460;color:#fff;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:600'>Dejar mi reseña (2 min)</a></p></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { testimonio_html: html }) }];"
       },
       "id": "73a0ab26-1759-4e7d-a2a5-89412039776c",
       "name": "Code - Email Testimonio",
@@ -2142,7 +2144,7 @@
     {
       "parameters": {
         "chatId": "REEMPLAZAR_CHAT_ID",
-        "text": "=🚨 <b>ERROR CRITICO</b>\nWorkflow: {{ $json.wf_origen }}\nDetalle: {{ $json.detalle }}\nError: {{ $json.error_msg }}",
+        "text": "=🚨 <b>ERROR CRITICO</b>\nWorkflow: {{ $('Code - Formatear Error').item.json.wf_origen }}\nDetalle: {{ $('Code - Formatear Error').item.json.detalle }}\nError: {{ $('Code - Formatear Error').item.json.error_msg }}",
         "additionalFields": {
           "appendAttribution": false,
           "parse_mode": "HTML"
@@ -2163,6 +2165,101 @@
           "name": "Telegram account"
         }
       }
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "lead-propuesta",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
+        }
+      },
+      "id": "e1a2b3c4-0001-4f01-8a01-aa0000000001",
+      "name": "🔵 Webhook - Ver Propuesta",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        1600
+      ],
+      "webhookId": "p3-00"
+    },
+    {
+      "parameters": {
+        "jsCode": "const q = $input.first().json.query || {};\nreturn [{ json: { lead_id: String(q.lead_id || ''), token: String(q.token || '') } }];"
+      },
+      "id": "e1a2b3c4-0002-4f02-8a02-aa0000000002",
+      "name": "Code - Leer Query",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM leads WHERE lead_id = $1 AND accept_token::text = $2 LIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ $json.lead_id }},{{ $json.token }}"
+        }
+      },
+      "id": "e1a2b3c4-0003-4f03-8a03-aa0000000003",
+      "name": "Postgres - Buscar Propuesta",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2480,
+        1600
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $input.all();\nconst r = rows.length ? rows[0].json : null;\nif (!r || !r.lead_id) {\n  return [{ json: { status: 'invalido', mensaje: 'Enlace no válido o vencido.' } }];\n}\nconst activos = ['PROPUESTA_ENVIADA', 'EN_SEGUIMIENTO'];\nif (!activos.includes(r.estado)) {\n  return [{ json: { status: 'ya_procesado', mensaje: 'Este enlace ya fue usado.' } }];\n}\nreturn [{ json: { status: 'ok', lead: { nombre: r.nombre, servicio: r.servicio, presupuesto: Number(r.presupuesto) } } }];"
+      },
+      "id": "e1a2b3c4-0004-4f04-8a04-aa0000000004",
+      "name": "Code - Armar Respuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2704,
+        1600
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "e1a2b3c4-0005-4f05-8a05-aa0000000005",
+      "name": "Respond - Propuesta",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2928,
+        1600
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "e1a2b3c4-0007-4f07-8a07-aa0000000007",
+      "name": "Error Trigger",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        2016,
+        3328
+      ]
     }
   ],
   "connections": {
@@ -2803,6 +2900,61 @@
         [
           {
             "node": "Telegram - Error Critico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔵 Webhook - Ver Propuesta": {
+      "main": [
+        [
+          {
+            "node": "Code - Leer Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Leer Query": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Buscar Propuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Buscar Propuesta": {
+      "main": [
+        [
+          {
+            "node": "Code - Armar Respuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Armar Respuesta": {
+      "main": [
+        [
+          {
+            "node": "Respond - Propuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code - Formatear Error",
             "type": "main",
             "index": 0
           }
