@@ -88,9 +88,9 @@ Se clonaron ambos repositorios y se contrastó, afirmación por afirmación, el 
 | Afirmación / hallazgo | Estado | Gravedad |
 |---|---|---|
 | Políticas de **RLS** y vistas con `security_invoker` (§4.6, Anexo C, RNF1) | **RESUELTO (1/7/2026).** Se publicó `db/schema.sql` con RLS (lectura solo `authenticated`, escritura solo `service_role`, `anon` sin acceso) y vistas `security_invoker`, **verificado contra PostgreSQL 16**. Resta **aplicarlo en la instancia Supabase** y confirmar la config de Realtime. | ~~Alta~~ → Baja (aplicar) |
-| Método del webhook de aceptación | La Tabla 8 declara `/lead-acepta` **POST**, pero el frontend lo consume por **GET** con parámetros de consulta (`fetch(url)` sin método). Incoherencia documento–código a resolver. | Media |
-| Endpoint del formulario de captación | El formulario apunta a `${N8N_BASE}/webhook-test/lead/nuevo` (endpoint de **prueba** de n8n, activo solo con el editor escuchando), mientras la aceptación usa `/webhook/…` (producción). Inconsistencia coherente con el estado "demo" (§6), pero incompatible con una lectura de producción. | Media |
-| Modelo *"tres tablas"* (§4.4) | En realidad son **cuatro** (`leads`, `facturas`, `seguimientos`, `logs`); `logs` no se menciona. | Baja |
+| Método del webhook de aceptación | **RESUELTO (1/7/2026).** El workflow n8n (fuente de verdad) tiene el nodo `Webhook - Lead Acepta` en **POST**, y el nodo siguiente (`Code - Validar Token`) lee `body.lead_id`/`body.token` — el GET anterior llegaba con `body` vacío y habría fallado contra el backend real. Se corrigió `aceptar-propuesta.tsx` a POST con `{lead_id, token}` en el cuerpo. Documento (Tabla 8) y backend ya coincidían; el código era el desalineado. | ~~Media~~ → Cerrada |
+| Endpoint del formulario de captación | **RESUELTO (1/7/2026).** `lead-form.tsx` apuntaba a `${N8N_BASE}/webhook-test/lead/nuevo` (endpoint de **prueba** de n8n). Se corrigió a `/webhook/lead/nuevo` (producción), igual que declara la Tabla 8. | ~~Media~~ → Cerrada |
+| Modelo *"tres tablas"* (§4.4) | **RESUELTO (1/7/2026).** El esquema actual (`db/schema.sql`) tiene **cinco** tablas: `leads`, `facturas`, `seguimientos`, `logs` (de negocio) y `profiles` (rol de aplicación, sumada tras la publicación de RLS). §4.4 y la Tabla 6 ahora las declaran todas, con `logs` incluida. | ~~Baja~~ → Cerrada |
 | Pruebas automatizadas como trabajo *futuro* (§8, ítem 5) | Ya existe `Boit-6/tests/smoke_code_nodes.js`; el documento no la reporta. | Baja |
 | Único repositorio de referencia | La tesis no declara cuál de los dos repos es la base de evidencia; están desincronizados entre sí. | Media |
 
@@ -108,8 +108,8 @@ Correcta la no formulación de hipótesis (§3.1). Sin penalización.
 **4. Objetivos — Excelente.**
 General y cinco específicos en infinitivo, alineados y trazables (Anexo E). *v3:* la trazabilidad se refuerza porque la validación declarada (incluido OE4 vía E7) **es ahora reproducible** en el artefacto.
 
-**5. Estado del arte / antecedentes — Insuficiente.**
-No existe sección de antecedentes; el Capítulo 2 es marco conceptual, no revisión de soluciones comparables (CRMs, iPaaS). No se establece el *"vacío de conocimiento"* ni se justifica *construir* frente a *usar* herramientas existentes. Es la debilidad documental de mayor peso.
+**5. Estado del arte / antecedentes — PARCIAL (1/7/2026).**
+Se incorporaron §2.7 (Antecedentes y estado del arte: HubSpot, Pipedrive, Zapier, Make, con el párrafo de cierre que establece el vacío) y §2.8 (Construir frente a configurar, con cuatro razones y trade-offs honestos) al final del Capítulo 2, más una frase-puente en §1.4 y cuatro referencias nuevas. Falta: reforzar con al menos una fuente arbitrada/peer-reviewed reciente (más allá de Järvinen y Taiminen, 2016, ya citada) sobre adopción o TCO de automatización de marketing/ventas.
 
 **6. Marco teórico — Adecuado.**
 Pertinente, con definiciones operativas. *Observación de precisión:* Fielding (2000) se cita para definir el webhook (§2.1); esa tesis fundamenta REST, no el webhook. Atribución imprecisa.
@@ -143,7 +143,7 @@ Sin indicios de plagio ni saltos de registro. *v3:* el problema de integridad de
 | 2 | Planteamiento del problema | Adecuado | Media (premisa sin fuente) |
 | 3 | Hipótesis | Adecuado (N/A justificada) | Baja |
 | 4 | Objetivos | **Excelente** | Baja |
-| 5 | Estado del arte / antecedentes | **Insuficiente** | **Alta** |
+| 5 | Estado del arte / antecedentes | Parcial (§2.7/§2.8 incorporadas 1/7/2026; falta fuente arbitrada adicional) | Media |
 | 6 | Marco teórico | Adecuado | Media (atribución a Fielding) |
 | 7 | Metodología / desarrollo | Adecuado | Media (relevamiento; reproducibilidad frontend OK) |
 | 8 | Resultados / validación | **Insuficiente** | **Alta** (evidencia ausente del documento) |
@@ -158,9 +158,9 @@ Sin indicios de plagio ni saltos de registro. *v3:* el problema de integridad de
 1. ~~**Publicar y evidenciar la RLS.**~~ **RESUELTO (1/7/2026):** se publicó `db/schema.sql` con `ENABLE ROW LEVEL SECURITY`, políticas de lectura para `authenticated`, grants de escritura para `service_role` y vistas con `security_invoker`, verificado contra PostgreSQL 16. **Acción restante:** aplicar el script en la instancia Supabase de producción y verificar la publicación de Realtime (`supabase_realtime`).
 2. **Unificar el repositorio de referencia.** Declarar en la tesis un único repositorio, completo (frontend al día + esquema + workflow), coherente con el texto, para que el jurado clone y verifique sin ambigüedad. **Bloqueante.**
 3. **Incorporar la evidencia probatoria ausente** (Figuras 1–10) y **rehacer la Tabla 9** separando *esperado* de *observado* con evidencia por escenario (captura, registro en BD, correo). Con el artefacto ya reproducible, esto es directo. **Bloqueante.**
-4. **Agregar una sección de Antecedentes / Estado del arte** con soluciones comparables (HubSpot, Pipedrive, Zapier, Make) y **justificar construir vs. configurar**; establecer el vacío que cubre el trabajo. **Revisión sustantiva.**
-5. **Resolver las incoherencias frontend–documento:** unificar método del webhook de aceptación (Tabla 8 dice POST; el código usa GET) y el endpoint del formulario (`/webhook-test/` de prueba vs. `/webhook/` de producción).
-6. **Corregir el conteo del modelo de datos** (§4.4: cuatro tablas, incluir `logs`) y **reportar la prueba existente** (`smoke_code_nodes.js`) en el Capítulo 5, ajustando el ítem 5 de Trabajos Futuros.
+4. ~~**Agregar una sección de Antecedentes / Estado del arte**~~ **PARCIAL (1/7/2026):** §2.7 (HubSpot, Pipedrive, Zapier, Make + vacío) y §2.8 (**construir vs. configurar** justificado con cuatro razones y trade-offs) agregadas al Capítulo 2. **Acción restante:** sumar una fuente arbitrada/peer-reviewed adicional sobre adopción o TCO de automatización de marketing/ventas.
+5. ~~**Resolver las incoherencias frontend–documento**~~ **RESUELTO (1/7/2026):** se corrigió el frontend (que era el desalineado, no el documento) — `aceptar-propuesta.tsx` ahora hace POST con `{lead_id, token}` en el cuerpo (el workflow n8n ya esperaba eso: `Code - Validar Token` lee `body.lead_id`/`body.token`), y `lead-form.tsx` apunta a `/webhook/lead/nuevo` (producción) en vez de `/webhook-test/`.
+6. ~~**Corregir el conteo del modelo de datos**~~ **RESUELTO (1/7/2026):** §4.4 y la Tabla 6 ahora declaran **cinco** tablas (`leads`, `facturas`, `seguimientos`, `logs`, `profiles`) y los cuatro estados de `estado_pago` (`PENDIENTE`/`COBRADO`/`VENCIDA`/`ANULADA`), con sus transiciones descriptas en §4.8. **Pendiente aparte:** reportar `smoke_code_nodes.js` en el Capítulo 5 y ajustar el ítem 5 de Trabajos Futuros (no forma parte de esta corrección).
 7. **Fundamentar empíricamente el problema** (§1.1–1.2) con al menos una fuente, y reforzar el relevamiento (§3.3).
 8. **Correcciones formales:** declarar la norma APA, generar índice, paginación y corregir la atribución del webhook a Fielding (§2.1).
 9. **Control de integridad** (antiplagio + detección de IA) y **rotación de credenciales** de servicio (§8, ítem 6).
@@ -168,8 +168,8 @@ Sin indicios de plagio ni saltos de registro. *v3:* el problema de integridad de
 ## G. Cuestiones para la defensa oral
 
 1. El §4.6 y el Anexo C afirman políticas de RLS y vistas con `security_invoker`, pero no aparecen en el esquema publicado (`db/schema.sql`): ¿dónde están definidas y cómo se verifica que el tablero, que lee con la anon key, solo accede a filas autorizadas?
-2. El formulario de captación —punto de entrada del sistema (OE1)— apunta al endpoint de **prueba** de n8n (`/webhook-test/…`), activo solo con el editor escuchando: ¿cómo opera la captación en un despliegue real y por qué difiere del endpoint de producción usado en la aceptación?
-3. La Tabla 8 declara `/lead-acepta` como POST, pero el frontend lo invoca por GET con parámetros de consulta: ¿cuál es el contrato real y qué implicancias tiene enviar el token en la URL?
+2. ~~El formulario de captación —punto de entrada del sistema (OE1)— apunta al endpoint de **prueba** de n8n (`/webhook-test/…`), activo solo con el editor escuchando: ¿cómo opera la captación en un despliegue real y por qué difiere del endpoint de producción usado en la aceptación?~~ **RESUELTO (1/7/2026):** `lead-form.tsx` corregido a `/webhook/lead/nuevo` (producción).
+3. ~~La Tabla 8 declara `/lead-acepta` como POST, pero el frontend lo invoca por GET con parámetros de consulta: ¿cuál es el contrato real y qué implicancias tiene enviar el token en la URL?~~ **RESUELTO (1/7/2026):** el contrato real es POST con `{lead_id, token}` en el cuerpo (confirmado por el nodo `Code - Validar Token` del workflow); `aceptar-propuesta.tsx` corregido. El token deja de viajar en la URL de la petición al webhook; sigue apareciendo en la URL de la *página* `/aceptar/[leadId]?token=…` por tratarse de un enlace de correo (§4.2.6).
 4. Coexisten dos repositorios con el frontend desincronizado entre sí: ¿cuál es el repositorio canónico que el jurado debe evaluar, y cómo se garantiza que documento y artefacto describan lo mismo?
 5. Los umbrales del scoring (HOT ≥ 70) se fijaron por *"criterio experto"* (§6): ¿sobre qué base, y cómo se comportaría un lead de presupuesto alto y urgencia baja?
 6. Existiendo CRMs y plataformas de automatización (Zapier, Make, HubSpot), ¿qué justifica construir la solución en lugar de configurarlas, y en qué reside el aporte original?
@@ -185,15 +185,15 @@ Orden: **bloqueantes** (condición para habilitar la defensa), **mayores** y **m
 - [x] **(v3)** **Publicar la RLS** — HECHO (1/7/2026): `db/schema.sql` con políticas + `security_invoker`, verificado contra PostgreSQL 16. Falta solo **aplicarlo en Supabase** y confirmar la config de Realtime.
 - [ ] **(v3)** **Unificar el repositorio de referencia**: un único repo completo (frontend al día + `db/schema.sql` + `workflow/crm_postgres.json`) declarado en la tesis.
 - [ ] Incorporar **todas** las figuras del Anexo A (Figuras 1–10) y reemplazar los *"Deben incorporarse en la versión final"*.
-- [ ] Rehacer la **Tabla 9** con columnas separadas *Resultado esperado* / *Resultado observado* y evidencia por escenario.
-- [ ] Generar el **índice** automático y agregar **paginación**.
+- [~] **Rehacer la Tabla 9** — PARCIAL (1/7/2026): columnas separadas *Resultado esperado* / *Resultado observado* / *Evidencia* implementadas en `tesis.docx` (esperado derivado de las reglas de diseño ya documentadas —Tabla 4—, observado tomado del reporte existente por escenario). Falta **cargar la evidencia real** por escenario (captura, registro de ejecución de n8n, correo, fila en BD); las celdas quedaron con placeholder `Pendiente — …`.
+- [~] **Generar el índice automático y agregar paginación** — PARCIAL (1/7/2026): el documento ya trae el campo `TOC` (`\o "1-3" \h \z \u`) y el campo `PAGE` en el pie de página. Como el `.docx` se genera sin motor de layout, Word debe calcular los valores reales la primera vez que se abre: falta **actualizar los campos en Word** (Ctrl+A → F9, o clic derecho sobre "Índice" → Actualizar toda la tabla) y guardar antes de la entrega final.
 
 ### Mayores (revisión sustantiva)
 
-- [ ] Añadir una sección **Antecedentes / Estado del arte** (HubSpot, Pipedrive, Zapier, Make) y establecer el vacío que cubre el trabajo.
-- [ ] Justificar la decisión **construir vs. configurar** una herramienta existente.
-- [ ] **(v3)** Resolver el **método del webhook de aceptación** (Tabla 8 POST vs. código GET) y el **endpoint del formulario** (`/webhook-test/` vs. `/webhook/`).
-- [ ] **(v3)** Corregir el conteo del modelo de datos (§4.4: **cuatro** tablas, incluir `logs`); documentar estados `VENCIDA`/`ANULADA`.
+- [~] **Antecedentes / Estado del arte** — PARCIAL (1/7/2026): §2.7 (HubSpot, Pipedrive, Zapier, Make + párrafo del vacío) agregada al final del Capítulo 2. Falta reforzar con una fuente arbitrada/peer-reviewed adicional.
+- [x] **Justificar construir vs. configurar** — HECHO (1/7/2026): §2.8 con cuatro razones (costo/lock-in, propiedad del dato, personalización de reglas, objetivo formativo), trade-offs honestos y cierre que fija el aporte original; responde directamente a la cuestión 6 de la defensa.
+- [x] **(v3)** **Método del webhook de aceptación y endpoint del formulario** — RESUELTO (1/7/2026): se corrigió el frontend (`aceptar-propuesta.tsx` a POST con `{lead_id, token}` en el cuerpo; `lead-form.tsx` a `/webhook/lead/nuevo` de producción), que era lo desalineado — Tabla 8 y el workflow n8n ya coincidían en POST/producción.
+- [x] **(v3)** **Conteo del modelo de datos y estados de factura** — RESUELTO (1/7/2026): §4.4 y Tabla 6 ahora declaran **cinco** tablas (se sumó `profiles` tras la publicación de RLS) incluyendo `logs`, con `estado_pago` documentado en sus cuatro valores (`PENDIENTE`/`COBRADO`/`VENCIDA`/`ANULADA`) y sus transiciones en §4.8.
 - [ ] **(v3)** Reportar en el Capítulo 5 la prueba existente `smoke_code_nodes.js` y reformular el ítem 5 de Trabajos Futuros.
 - [ ] Fundamentar la premisa del problema (§1.1–1.2) con fuente y reforzar el relevamiento (§3.3) con usuarios reales.
 - [ ] Añadir **métricas observadas** mínimas (latencia de la suscripción en tiempo real, tiempo de generación del PDF).
@@ -217,7 +217,7 @@ Orden: **bloqueantes** (condición para habilitar la defensa), **mayores** y **m
 - [ ] RLS publicada y verificable; repositorio de referencia unificado y declarado.
 - [ ] Índice, figuras, paginación y Tabla 9 (esperado/observado) presentes.
 - [ ] Sección de antecedentes incorporada.
-- [ ] Incoherencias de webhook (método y endpoint) resueltas.
+- [x] Incoherencias de webhook (método y endpoint) resueltas (1/7/2026).
 - [ ] Preparadas las respuestas a las 6 cuestiones de la sección G.
 
 ---
