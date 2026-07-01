@@ -107,7 +107,10 @@ export default function AceptarPropuesta({leadId, token}: {leadId: string; token
         const url = `${N8N_BASE}/webhook/lead-acepta?lead_id=${encodeURIComponent(
           leadId,
         )}&token=${encodeURIComponent(token)}`;
-        const response = await fetch(url, {signal: controller.signal});
+        const response = await fetch(url, {
+          signal: controller.signal,
+          headers: {"ngrok-skip-browser-warning": "true"},
+        });
 
         if (!response.ok) throw new Error(`Error del servidor: ${response.status}`);
 

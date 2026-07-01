@@ -10,8 +10,11 @@
 --   • La ESCRITURA la realiza exclusivamente n8n con la `service_role`
 --     key, que evade la RLS por diseño (BYPASSRLS). No se definen
 --     políticas de INSERT/UPDATE/DELETE para usuarios finales.
---   • La LECTURA del tablero se hace con la sesión del usuario
---     (`authenticated`): las políticas otorgan SELECT solo a ese rol.
+--   • La LECTURA del tablero requiere rol de aplicación `admin`: cada
+--     usuario de `auth.users` tiene una fila en `profiles` (creada por
+--     trigger) con `role` en {'user','admin'}. Las políticas de SELECT
+--     de las tablas de negocio verifican `profiles.role = 'admin'`, no
+--     alcanza con estar autenticado.
 --   • El rol `anon` (público, sin sesión) no tiene acceso a las tablas
 --     de negocio (deny por defecto de la RLS). El formulario público no
 --     lee la base: envía los datos a n8n por webhook.
@@ -115,6 +118,15 @@ CREATE TABLE IF NOT EXISTS logs (
   creado_en   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Rol de aplicación por usuario (admin ve el tablero interno, user no).
+-- Se completa sola vía trigger al registrarse (ver handle_new_user más abajo).
+CREATE TABLE IF NOT EXISTS profiles (
+  id         UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email      TEXT NOT NULL,
+  role       TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user','admin')),
+  creado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ---------------------------------------------------------------------
 -- Índices
 -- ---------------------------------------------------------------------
@@ -139,6 +151,41 @@ DROP TRIGGER IF EXISTS trg_leads_updated ON leads;
 CREATE TRIGGER trg_leads_updated
   BEFORE UPDATE ON leads
   FOR EACH ROW EXECUTE FUNCTION set_actualizado_en();
+
+-- ---------------------------------------------------------------------
+-- Trigger: crea el perfil (rol 'user' por defecto) al registrarse.
+-- El único email whitelisteado como 'admin' es admin@gmail.com (usuario
+-- de prueba). Para sumar otro admin, actualizar el CASE de acá o correr
+-- un UPDATE puntual sobre `profiles` desde el SQL editor de Supabase.
+-- `SECURITY DEFINER` es necesario porque el usuario recién registrado
+-- todavía no tiene fila en `profiles` desde la que autorizarse solo.
+-- ---------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.handle_new_user() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email, role)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    CASE WHEN NEW.email = 'admin@gmail.com' THEN 'admin' ELSE 'user' END
+  )
+  ON CONFLICT (id) DO NOTHING;
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+-- Backfill: cuentas ya existentes (creadas antes de este trigger) también
+-- necesitan su fila en `profiles`. Idempotente vía ON CONFLICT.
+INSERT INTO public.profiles (id, email, role)
+SELECT id, email, CASE WHEN email = 'admin@gmail.com' THEN 'admin' ELSE 'user' END
+FROM auth.users
+ON CONFLICT (id) DO NOTHING;
 
 -- ---------------------------------------------------------------------
 -- Vistas (con security_invoker: respetan la RLS de las tablas base)
@@ -208,21 +255,36 @@ ALTER TABLE leads         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE facturas      ENABLE ROW LEVEL SECURITY;
 ALTER TABLE seguimientos  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE logs          ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles      ENABLE ROW LEVEL SECURITY;
 
--- 2) Políticas de LECTURA para el rol `authenticated` sobre las tablas
---    que alimentan el tablero. No se crean políticas de escritura: la
---    inserción/actualización la hace n8n con la service_role (evade RLS).
+-- 2) Políticas de LECTURA sobre las tablas que alimentan el tablero.
+--    No alcanza con `authenticated`: se exige además `profiles.role =
+--    'admin'` (la subconsulta puede leer la propia fila por la política
+--    profiles_select_own de más abajo). No se crean políticas de
+--    escritura: la inserción/actualización la hace n8n con la
+--    service_role (evade RLS).
 DROP POLICY IF EXISTS leads_select_authenticated ON leads;
 CREATE POLICY leads_select_authenticated ON leads
-  FOR SELECT TO authenticated USING (true);
+  FOR SELECT TO authenticated
+  USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
 
 DROP POLICY IF EXISTS facturas_select_authenticated ON facturas;
 CREATE POLICY facturas_select_authenticated ON facturas
-  FOR SELECT TO authenticated USING (true);
+  FOR SELECT TO authenticated
+  USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
 
 DROP POLICY IF EXISTS seguimientos_select_authenticated ON seguimientos;
 CREATE POLICY seguimientos_select_authenticated ON seguimientos
-  FOR SELECT TO authenticated USING (true);
+  FOR SELECT TO authenticated
+  USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+
+-- 2.1) `profiles`: cada usuario solo puede leer su propia fila (para que
+--      el frontend sepa si mostrar el link al dashboard). Nadie puede
+--      escribir su propio rol: solo la service_role o el trigger
+--      (SECURITY DEFINER) tocan esta tabla.
+DROP POLICY IF EXISTS profiles_select_own ON profiles;
+CREATE POLICY profiles_select_own ON profiles
+  FOR SELECT TO authenticated USING (id = auth.uid());
 
 -- 3) `logs` (auditoría/errores) queda sin política: solo la service_role
 --    (que evade la RLS) escribe y consulta. `authenticated` y `anon` no
@@ -230,7 +292,7 @@ CREATE POLICY seguimientos_select_authenticated ON seguimientos
 
 -- 4) Privilegios de tabla (GRANT). La RLS filtra filas, pero el rol
 --    igual necesita el privilegio SELECT sobre el objeto.
-GRANT SELECT ON leads, facturas, seguimientos TO authenticated;
+GRANT SELECT ON leads, facturas, seguimientos, profiles TO authenticated;
 GRANT SELECT ON metrics_mensuales, facturas_pendientes TO authenticated;
 
 -- 5) Escritura de n8n con la `service_role`. En Supabase este rol ya trae
@@ -238,13 +300,13 @@ GRANT SELECT ON metrics_mensuales, facturas_pendientes TO authenticated;
 --    del docker-compose) NO, y BYPASSRLS solo evade la RLS, no otorga el
 --    privilegio de tabla. Se conceden explícitamente para que funcione en
 --    ambos entornos.
-GRANT SELECT, INSERT, UPDATE, DELETE ON leads, facturas, seguimientos, logs TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON leads, facturas, seguimientos, logs, profiles TO service_role;
 GRANT SELECT ON metrics_mensuales, facturas_pendientes TO service_role;
 
 -- 6) El rol público (`anon`) no debe leer las tablas de negocio ni las
 --    vistas. Se revoca explícitamente por si el default privilege de la
 --    plataforma lo hubiera otorgado.
-REVOKE ALL ON leads, facturas, seguimientos, logs FROM anon;
+REVOKE ALL ON leads, facturas, seguimientos, logs, profiles FROM anon;
 REVOKE ALL ON metrics_mensuales, facturas_pendientes FROM anon;
 
 -- Nota: la `service_role` posee además BYPASSRLS, por lo que sus escrituras

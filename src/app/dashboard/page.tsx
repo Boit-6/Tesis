@@ -12,6 +12,12 @@ export default async function DashboardPage() {
 
   if (!user) redirect("/login");
 
+  const {data: profile} = supabase
+    ? await supabase.from("profiles").select("role").eq("id", user.id).single()
+    : {data: null};
+
+  if (profile?.role !== "admin") redirect("/");
+
   return (
     <main className="mx-auto w-full max-w-5xl px-6 pt-6 pb-20">
       <div className="mb-14 flex items-end justify-between gap-6 border-b border-neutral-800 pb-12">
