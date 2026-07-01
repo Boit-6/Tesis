@@ -7,7 +7,7 @@ Backlog original en `mejoras.md` (raíz). Este documento detalla el análisis y 
 - **#2 — Botones aceptar / pedir cambios / rechazar** en la página de aceptación.
   - Backend: webhooks `lead-rechaza` (→ estado PERDIDO) y `lead-modifica` (→ EN_SEGUIMIENTO, guarda el pedido en `notas` vía mapeo de columnas para esquivar el bug de comas, + Telegram al freelancer).
   - Front: `aceptar-propuesta.tsx` con 3 botones (rechazar pide confirmación; pedir cambios abre un textarea).
-- **#3 — Mails (parcial):** email de propuesta rediseñado (header dark + tabla + botón amber).
+- **#3 — Mails (COMPLETO):** los 4 emails rediseñados con estilo pro (header dark `#111827` + card + botón amber `#fbbf24`): propuesta, testimonio, follow-up (pasó de texto plano a HTML) y factura (PDF). Placeholders de factura (`[TU NOMBRE]` etc.) y URL del form de reseñas siguen pendientes de tus datos.
 
 ## ⏳ Pendiente
 
