@@ -1,0 +1,20 @@
+# Dependencias / build (por si quedan en la raíz)
+node_modules/
+.next/
+out/
+
+# Variables de entorno y secretos — NUNCA al repo
+.env
+.env.local
+.env*.local
+
+# Datos persistentes de n8n (docker compose)
+n8n_data/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*

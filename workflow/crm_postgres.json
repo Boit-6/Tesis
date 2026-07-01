@@ -1,0 +1,2818 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "path": "pago-confirmado",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "621414b9-fec5-450b-8503-11e9a9e4f904",
+      "name": "🟣 Webhook - Pago Simulado",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        1984,
+        3616
+      ],
+      "webhookId": "p5-01"
+    },
+    {
+      "parameters": {
+        "jsCode": "const q = $input.first().json.query || {};\nif (!q.factura_id) throw new Error('Falta factura_id');\nreturn [{ json: { factura_id: q.factura_id, lead_id: q.lead_id || '' } }];"
+      },
+      "id": "1e6fe838-47b9-4438-bbd7-75489ee85449",
+      "name": "Code - Validar Pago",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2208,
+        3616
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE facturas SET estado_pago = 'COBRADO', fecha_cobro = now() WHERE factura_id = $1 AND estado_pago = 'PENDIENTE' RETURNING *;",
+        "options": {
+          "queryReplacement": "={{ $json.factura_id }}"
+        }
+      },
+      "id": "34d5e4a0-24df-422c-8e47-8120802a350a",
+      "name": "Postgres - Marcar Cobrado",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2432,
+        3616
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.estado_pago }}",
+              "rightValue": "COBRADO",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "811d76ad-debc-4308-8c77-035d5a8d8c9f",
+      "name": "IF - Pago OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2656,
+        3616
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "REEMPLAZAR_CHAT_ID",
+        "text": "=💳 <b>Pago recibido (simulacion)</b>\nFactura: {{ $json.factura_id }}\nCliente: {{ $json.cliente }}\nMonto: ${{ $json.monto }} {{ $json.moneda }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "1633a5f6-6123-4074-b7c3-589832e389f4",
+      "name": "Telegram - Pago Recibido",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2880,
+        3536
+      ],
+      "webhookId": "tg-pago-recibido",
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body style='font-family:Arial,sans-serif;background:#f0fff4;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0'><div style='background:#fff;border-radius:16px;padding:50px 40px;text-align:center;max-width:380px;box-shadow:0 10px 40px rgba(0,0,0,.1)'><div style='font-size:60px'>✅</div><h1 style='color:#009ee3'>¡Pago confirmado!</h1><p>Gracias, registramos tu pago (simulacion).</p></div></body></html>",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          }
+        }
+      },
+      "id": "f0285600-4ebb-4b76-9172-489568eb284b",
+      "name": "Respond - Pago Confirmado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        3104,
+        3536
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body style='font-family:Arial,sans-serif;text-align:center;padding:60px'><h1>Pago no procesado</h1><p>La factura no existe o ya figura paga.</p></body></html>",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Content-Type",
+                "value": "text/html"
+              }
+            ]
+          }
+        }
+      },
+      "id": "1ec3fe6e-45af-4295-a426-a0c313e0cc7d",
+      "name": "Respond - Pago Invalido",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2656,
+        3776
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const l = $('Code - Generar Propuesta').first().json;\nconst DATABASE_ID = 'REEMPLAZAR_DATABASE_ID'\nconst body = {\n  parent: { database_id: DATABASE_ID },\n  properties: {\n    Name: { title: [{ text: { content: String(l.nombre || 'Lead') } }] },\n    Estado: { select: { name: 'PROPUESTA_ENVIADA' } },\n    Tier: { select: { name: String(l.tier || 'COLD') } },\n    Servicio: { select: { name: String(l.servicio || 'otro') } },\n    Email: { email: String(l.email || 'sin@email.com') },\n    Presupuesto: { number: Number(l.presupuesto) || 0 },\n    Score: { number: Number(l.score) || 0 },\n    'Lead ID': { rich_text: [{ text: { content: String(l.lead_id || '') } }] }\n  }\n};\nreturn [{ json: { lead_id: l.lead_id, notion_body: body } }];"
+      },
+      "id": "6f6f8741-c420-4b9f-9eb6-557687c3a37d",
+      "name": "Code - Preparar Card Notion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.notion_body) }}",
+        "options": {}
+      },
+      "id": "a54e785d-500f-475f-9966-2855d5aa9a5a",
+      "name": "Notion - Crear Card",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        3824,
+        64
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET card_id = $1 WHERE lead_id = $2;",
+        "options": {
+          "queryReplacement": "={{ $json.id }},={{ $('Code - Preparar Card Notion').item.json.lead_id }}"
+        }
+      },
+      "id": "0afbc8e1-d009-4a3f-af1a-252c5f1ca56f",
+      "name": "Postgres - Guardar card_id",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4048,
+        64
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/pages/{{ $json.card_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ properties: { Estado: { select: { name: 'ACEPTADO' } } } }) }}",
+        "options": {}
+      },
+      "id": "f946e2a9-35aa-4bd5-b86b-007b96efafc2",
+      "name": "Notion - Estado Aceptado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2928,
+        560
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/pages/{{ $json.card_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ properties: { Estado: { select: { name: 'CERRADO' } } } }) }}",
+        "options": {}
+      },
+      "id": "21e61a00-32e7-4cad-84d5-1e659d0d93b3",
+      "name": "Notion - Estado Cerrado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2704,
+        2320
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/pages/{{ $('Code - Preparar Follow-up').item.json.card_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ properties: { Estado: { select: { name: 'PERDIDO' } } } }) }}",
+        "options": {}
+      },
+      "id": "3abe1e5b-e545-4328-bd22-8690ba991c57",
+      "name": "Notion - Estado Perdido",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        3600,
+        1120
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "59 23 * * *"
+            }
+          ]
+        }
+      },
+      "id": "7dd2619a-14d4-419c-8cf9-214bbe21111a",
+      "name": "📊 Cron - Metricas 23:",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        2144,
+        2848
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead/nuevo",
+        "options": {}
+      },
+      "id": "8a11afd6-695a-4ae7-bc8e-f4a7ab860dad",
+      "name": "🔵 Webhook - Nuevo Lead",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        240
+      ],
+      "webhookId": "p1-01"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json.body || {};\nconst nombre = (item.nombre || '').trim().replace(/\\s+/g, ' ');\nconst email = (item.email || '').toLowerCase().trim();\nconst presupuesto = parseInt(item.presupuesto) || 0;\nconst urg = ['alta', 'media', 'baja'];\nconst urgencia = urg.includes((item.urgencia || '').toLowerCase()) ? item.urgencia.toLowerCase() : 'media';\nconst svcs = ['desarrollo_web', 'ecommerce', 'app_movil', 'automatizacion', 'diseno_ui', 'consultoria', 'soporte'];\nconst servicio = svcs.includes((item.servicio || '').toLowerCase()) ? item.servicio.toLowerCase() : 'desarrollo_web';\nconst errores = [];\nif (!email.includes('@')) errores.push('email invalido');\nif (nombre.length < 2) errores.push('nombre muy corto');\nif (presupuesto <= 0) errores.push('presupuesto invalido');\nif (errores.length) throw new Error('Validacion fallida: ' + errores.join(', '));\nconst ts = Date.now();\nconst rand = Math.random().toString(36).substring(2, 6).toUpperCase();\nreturn [{ json: {\n  lead_id: 'LD-' + ts + '-' + rand,\n  nombre: nombre,\n  email: email,\n  presupuesto: presupuesto,\n  urgencia: urgencia,\n  servicio: servicio,\n  telefono: (item.telefono || '').trim(),\n  descripcion: (item.descripcion || '').trim().substring(0, 2000),\n  fuente: item.fuente || 'webhook'\n} }];"
+      },
+      "id": "1a0698a2-bfce-4254-99e8-87cce4909c32",
+      "name": "Code - Normalizar Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "leads"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "lead_id": "={{ $json.lead_id }}",
+            "nombre": "={{ $json.nombre }}",
+            "email": "={{ $json.email }}",
+            "telefono": "={{ $json.telefono }}",
+            "presupuesto": "={{ $json.presupuesto }}",
+            "urgencia": "={{ $json.urgencia }}",
+            "servicio": "={{ $json.servicio }}",
+            "descripcion": "={{ $json.descripcion }}",
+            "fuente": "={{ $json.fuente }}",
+            "score": "={{ $json.score }}",
+            "tier": "={{ $json.tier }}",
+            "seguimientos": 0,
+            "dias_ciclo_completo": 0
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nombre",
+              "displayName": "nombre",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "telefono",
+              "displayName": "telefono",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "presupuesto",
+              "displayName": "presupuesto",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "urgencia",
+              "displayName": "urgencia",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "options",
+              "canBeUsedToMatch": true,
+              "options": [
+                {
+                  "name": "alta",
+                  "value": "alta"
+                },
+                {
+                  "name": "media",
+                  "value": "media"
+                },
+                {
+                  "name": "baja",
+                  "value": "baja"
+                }
+              ]
+            },
+            {
+              "id": "servicio",
+              "displayName": "servicio",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "options",
+              "canBeUsedToMatch": true,
+              "options": [
+                {
+                  "name": "desarrollo_web",
+                  "value": "desarrollo_web"
+                },
+                {
+                  "name": "ecommerce",
+                  "value": "ecommerce"
+                },
+                {
+                  "name": "app_movil",
+                  "value": "app_movil"
+                },
+                {
+                  "name": "automatizacion",
+                  "value": "automatizacion"
+                },
+                {
+                  "name": "diseno_ui",
+                  "value": "diseno_ui"
+                },
+                {
+                  "name": "consultoria",
+                  "value": "consultoria"
+                },
+                {
+                  "name": "soporte",
+                  "value": "soporte"
+                }
+              ]
+            },
+            {
+              "id": "descripcion",
+              "displayName": "descripcion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "fuente",
+              "displayName": "fuente",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "estado",
+              "displayName": "estado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "options",
+              "canBeUsedToMatch": true,
+              "options": [
+                {
+                  "name": "NUEVO",
+                  "value": "NUEVO"
+                },
+                {
+                  "name": "PROPUESTA_ENVIADA",
+                  "value": "PROPUESTA_ENVIADA"
+                },
+                {
+                  "name": "EN_SEGUIMIENTO",
+                  "value": "EN_SEGUIMIENTO"
+                },
+                {
+                  "name": "ACEPTADO",
+                  "value": "ACEPTADO"
+                },
+                {
+                  "name": "FACTURADO",
+                  "value": "FACTURADO"
+                },
+                {
+                  "name": "CERRADO",
+                  "value": "CERRADO"
+                },
+                {
+                  "name": "PERDIDO",
+                  "value": "PERDIDO"
+                }
+              ],
+              "removed": false
+            },
+            {
+              "id": "score",
+              "displayName": "score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "tier",
+              "displayName": "tier",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "options",
+              "canBeUsedToMatch": true,
+              "options": [
+                {
+                  "name": "HOT",
+                  "value": "HOT"
+                },
+                {
+                  "name": "WARM",
+                  "value": "WARM"
+                },
+                {
+                  "name": "COLD",
+                  "value": "COLD"
+                }
+              ]
+            },
+            {
+              "id": "seguimientos",
+              "displayName": "seguimientos",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "operador_asignado",
+              "displayName": "operador_asignado",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "notas",
+              "displayName": "notas",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "card_id",
+              "displayName": "card_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "accept_token",
+              "displayName": "accept_token",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "fecha_ingreso",
+              "displayName": "fecha_ingreso",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "fecha_propuesta",
+              "displayName": "fecha_propuesta",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "fecha_ultimo_seguimiento",
+              "displayName": "fecha_ultimo_seguimiento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "fecha_aceptacion",
+              "displayName": "fecha_aceptacion",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "fecha_cierre",
+              "displayName": "fecha_cierre",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "dias_ciclo_completo",
+              "displayName": "dias_ciclo_completo",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "creado_en",
+              "displayName": "creado_en",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "actualizado_en",
+              "displayName": "actualizado_en",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "c5a941f0-8b31-4958-9d57-92b7a968d56a",
+      "name": "Postgres - Insert Lead",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2704,
+        240
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const l = $input.first().json;\nlet score = 0;\nconst b = parseInt(l.presupuesto) || 0;\nif (b >= 5000) score += 40;\nelse if (b >= 2000) score += 30;\nelse if (b >= 1000) score += 20;\nelse if (b >= 300) score += 10;\nscore += ({ alta: 30, media: 15, baja: 5 }[l.urgencia] || 5);\nscore += ({ desarrollo_web: 20, ecommerce: 20, app_movil: 18, automatizacion: 18, diseno_ui: 15, consultoria: 12, soporte: 5 }[l.servicio] || 8);\nif (l.telefono && l.telefono.length > 6) score += 5;\nif (l.descripcion && l.descripcion.length > 50) score += 5;\nconst tier = score >= 70 ? 'HOT' : score >= 40 ? 'WARM' : 'COLD';\nreturn [{ json: Object.assign({}, l, { score: score, tier: tier }) }];"
+      },
+      "id": "1888b7c6-aa9a-4c4a-958a-5b11f32fbfc9",
+      "name": "Code - Scoring",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.tier }}",
+              "rightValue": "COLD",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "7b81b230-750a-4281-a164-5745462d20ea",
+      "name": "IF - Es HOT o WARM?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2928,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const l = $input.first().json;\n//const BASE = 'http://localhost:5678';\nconst primerNombre = String(l.nombre || 'Cliente').split(' ')[0];\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst tiempo = (l.urgencia === 'alta') ? '3-5 dias habiles' : '1-2 semanas';\nconst FRONT_BASE = 'http://localhost:3000';\nconst acceptUrl = FRONT_BASE + '/aceptar/' + encodeURIComponent(l.lead_id) + '?token=' + encodeURIComponent(l.accept_token);\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body style='font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#333'><div style='background:#1a1a1a;color:#fff;padding:30px;text-align:center'><h1>Propuesta</h1></div><div style='padding:30px;border:1px solid #eee'><p>Hola <b>${primerNombre}</b>,</p><p>Te envio la propuesta para el servicio de <b>${svc}</b>:</p><div style='background:#f9fafb;border:1px solid #ddd;border-radius:8px;padding:15px;margin:20px 0'><p>Servicio: <b>${svc}</b></p><p>Entrega: <b>${tiempo}</b></p><p>Inversion: <b>$${l.presupuesto} USD</b></p></div><p style='text-align:center'><a href='${acceptUrl}' style='display:inline-block;background:#2563eb;color:#fff;padding:15px 30px;border-radius:6px;text-decoration:none;font-weight:700'>Aceptar y comenzar</a></p><p>Saludos,<br><b>Soderos S.A.</b></p></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { propuesta_html: html, accept_url: acceptUrl }) }];"
+      },
+      "id": "b9af8421-c555-4320-a2d7-09912761c111",
+      "name": "Code - Generar Propuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3152,
+        208
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "REEMPLAZAR_CHAT_ID",
+        "text": "=❄️ <b>Lead COLD</b>\nNombre: {{ $json.nombre }}\nScore: {{ $json.score }}/100\nPresupuesto: ${{ $json.presupuesto }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "6ad923f8-5d58-4baf-be33-c7a36df13ef0",
+      "name": "Telegram - Lead Frio",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3152,
+        384
+      ],
+      "webhookId": "tg-lead-frio",
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=Propuesta para {{ $json.servicio }} — Soderos S.A.",
+        "message": "={{ $json.propuesta_html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "c50b1319-8db2-4de8-9492-82916516b43e",
+      "name": "Gmail - Enviar Propuesta",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        3376,
+        208
+      ],
+      "webhookId": "gm-propuesta",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Gmail - CRM Freelance"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET estado = 'PROPUESTA_ENVIADA', fecha_propuesta = now() WHERE lead_id = $1;",
+        "options": {
+          "queryReplacement": "={{ $('Code - Generar Propuesta').item.json.lead_id }}"
+        }
+      },
+      "id": "1f72265d-313f-43bd-a47f-08388a6ae7dd",
+      "name": "Postgres - Estado Propuesta Enviada",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3600,
+        208
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "logs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "workflow": "lead_intake",
+            "lead_id": "={{ $('Code - Generar Propuesta').item.json.lead_id }}",
+            "evento": "propuesta_enviada",
+            "nivel": "INFO",
+            "detalle": "Propuesta enviada correctamente"
+          },
+          "matchingColumns": [
+            "id"
+          ],
+          "schema": [
+            {
+              "id": "id",
+              "displayName": "id",
+              "required": false,
+              "defaultMatch": true,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true,
+              "removed": true
+            },
+            {
+              "id": "workflow",
+              "displayName": "workflow",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "evento",
+              "displayName": "evento",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "options",
+              "canBeUsedToMatch": true,
+              "options": [
+                {
+                  "name": "INFO",
+                  "value": "INFO"
+                },
+                {
+                  "name": "RECORDATORIO",
+                  "value": "RECORDATORIO"
+                },
+                {
+                  "name": "HOY",
+                  "value": "HOY"
+                },
+                {
+                  "name": "VENCIDA",
+                  "value": "VENCIDA"
+                },
+                {
+                  "name": "URGENTE",
+                  "value": "URGENTE"
+                },
+                {
+                  "name": "WARN",
+                  "value": "WARN"
+                },
+                {
+                  "name": "ERROR",
+                  "value": "ERROR"
+                }
+              ]
+            },
+            {
+              "id": "detalle",
+              "displayName": "detalle",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "error_msg",
+              "displayName": "error_msg",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "creado_en",
+              "displayName": "creado_en",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "281fb317-03cc-40d3-903a-4d08b7631349",
+      "name": "Postgres - Log Propuesta",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4048,
+        208
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "REEMPLAZAR_CHAT_ID",
+        "text": "=📤 <b>Propuesta enviada</b>\n\nCliente: {{ $('Code - Generar Propuesta').item.json.nombre }}\nServicio: {{ $('Code - Generar Propuesta').item.json.servicio }}\nMonto: ${{ $('Code - Generar Propuesta').item.json.presupuesto }}\nScore: {{ $('Code - Generar Propuesta').item.json.score }} ({{ $('Code - Generar Propuesta').item.json.tier }})",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "0a2b1f48-ea95-4f48-ae94-2aedda96e517",
+      "name": "Telegram - Propuesta Enviada",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3824,
+        208
+      ],
+      "webhookId": "tg-propuesta",
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-acepta",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "http://localhost:3000"
+        }
+      },
+      "id": "12ec8c4f-8e53-4bfb-87ce-395293462536",
+      "name": "🟢 Webhook - Lead Acepta",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        800
+      ],
+      "webhookId": "p3-01"
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $input.first().json.body || {};\nif (!b.lead_id || !b.token) throw new Error('Faltan parametros');\nreturn [{ json: { lead_id: b.lead_id, token: b.token } }];"
+      },
+      "id": "d7398b94-6d40-476d-b46c-59f26920d628",
+      "name": "Code - Validar Token",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM leads WHERE lead_id = $1 AND accept_token = $2::uuid LIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ $json.lead_id }},{{ $json.token }}"
+        }
+      },
+      "id": "abdc0ec4-456e-403a-965c-05b4d7d01a2a",
+      "name": "Postgres - Buscar Lead (token)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2480,
+        800
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.estado }}",
+              "rightValue": "PROPUESTA_ENVIADA",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "leftValue": "={{ $json.estado }}",
+              "rightValue": "EN_SEGUIMIENTO",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "f3442022-49c9-4f78-b953-c0a2d4a05238",
+      "name": "IF - Lead Valido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2704,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET estado = 'ACEPTADO', fecha_aceptacion = now() WHERE lead_id = $1 RETURNING *;",
+        "options": {
+          "queryReplacement": "={{ $json.lead_id }}"
+        }
+      },
+      "id": "bf77e4d9-4d4c-4902-8852-9bcf0103f3ec",
+      "name": "Postgres - Marcar Aceptado",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2928,
+        720
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"ya_procesado\", \"mensaje\": \"Este enlace ya fue usado o no es válido.\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "84c86134-c9c9-4539-9956-3717316ebe77",
+      "name": "Respond - Ya Procesado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2928,
+        1104
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { status: 'ok', mensaje: 'En breve te llega la factura por email.' } }];"
+      },
+      "id": "fbdbabce-2f21-43ca-b2b9-f6b25e10cc1d",
+      "name": "Code - HTML Confirmacion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2928,
+        944
+      ]
+    },
+    {
+      "parameters": {
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "c62a4f9b-3e04-4fcb-9fa0-5b7cab26a3fc",
+      "name": "Respond - Pagina Exito",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        3152,
+        944
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const l = $input.first().json;\nconst fid = 'FAC-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);\nconst vencISO = new Date(Date.now() + 15 * 86400000).toISOString();\nconst BASE = 'http://localhost:5678';\nconst payUrl = BASE + '/webhook/pago-confirmado?factura_id=' + fid + '&lead_id=' + l.lead_id;\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst hoy = new Date().toLocaleDateString('es-AR');\nconst venc = new Date(vencISO).toLocaleDateString('es-AR');\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body style='font-family:Arial,sans-serif;padding:40px;color:#222'><div style='display:flex;justify-content:space-between;border-bottom:3px solid #0f3460;padding-bottom:20px'><div><div style='font-size:22px;font-weight:700;color:#0f3460'>[TU NOMBRE / EMPRESA]</div><div>[tu@email.com]</div></div><div style='text-align:right'><h2>FACTURA</h2><p>N: <b>${fid}</b></p><p>Emision: ${hoy}</p><p>Vencimiento: ${venc}</p></div></div><p><b>Cliente:</b> ${l.nombre}<br><b>Email:</b> ${l.email}</p><table style='width:100%;border-collapse:collapse;margin:25px 0'><tr style='background:#0f3460;color:#fff'><th style='padding:10px;text-align:left'>Descripcion</th><th style='padding:10px'>Cant.</th><th style='padding:10px'>Total</th></tr><tr><td style='padding:10px;border-bottom:1px solid #eee'>${svc}</td><td style='padding:10px;border-bottom:1px solid #eee'>1</td><td style='padding:10px;border-bottom:1px solid #eee'>$${l.presupuesto}</td></tr><tr style='font-weight:700;background:#f5f5f5'><td colspan='2' style='padding:10px;text-align:right'>TOTAL:</td><td style='padding:10px'>$${l.presupuesto} USD</td></tr></table><p style='text-align:center;margin:25px 0'><a href='${payUrl}' style='display:inline-block;background:#009ee3;color:#fff;padding:14px 32px;border-radius:6px;text-decoration:none;font-weight:700'>💳 Pagar ahora (simulacion)</a></p><div style='background:#f8f9ff;border-left:4px solid #0f3460;padding:15px'><b>Datos de pago:</b><br>[Tu CBU / Alias / PayPal]</div></body></html>`;\nconst b64 = Buffer.from(html, 'utf8').toString('base64');\nreturn [{ json: Object.assign({}, l, { factura_id: fid, fecha_emision_iso: new Date().toISOString(), fecha_vencimiento_iso: vencISO }), binary: { factura_html_file: { data: b64, mimeType: 'text/html', fileName: 'index.html', fileExtension: 'html' } } }];"
+      },
+      "id": "fbd489b7-a2c5-46a1-9c92-922c8caff89f",
+      "name": "Code - Generar Factura HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3152,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://gotenberg:3000/forms/chromium/convert/html",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "factura_html_file"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "pdf_output"
+            }
+          }
+        }
+      },
+      "id": "001382af-c502-4d60-b920-ef0e4e44243a",
+      "name": "HTTP - Gotenberg PDF",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        3376,
+        720
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Code - Generar Factura HTML').item.json.email }}",
+        "subject": "=Factura {{ $('Code - Generar Factura HTML').item.json.factura_id }}",
+        "message": "=<p>Hola <b>{{ $('Code - Generar Factura HTML').item.json.nombre.split(' ')[0] }}</b>,</p><p>Adjunto tu factura <b>{{ $('Code - Generar Factura HTML').item.json.factura_id }}</b> por <b>${{ $('Code - Generar Factura HTML').item.json.presupuesto }} USD</b>.</p>",
+        "options": {
+          "appendAttribution": false,
+          "attachmentsUi": {
+            "attachmentsBinary": [
+              {
+                "property": "pdf_output"
+              }
+            ]
+          }
+        }
+      },
+      "id": "a1ef8ea8-ed84-4ad7-874e-8cd1b945dd26",
+      "name": "Gmail - Enviar Factura PDF",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        3600,
+        720
+      ],
+      "webhookId": "gm-factura",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Gmail - CRM Freelance"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "facturas"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "factura_id": "={{ $('Code - Generar Factura HTML').item.json.factura_id }}",
+            "lead_id": "={{ $('Code - Generar Factura HTML').item.json.lead_id }}",
+            "cliente": "={{ $('Code - Generar Factura HTML').item.json.nombre }}",
+            "email": "={{ $('Code - Generar Factura HTML').item.json.email }}",
+            "servicio": "={{ $('Code - Generar Factura HTML').item.json.servicio }}",
+            "monto": "={{ $('Code - Generar Factura HTML').item.json.presupuesto }}",
+            "fecha_emision": "={{ $('Code - Generar Factura HTML').item.json.fecha_emision_iso }}",
+            "fecha_vencimiento": "={{ $('Code - Generar Factura HTML').item.json.fecha_vencimiento_iso }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "984d1fac-d8d5-4322-a130-1a094f8f666c",
+      "name": "Postgres - Insert Factura",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3824,
+        720
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET estado = 'FACTURADO' WHERE lead_id = $1;",
+        "options": {
+          "queryReplacement": "={{ $('Code - Generar Factura HTML').item.json.lead_id }}"
+        }
+      },
+      "id": "f371166a-5037-4a26-bb9f-3e5740a2e2af",
+      "name": "Postgres - Lead a Facturado",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4048,
+        720
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "REEMPLAZAR_CHAT_ID",
+        "text": "=🎉 <b>¡LEAD ACEPTADO!</b>\n\nCliente: {{ $('Code - Generar Factura HTML').item.json.nombre }}\nServicio: {{ $('Code - Generar Factura HTML').item.json.servicio }}\nMonto: ${{ $('Code - Generar Factura HTML').item.json.presupuesto }} USD",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "c3122aec-14fc-4e1d-a4f1-deb44380eba0",
+      "name": "Telegram - Lead Acepto",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4272,
+        720
+      ],
+      "webhookId": "tg-acepto",
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "logs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "workflow": "lead_acepta",
+            "lead_id": "={{ $('Code - Generar Factura HTML').item.json.lead_id }}",
+            "evento": "lead_aceptado",
+            "nivel": "INFO",
+            "detalle": "Lead acepto y se genero la factura"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "b6824dc9-d6d8-403d-90a1-bb6280c74e6e",
+      "name": "Postgres - Log Aceptado",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4496,
+        720
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "2aaad2b6-1067-4df6-a521-b046893ce5b2",
+      "name": "🟡 Cron - Follow-up 9AM L-V",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        2032,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM leads WHERE estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO') AND seguimientos < 3 AND fecha_propuesta IS NOT NULL AND now() - COALESCE(fecha_ultimo_seguimiento, fecha_propuesta) >= make_interval(days => 3 * (seguimientos + 1));",
+        "options": {}
+      },
+      "id": "5689b2de-6e48-4ddc-9588-5ce0d76024b2",
+      "name": "Postgres - Leer Leads Follow-up",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2256,
+        1360
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const l = $input.first().json;\nconst numSeg = (parseInt(l.seguimientos) || 0) + 1;\nconst nombre = String(l.nombre || 'Cliente').split(' ')[0];\nconst servicio = String(l.servicio || 'proyecto').replace(/_/g, ' ');\nconst tpls = {\n  1: 'Hola ' + nombre + ', queria saber si pudiste ver la propuesta de ' + servicio + '. Quedo a disposicion por cualquier duda.',\n  2: 'Hola de nuevo ' + nombre + ', la propuesta de ' + servicio + ' sigue vigente. Hay algo que quieras ajustar o revisar?',\n  3: 'Ultimo contacto por el proyecto de ' + servicio + '. Si mas adelante decidis retomarlo, con gusto lo hablamos. Saludos!'\n};\nconst esUltimo = numSeg >= 3;\nreturn [{ json: Object.assign({}, l, { num_seg: numSeg, email_subject: 'Seguimiento: Propuesta ' + servicio, email_body: tpls[numSeg], es_ultimo: esUltimo }) }];"
+      },
+      "id": "7ffed6f5-0fde-4e8e-8758-5f8eb64c8b5a",
+      "name": "Code - Preparar Follow-up",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "={{ $json.email_subject }}",
+        "message": "={{ $json.email_body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "7310e2f0-4e06-402f-befe-e70518c33c81",
+      "name": "Gmail - Enviar Follow-up",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        2704,
+        1360
+      ],
+      "webhookId": "gm-followup",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Gmail - CRM Freelance"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "seguimientos"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "lead_id": "={{ $('Code - Preparar Follow-up').item.json.lead_id }}",
+            "numero": "={{ $('Code - Preparar Follow-up').item.json.num_seg }}",
+            "canal": "email",
+            "asunto": "={{ $('Code - Preparar Follow-up').item.json.email_subject }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "72c33889-fe03-490a-94c8-313eee813d9a",
+      "name": "Postgres - Insert Seguimiento",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2928,
+        1360
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET seguimientos = seguimientos + 1, fecha_ultimo_seguimiento = now(), estado = 'EN_SEGUIMIENTO' WHERE lead_id = $1;",
+        "options": {
+          "queryReplacement": "={{ $('Code - Preparar Follow-up').item.json.lead_id }}"
+        }
+      },
+      "id": "aa01ad73-8f1b-4cd4-afee-911a9295aad2",
+      "name": "Postgres - Update Lead Seguimiento",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3152,
+        1360
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Code - Preparar Follow-up').item.json.es_ultimo }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              },
+              "id": "98235c35-ff47-4f32-865b-032bd8dc8b40"
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2b04db3c-994c-4bda-bd53-b622c69ff8cd",
+      "name": "IF - Es Ultimo Seguimiento?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3376,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET estado = 'PERDIDO' WHERE lead_id = $1;",
+        "options": {
+          "queryReplacement": "={{ $('Code - Preparar Follow-up').item.json.lead_id }}"
+        }
+      },
+      "id": "ab63f449-ac4e-4cde-9020-16997462243a",
+      "name": "Postgres - Marcar Perdido",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3600,
+        1280
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "0e654d00-66fd-4f38-9883-aabb0490afdd",
+      "name": "Lead sigue activo",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3600,
+        1440
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "REEMPLAZAR_CHAT_ID",
+        "text": "=📉 <b>Lead PERDIDO</b>\nCliente: {{ $('Code - Preparar Follow-up').item.json.nombre }}\nScore: {{ $('Code - Preparar Follow-up').item.json.score }}\n3 seguimientos sin respuesta",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "3612e251-0ad6-4994-88de-fd2ea76063bf",
+      "name": "Telegram - Lead Perdido",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3824,
+        1280
+      ],
+      "webhookId": "tg-perdido",
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 10 * * *"
+            }
+          ]
+        }
+      },
+      "id": "4100e81d-8d5f-4d81-b726-f38d24e08533",
+      "name": "🟠 Cron - Recordatorios Pago 10AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        2032,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM facturas_pendientes;",
+        "options": {}
+      },
+      "id": "fd62f708-f956-4ae9-a177-31431ce33829",
+      "name": "Postgres - Leer Facturas Pendientes",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2256,
+        1920
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst out = [];\nfor (const it of items) {\n  const f = it.json;\n  const dias = parseInt(f.dias_al_vencimiento);\n  let nivel, asunto, cuerpo;\n  if (dias === 3) { nivel = 'RECORDATORIO'; asunto = 'Recordatorio: Factura ' + f.factura_id + ' vence en 3 dias'; cuerpo = '<p>Hola <b>' + f.cliente + '</b>, tu factura <b>' + f.factura_id + '</b> por $' + f.monto + ' USD vence pronto.</p>'; }\n  else if (dias === 0) { nivel = 'HOY'; asunto = 'Tu factura ' + f.factura_id + ' vence HOY'; cuerpo = '<p>Hola <b>' + f.cliente + '</b>, la factura <b>' + f.factura_id + '</b> vence hoy. Agradezco el pago a la brevedad.</p>'; }\n  else if (dias < 0 && dias >= -3) { nivel = 'VENCIDA'; asunto = 'Factura ' + f.factura_id + ' vencida'; cuerpo = '<p>Hola <b>' + f.cliente + '</b>, la factura <b>' + f.factura_id + '</b> esta vencida hace ' + Math.abs(dias) + ' dia(s).</p>'; }\n  else if (dias < -3) { nivel = 'URGENTE'; asunto = 'URGENTE: Factura ' + f.factura_id; cuerpo = '<p>Hola <b>' + f.cliente + '</b>, la factura lleva ' + Math.abs(dias) + ' dias vencida. Es necesario regularizarla.</p>'; }\n  else continue;\n  out.push({ json: Object.assign({}, f, { nivel_urgencia: nivel, email_asunto: asunto, email_cuerpo: cuerpo, dias_al_vencimiento: dias }) });\n}\nreturn out;"
+      },
+      "id": "732eed6e-8d1f-4901-96a1-0d72d0232cab",
+      "name": "Code - Filtrar Vencimientos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2480,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "={{ $json.email_asunto }}",
+        "message": "={{ $json.email_cuerpo }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "68a0bf09-c72a-4cbd-ac0d-1bf972fc3a28",
+      "name": "Gmail - Recordatorio Pago",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        2704,
+        1920
+      ],
+      "webhookId": "gm-recordatorio",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Gmail - CRM Freelance"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE facturas SET recordatorios_enviados = recordatorios_enviados + 1 WHERE factura_id = $1;",
+        "options": {
+          "queryReplacement": "={{ $('Code - Filtrar Vencimientos').item.json.factura_id }}"
+        }
+      },
+      "id": "26216ba2-dd98-4989-aba2-fe6c2f43b399",
+      "name": "Postgres - Update Recordatorios",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2928,
+        1920
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $('Code - Filtrar Vencimientos').item.json.nivel_urgencia }}",
+              "rightValue": "URGENTE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9c680f19-6be0-41b5-8cc6-bf3d4bbb2e4f",
+      "name": "IF - Pago Urgente?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3152,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "REEMPLAZAR_CHAT_ID",
+        "text": "=🔴 <b>PAGO URGENTE</b>\nCliente: {{ $('Code - Filtrar Vencimientos').item.json.cliente }}\nFactura: {{ $('Code - Filtrar Vencimientos').item.json.factura_id }}\nMonto: ${{ $('Code - Filtrar Vencimientos').item.json.monto }} USD",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "3ab0f771-e716-443d-9135-62ec5a4b3dcf",
+      "name": "Telegram - Pago Urgente",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        3376,
+        1840
+      ],
+      "webhookId": "tg-pago-urgente",
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "81cb26fd-9b05-4e5c-861c-a8708cb11aee",
+      "name": "Recordatorio OK",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3376,
+        2000
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "proyecto-cerrado",
+        "options": {}
+      },
+      "id": "2fd38e87-2c5b-49ec-bfa2-796cff874ae7",
+      "name": "🔴 Webhook - Cierre Proyecto",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        2480
+      ],
+      "webhookId": "p4-01"
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst body = j.body || {};\nconst query = j.query || {};\nconst lead_id = body.lead_id || query.lead_id;\nif (!lead_id) throw new Error('Falta lead_id');\nreturn [{ json: { lead_id: lead_id } }];"
+      },
+      "id": "f7e3dba7-aa23-4418-9cba-4b2ca446179d",
+      "name": "Code - Datos Cierre",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        2480
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET estado = 'CERRADO', fecha_cierre = now(), dias_ciclo_completo = (now()::date - fecha_ingreso::date) WHERE lead_id = $1 RETURNING *;",
+        "options": {
+          "queryReplacement": "={{ $json.lead_id }}"
+        }
+      },
+      "id": "a64ea7ca-05f7-46ac-bb90-fb168cfa353e",
+      "name": "Postgres - Lead Cerrado",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2480,
+        2480
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE facturas SET estado_pago = 'COBRADO', fecha_cobro = now() WHERE lead_id = $1;",
+        "options": {
+          "queryReplacement": "={{ $('Postgres - Lead Cerrado').item.json.lead_id }}"
+        }
+      },
+      "id": "a0bab0f6-557d-413a-b219-fc059afb73fc",
+      "name": "Postgres - Factura Cobrada",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2704,
+        2480
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "REEMPLAZAR_CHAT_ID",
+        "text": "=🎊 <b>¡PROYECTO CERRADO!</b>\nCliente: {{ $('Postgres - Lead Cerrado').item.json.nombre }}\nCobrado: ${{ $('Postgres - Lead Cerrado').item.json.presupuesto }} USD\nDias del ciclo: {{ $('Postgres - Lead Cerrado').item.json.dias_ciclo_completo }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "266d452b-0b07-4fc0-b002-4620f1952823",
+      "name": "Telegram - Proyecto Cerrado",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2928,
+        2480
+      ],
+      "webhookId": "tg-cerrado",
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const l = $('Postgres - Lead Cerrado').first().json;\nconst svc = String(l.servicio || 'proyecto').replace(/_/g, ' ');\nconst nombre = String(l.nombre || '').split(' ')[0];\nconst formUrl = 'https://forms.gle/TU-FORMULARIO';\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body style='font-family:Arial,sans-serif;max-width:560px;margin:0 auto'><div style='background:#0f3460;color:#fff;padding:30px;text-align:center'><h2>¡Proyecto completado! 🎉</h2></div><div style='padding:30px'><p>Hola <b>${nombre}</b>,</p><p>Fue un gusto trabajar en tu proyecto de <b>${svc}</b>.</p><p>Te animas a dejarme una resena rapida?</p><p><a href='${formUrl}' style='display:inline-block;background:#0f3460;color:#fff;padding:14px 28px;border-radius:6px;text-decoration:none;font-weight:600'>Dejar mi resena (2 min)</a></p></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { testimonio_html: html }) }];"
+      },
+      "id": "73a0ab26-1759-4e7d-a2a5-89412039776c",
+      "name": "Code - Email Testimonio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3152,
+        2480
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=Como fue tu experiencia?",
+        "message": "={{ $json.testimonio_html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "0fe8f60d-f0b0-4d96-b764-f0f82d32dd2f",
+      "name": "Gmail - Solicitar Testimonio",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        3376,
+        2480
+      ],
+      "webhookId": "gm-testimonio",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Gmail - CRM Freelance"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "logs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "workflow": "cierre_proyecto",
+            "lead_id": "={{ $('Postgres - Lead Cerrado').item.json.lead_id }}",
+            "evento": "proyecto_cerrado",
+            "nivel": "INFO",
+            "detalle": "Proyecto cerrado y cobrado"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "24de6e5e-859b-4a46-b527-7c592b079946",
+      "name": "Postgres - Log Cierre",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3600,
+        2480
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM metrics_mensuales WHERE mes = to_char(now(), 'YYYY-MM');",
+        "options": {}
+      },
+      "id": "4f571924-9518-4297-a047-8448c3c06435",
+      "name": "Postgres - Leer Metricas",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2368,
+        2848
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "REEMPLAZAR_CHAT_ID",
+        "text": "=📊 <b>Reporte {{ $json.mes }}</b>\n\n👥 Leads: {{ $json.total_leads }} | 🔥 {{ $json.leads_hot }}\n✅ Cerrados: {{ $json.leads_cerrados }} | Perdidos: {{ $json.leads_perdidos }}\n📈 Conversion: {{ $json.conversion_pct }}%\n⏱ Prom. cierre: {{ $json.tiempo_prom_dias }} dias\n\n💰 Facturado: ${{ $json.facturacion }} USD\n✅ Cobrado: ${{ $json.cobrado }} USD\n⏳ Pendiente: ${{ $json.pendiente }} USD\n📊 Tasa cobro: {{ $json.tasa_cobro_pct }}%",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "c36d16b3-4d0e-4b77-b288-d024aaa52105",
+      "name": "Telegram - Reporte Diario",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2592,
+        2848
+      ],
+      "webhookId": "tg-reporte",
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const e = $input.first().json;\nconst ex = e.execution || {};\nconst msg = (ex.error && ex.error.message) || 'desconocido';\nconst nodo = ex.lastNodeExecuted || 'desconocido';\nconst wf = (e.workflow && e.workflow.name) || 'desconocido';\nreturn [{ json: { wf_origen: wf, evento: 'ERROR_CRITICO', nivel: 'ERROR', detalle: 'Nodo: ' + nodo, error_msg: String(msg).substring(0, 300) } }];"
+      },
+      "id": "5bbc81f2-82c8-4e1a-8845-72aa4fb1a9b9",
+      "name": "Code - Formatear Error",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2240,
+        3328
+      ]
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "logs"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "workflow": "={{ $json.wf_origen }}",
+            "lead_id": "ERROR",
+            "evento": "={{ $json.evento }}",
+            "nivel": "ERROR",
+            "detalle": "={{ $json.detalle }}",
+            "error_msg": "={{ $json.error_msg }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "2581af98-198e-447a-93b0-ce4c482cbabb",
+      "name": "Postgres - Log Error",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2464,
+        3328
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "REEMPLAZAR_CHAT_ID",
+        "text": "=🚨 <b>ERROR CRITICO</b>\nWorkflow: {{ $json.wf_origen }}\nDetalle: {{ $json.detalle }}\nError: {{ $json.error_msg }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "aafddd64-2c64-4e39-9011-0911222727b8",
+      "name": "Telegram - Error Critico",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2688,
+        3328
+      ],
+      "webhookId": "tg-error",
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Telegram account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "🟣 Webhook - Pago Simulado": {
+      "main": [
+        [
+          {
+            "node": "Code - Validar Pago",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Validar Pago": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Marcar Cobrado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Marcar Cobrado": {
+      "main": [
+        [
+          {
+            "node": "IF - Pago OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Pago OK?": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Pago Recibido",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Respond - Pago Confirmado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Pago Invalido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Preparar Card Notion": {
+      "main": [
+        [
+          {
+            "node": "Notion - Crear Card",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notion - Crear Card": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Guardar card_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Guardar card_id": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Propuesta Enviada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📊 Cron - Metricas 23:": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Leer Metricas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔵 Webhook - Nuevo Lead": {
+      "main": [
+        [
+          {
+            "node": "Code - Normalizar Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Normalizar Lead": {
+      "main": [
+        [
+          {
+            "node": "Code - Scoring",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Insert Lead": {
+      "main": [
+        [
+          {
+            "node": "IF - Es HOT o WARM?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Scoring": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Insert Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Es HOT o WARM?": {
+      "main": [
+        [
+          {
+            "node": "Code - Generar Propuesta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram - Lead Frio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Generar Propuesta": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Enviar Propuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Enviar Propuesta": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Estado Propuesta Enviada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Estado Propuesta Enviada": {
+      "main": [
+        [
+          {
+            "node": "Code - Preparar Card Notion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram - Propuesta Enviada": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Log Propuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🟢 Webhook - Lead Acepta": {
+      "main": [
+        [
+          {
+            "node": "Code - Validar Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Validar Token": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Buscar Lead (token)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Buscar Lead (token)": {
+      "main": [
+        [
+          {
+            "node": "IF - Lead Valido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Lead Valido?": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Marcar Aceptado",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code - HTML Confirmacion",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Ya Procesado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Marcar Aceptado": {
+      "main": [
+        [
+          {
+            "node": "Code - Generar Factura HTML",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notion - Estado Aceptado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - HTML Confirmacion": {
+      "main": [
+        [
+          {
+            "node": "Respond - Pagina Exito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Generar Factura HTML": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Gotenberg PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Gotenberg PDF": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Enviar Factura PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Enviar Factura PDF": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Insert Factura",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Insert Factura": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Lead a Facturado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Lead a Facturado": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Lead Acepto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram - Lead Acepto": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Log Aceptado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🟡 Cron - Follow-up 9AM L-V": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Leer Leads Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Leer Leads Follow-up": {
+      "main": [
+        [
+          {
+            "node": "Code - Preparar Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Preparar Follow-up": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Enviar Follow-up",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Enviar Follow-up": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Insert Seguimiento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Insert Seguimiento": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Update Lead Seguimiento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Update Lead Seguimiento": {
+      "main": [
+        [
+          {
+            "node": "IF - Es Ultimo Seguimiento?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Es Ultimo Seguimiento?": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Marcar Perdido",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Lead sigue activo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Marcar Perdido": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Lead Perdido",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notion - Estado Perdido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🟠 Cron - Recordatorios Pago 10AM": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Leer Facturas Pendientes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Leer Facturas Pendientes": {
+      "main": [
+        [
+          {
+            "node": "Code - Filtrar Vencimientos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Filtrar Vencimientos": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Recordatorio Pago",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Recordatorio Pago": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Update Recordatorios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Update Recordatorios": {
+      "main": [
+        [
+          {
+            "node": "IF - Pago Urgente?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Pago Urgente?": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Pago Urgente",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Recordatorio OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔴 Webhook - Cierre Proyecto": {
+      "main": [
+        [
+          {
+            "node": "Code - Datos Cierre",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Datos Cierre": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Lead Cerrado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Lead Cerrado": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Factura Cobrada",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notion - Estado Cerrado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Factura Cobrada": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Proyecto Cerrado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram - Proyecto Cerrado": {
+      "main": [
+        [
+          {
+            "node": "Code - Email Testimonio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Email Testimonio": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Solicitar Testimonio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Solicitar Testimonio": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Log Cierre",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Leer Metricas": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Reporte Diario",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Formatear Error": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Log Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Log Error": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Error Critico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "bea37f06ff1c2a1e135d6224b61f722cce348a1b052cf3d98c41d84663a427e1"
+  }
+}

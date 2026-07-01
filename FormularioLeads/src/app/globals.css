@@ -1,0 +1,15 @@
+@import 'tailwindcss';
+
+:root {
+  background-color: #0d0d0d;
+  color: #e8e4dc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::selection {
+  background-color: #f59e0b;
+  color: #0d0d0d;
+}

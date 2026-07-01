@@ -1,0 +1,47 @@
+# docker-compose — entorno local del CRM (n8n + Gotenberg)
+# Levanta ambos servicios en la MISMA red para que n8n alcance a Gotenberg
+# por nombre de host (http://gotenberg:3000). La red bridge por defecto NO
+# resuelve por nombre, por eso definimos una red propia (crm-net).
+#
+# Uso:  docker compose up -d
+# n8n  → http://localhost:5678
+#
+# La base de datos NO está acá: vive en Supabase (PostgreSQL gestionado).
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: unless-stopped
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=localhost
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      - GENERIC_TIMEZONE=America/Argentina/Buenos_Aires
+      - TZ=America/Argentina/Buenos_Aires
+      # Persistencia de credenciales/workflows
+      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY:-cambiame-por-una-clave-larga}
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - crm-net
+    depends_on:
+      - gotenberg
+
+  gotenberg:
+    image: gotenberg/gotenberg:8
+    container_name: gotenberg
+    restart: unless-stopped
+    # No expone puerto al host: solo n8n lo consume por la red interna.
+    networks:
+      - crm-net
+
+volumes:
+  n8n_data:
+
+networks:
+  crm-net:
+    driver: bridge
