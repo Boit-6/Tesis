@@ -2,7 +2,8 @@
 
 import {type KeyboardEvent, useState} from "react";
 
-const WEBHOOK_URL = "http://localhost:5678/webhook-test/lead/nuevo";
+const N8N_BASE = process.env.NEXT_PUBLIC_N8N_BASE;
+const WEBHOOK_URL = `${N8N_BASE}/webhook-test/lead/nuevo`;
 
 const SERVICIOS = [
   "Desarrollo Web",
@@ -123,6 +124,11 @@ export default function LeadForm() {
     const validationError = validate(formData);
     if (validationError) {
       setError(validationError);
+      return;
+    }
+
+    if (!N8N_BASE) {
+      setError("Falta la variable NEXT_PUBLIC_N8N_BASE.");
       return;
     }
 

@@ -2,7 +2,7 @@
 
 import {useCallback, useEffect, useState} from "react";
 
-import {supabase} from "@/lib/supabase";
+import {createClient} from "@/lib/supabase/client";
 
 type LeadEstado =
   | "NUEVO"
@@ -85,7 +85,7 @@ function SectionHeader({num, title}: {num: string; title: string}) {
   return (
     <div className="mb-8 flex items-center gap-4">
       <span className="font-mono text-[11px] text-neutral-500">{num}</span>
-      <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-400">
+      <span className="font-mono text-[11px] tracking-[0.2em] text-neutral-400 uppercase">
         {title}
       </span>
       <div className="h-px flex-1 bg-neutral-700" />
@@ -96,12 +96,10 @@ function SectionHeader({num, title}: {num: string; title: string}) {
 function KpiCard({label, value, alert}: {label: string; value: string; alert?: boolean}) {
   return (
     <div className="border-b border-neutral-800 pb-4">
-      <p className="mb-2 font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-500">
+      <p className="mb-2 font-mono text-[11px] tracking-[0.2em] text-neutral-500 uppercase">
         {label}
       </p>
-      <p
-        className={`font-mono text-2xl font-bold ${alert ? "text-red-400" : "text-amber-400"}`}
-      >
+      <p className={`font-mono text-2xl font-bold ${alert ? "text-red-400" : "text-amber-400"}`}>
         {value}
       </p>
     </div>
@@ -113,26 +111,29 @@ function FunnelBar({label, count, max}: {label: string; count: number; max: numb
 
   return (
     <div className="flex items-center gap-4">
-      <span className="w-44 shrink-0 font-mono text-[11px] uppercase tracking-[0.15em] text-neutral-400">
+      <span className="w-44 shrink-0 font-mono text-[11px] tracking-[0.15em] text-neutral-400 uppercase">
         {label}
       </span>
       <div className="h-2 flex-1 bg-neutral-900">
         <div className="h-full bg-amber-400" style={{width: `${percent}%`}} />
       </div>
-      <span className="w-8 shrink-0 text-right font-mono text-[13px] text-neutral-300">{count}</span>
+      <span className="w-8 shrink-0 text-right font-mono text-[13px] text-neutral-300">
+        {count}
+      </span>
     </div>
   );
 }
 
 function Tag({children, className = ""}: {children: React.ReactNode; className?: string}) {
   return (
-    <span className={`font-mono text-[10px] uppercase tracking-[0.15em] ${className}`}>
+    <span className={`font-mono text-[10px] tracking-[0.15em] uppercase ${className}`}>
       {children}
     </span>
   );
 }
 
 export default function DashboardClient() {
+  const [supabase] = useState(() => createClient());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
@@ -142,9 +143,7 @@ export default function DashboardClient() {
 
   const cargarDatos = useCallback(async () => {
     if (!supabase) {
-      setError(
-        "Faltan las variables NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY.",
-      );
+      setError("Faltan las variables NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY.");
       setLoading(false);
 
       return;
@@ -154,11 +153,7 @@ export default function DashboardClient() {
       setError(null);
 
       const [resMetrics, resEstados, resLeads, resFacturas] = await Promise.all([
-        supabase
-          .from("metrics_mensuales")
-          .select("*")
-          .order("mes", {ascending: false})
-          .limit(1),
+        supabase.from("metrics_mensuales").select("*").order("mes", {ascending: false}).limit(1),
         supabase.from("leads").select("estado"),
         supabase
           .from("leads")
@@ -168,8 +163,7 @@ export default function DashboardClient() {
         supabase.from("facturas_pendientes").select("*").order("dias_al_vencimiento"),
       ]);
 
-      const fallo =
-        resMetrics.error ?? resEstados.error ?? resLeads.error ?? resFacturas.error;
+      const fallo = resMetrics.error ?? resEstados.error ?? resLeads.error ?? resFacturas.error;
 
       if (fallo) throw fallo;
 
@@ -190,7 +184,7 @@ export default function DashboardClient() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [supabase]);
 
   useEffect(() => {
     cargarDatos();
@@ -208,11 +202,11 @@ export default function DashboardClient() {
     return () => {
       client.removeChannel(channel);
     };
-  }, [cargarDatos]);
+  }, [cargarDatos, supabase]);
 
   if (loading) {
     return (
-      <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-500">
+      <p className="font-mono text-[11px] tracking-[0.2em] text-neutral-500 uppercase">
         Cargando datos…
       </p>
     );
@@ -224,8 +218,8 @@ export default function DashboardClient() {
     <div className="flex flex-col gap-16">
       {error && (
         <div
-          role="alert"
           className="border-l-2 border-red-500 pl-4 font-mono text-[12px] text-red-400"
+          role="alert"
         >
           {error}
         </div>
@@ -273,7 +267,7 @@ export default function DashboardClient() {
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left text-[13px]">
               <thead>
-                <tr className="border-b border-neutral-700 font-mono text-[10px] uppercase tracking-[0.15em] text-neutral-500">
+                <tr className="border-b border-neutral-700 font-mono text-[10px] tracking-[0.15em] text-neutral-500 uppercase">
                   <th className="py-3 pr-4 font-normal">Lead</th>
                   <th className="py-3 pr-4 font-normal">Nombre</th>
                   <th className="py-3 pr-4 font-normal">Servicio</th>
@@ -322,7 +316,7 @@ export default function DashboardClient() {
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-left text-[13px]">
               <thead>
-                <tr className="border-b border-neutral-700 font-mono text-[10px] uppercase tracking-[0.15em] text-neutral-500">
+                <tr className="border-b border-neutral-700 font-mono text-[10px] tracking-[0.15em] text-neutral-500 uppercase">
                   <th className="py-3 pr-4 font-normal">Factura</th>
                   <th className="py-3 pr-4 font-normal">Cliente</th>
                   <th className="py-3 pr-4 font-normal">Servicio</th>
