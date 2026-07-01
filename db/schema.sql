@@ -8,7 +8,7 @@ DO $$ BEGIN CREATE TYPE urgencia_tipo AS ENUM ('alta','media','baja');
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 DO $$ BEGIN CREATE TYPE servicio_tipo AS ENUM
-  ('desarrollo_web','ecommerce','app_movil','automatizacion','diseno_ui','consultoria','soporte');
+  ('desarrollo_web','ecommerce','app_movil','automatizacion','diseno_ui','consultoria','soporte','marketing','seo');
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 DO $$ BEGIN CREATE TYPE tier_tipo AS ENUM ('HOT','WARM','COLD');
@@ -179,3 +179,7 @@ WHERE f.estado_pago = 'PENDIENTE';
 
 -- Migración para bases YA creadas (agrega la columna sin recrear la tabla)
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS estado_trabajo trabajo_estado NOT NULL DEFAULT 'PENDIENTE';
+
+-- Migración: servicios marketing/seo que ofrece el formulario (para bases ya creadas)
+ALTER TYPE servicio_tipo ADD VALUE IF NOT EXISTS 'marketing';
+ALTER TYPE servicio_tipo ADD VALUE IF NOT EXISTS 'seo';
