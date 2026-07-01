@@ -375,7 +375,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json.body || {};\nconst nombre = (item.nombre || '').trim().replace(/\\s+/g, ' ');\nconst email = (item.email || '').toLowerCase().trim();\nconst presupuesto = parseInt(item.presupuesto) || 0;\nconst urg = ['alta', 'media', 'baja'];\nconst urgencia = urg.includes((item.urgencia || '').toLowerCase()) ? item.urgencia.toLowerCase() : 'media';\nconst svcs = ['desarrollo_web', 'ecommerce', 'app_movil', 'automatizacion', 'diseno_ui', 'consultoria', 'soporte'];\nconst servicio = svcs.includes((item.servicio || '').toLowerCase()) ? item.servicio.toLowerCase() : 'desarrollo_web';\nconst errores = [];\nif (!email.includes('@')) errores.push('email invalido');\nif (nombre.length < 2) errores.push('nombre muy corto');\nif (presupuesto <= 0) errores.push('presupuesto invalido');\nif (errores.length) throw new Error('Validacion fallida: ' + errores.join(', '));\nconst ts = Date.now();\nconst rand = Math.random().toString(36).substring(2, 6).toUpperCase();\nreturn [{ json: {\n  lead_id: 'LD-' + ts + '-' + rand,\n  nombre: nombre,\n  email: email,\n  presupuesto: presupuesto,\n  urgencia: urgencia,\n  servicio: servicio,\n  telefono: (item.telefono || '').trim(),\n  descripcion: (item.descripcion || '').trim().substring(0, 2000),\n  fuente: item.fuente || 'webhook'\n} }];"
+        "jsCode": "const item = $input.first().json.body || {};\nconst nombre = (item.nombre || '').trim().replace(/\\s+/g, ' ');\nconst email = (item.email || '').toLowerCase().trim();\nconst presupuesto = parseInt(item.presupuesto) || 0;\nconst urg = ['alta', 'media', 'baja'];\nconst urgencia = urg.includes((item.urgencia || '').toLowerCase()) ? item.urgencia.toLowerCase() : 'media';\nconst svcMap = { 'desarrollo web':'desarrollo_web','diseño ux/ui':'diseno_ui','diseno ux/ui':'diseno_ui','marketing digital':'marketing','seo / posicionamiento':'seo','seo/posicionamiento':'seo','consultoría':'consultoria','consultoria':'consultoria','otro':'soporte','ecommerce':'ecommerce','app_movil':'app_movil','automatizacion':'automatizacion','soporte':'soporte','desarrollo_web':'desarrollo_web','diseno_ui':'diseno_ui','marketing':'marketing','seo':'seo' };\nconst servicio = svcMap[(item.servicio || '').toLowerCase().trim()] || 'desarrollo_web';\nconst errores = [];\nif (!email.includes('@')) errores.push('email invalido');\nif (nombre.length < 2) errores.push('nombre muy corto');\nif (presupuesto <= 0) errores.push('presupuesto invalido');\nif (errores.length) throw new Error('Validacion fallida: ' + errores.join(', '));\nconst ts = Date.now();\nconst rand = Math.random().toString(36).substring(2, 6).toUpperCase();\nreturn [{ json: { lead_id: 'LD-' + ts + '-' + rand, nombre, email, presupuesto, urgencia, servicio, telefono: (item.telefono || '').trim(), descripcion: (item.descripcion || '').trim().substring(0, 2000), fuente: item.fuente || 'webhook' } }];"
       },
       "id": "1a0698a2-bfce-4254-99e8-87cce4909c32",
       "name": "Code - Normalizar Lead",
@@ -779,7 +779,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const l = $input.first().json;\nlet score = 0;\nconst b = parseInt(l.presupuesto) || 0;\nif (b >= 5000) score += 40;\nelse if (b >= 2000) score += 30;\nelse if (b >= 1000) score += 20;\nelse if (b >= 300) score += 10;\nscore += ({ alta: 30, media: 15, baja: 5 }[l.urgencia] || 5);\nscore += ({ desarrollo_web: 20, ecommerce: 20, app_movil: 18, automatizacion: 18, diseno_ui: 15, consultoria: 12, soporte: 5 }[l.servicio] || 8);\nif (l.telefono && l.telefono.length > 6) score += 5;\nif (l.descripcion && l.descripcion.length > 50) score += 5;\nconst tier = score >= 70 ? 'HOT' : score >= 40 ? 'WARM' : 'COLD';\nreturn [{ json: Object.assign({}, l, { score: score, tier: tier }) }];"
+        "jsCode": "const l = $input.first().json;\nlet score = 0;\nconst b = parseInt(l.presupuesto) || 0;\nif (b >= 5000) score += 40;\nelse if (b >= 2000) score += 30;\nelse if (b >= 1000) score += 20;\nelse if (b >= 300) score += 10;\nscore += ({ alta: 30, media: 15, baja: 5 }[l.urgencia] || 5);\nscore += ({ desarrollo_web: 20, ecommerce: 20, app_movil: 18, automatizacion: 18, marketing: 15, seo: 15, diseno_ui: 15, consultoria: 12, soporte: 5 }[l.servicio] || 8);\nif (l.telefono && l.telefono.length > 6) score += 5;\nif (l.descripcion && l.descripcion.length > 50) score += 5;\nconst tier = score >= 70 ? 'HOT' : score >= 40 ? 'WARM' : 'COLD';\nreturn [{ json: Object.assign({}, l, { score: score, tier: tier }) }];"
       },
       "id": "1888b7c6-aa9a-4c4a-958a-5b11f32fbfc9",
       "name": "Code - Scoring",
@@ -2724,6 +2724,100 @@
           "name": "Notion account"
         }
       }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/pages/{{ $json.card_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ properties: { Estado: { select: { name: 'CANCELADO' } } } }) }}",
+        "options": {}
+      },
+      "id": "f1a20031-0000-4031-8031-dd0000000031",
+      "name": "Notion - Estado Cancelado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        3152,
+        1820
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT card_id FROM leads WHERE lead_id = $1 LIMIT 1;",
+        "options": {
+          "queryReplacement": "={{ $json.lead_id }}"
+        }
+      },
+      "id": "f1a20032-0000-4032-8032-dd0000000032",
+      "name": "Postgres - Buscar Card Pago",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3152,
+        120
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/pages/{{ $json.card_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ properties: { Estado: { select: { name: 'PAGADO' } } } }) }}",
+        "options": {}
+      },
+      "id": "f1a20033-0000-4033-8033-dd0000000033",
+      "name": "Notion - Estado Pagado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        3376,
+        120
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Notion account"
+        }
+      }
     }
   ],
   "connections": {
@@ -2770,6 +2864,11 @@
           },
           {
             "node": "Respond - Pago Confirmado",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Postgres - Buscar Card Pago",
             "type": "main",
             "index": 0
           }
@@ -3470,6 +3569,11 @@
             "node": "Respond - Rechazo OK",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Notion - Estado Cancelado",
+            "type": "main",
+            "index": 0
           }
         ],
         [
@@ -3590,6 +3694,17 @@
           }
         ],
         []
+      ]
+    },
+    "Postgres - Buscar Card Pago": {
+      "main": [
+        [
+          {
+            "node": "Notion - Estado Pagado",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
