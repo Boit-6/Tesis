@@ -2585,6 +2585,145 @@
         2704,
         2560
       ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "trabajo-estado",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
+        }
+      },
+      "id": "f1a20021-0000-4021-8021-cc0000000021",
+      "name": "🗂️ Webhook - Estado Trabajo",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        2850
+      ],
+      "webhookId": "trabajo-estado"
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $input.first().json.body || {};\nconst validos = ['PENDIENTE','EN_PROGRESO','EN_REVISION','ENTREGADO'];\nif (!b.lead_id || !validos.includes(b.estado)) throw new Error('Faltan parametros o estado invalido');\nreturn [{ json: { lead_id: b.lead_id, estado: b.estado } }];"
+      },
+      "id": "f1a20022-0000-4022-8022-cc0000000022",
+      "name": "Code - Validar Estado Trabajo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        2850
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET estado_trabajo = $2::trabajo_estado WHERE lead_id = $1 RETURNING *;",
+        "options": {
+          "queryReplacement": "={{ $json.lead_id }},{{ $json.estado }}"
+        }
+      },
+      "id": "f1a20023-0000-4023-8023-cc0000000023",
+      "name": "Postgres - Actualizar Estado Trabajo",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2480,
+        2850
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"ok\", \"estado\": \"={{ $json.estado_trabajo }}\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "f1a20024-0000-4024-8024-cc0000000024",
+      "name": "Respond - Trabajo OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2704,
+        2760
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.card_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f1a20025-0000-4025-8025-cc0000000025",
+      "name": "IF - Tiene Card?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2704,
+        2960
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/pages/{{ $json.card_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ properties: { 'Estado Trabajo': { select: { name: $('Code - Validar Estado Trabajo').item.json.estado } } } }) }}",
+        "options": {}
+      },
+      "id": "f1a20026-0000-4026-8026-cc0000000026",
+      "name": "Notion - Estado Trabajo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2928,
+        2960
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Notion account"
+        }
+      }
     }
   ],
   "connections": {
@@ -3401,6 +3540,56 @@
             "index": 0
           }
         ]
+      ]
+    },
+    "🗂️ Webhook - Estado Trabajo": {
+      "main": [
+        [
+          {
+            "node": "Code - Validar Estado Trabajo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Validar Estado Trabajo": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Actualizar Estado Trabajo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Actualizar Estado Trabajo": {
+      "main": [
+        [
+          {
+            "node": "Respond - Trabajo OK",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF - Tiene Card?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Tiene Card?": {
+      "main": [
+        [
+          {
+            "node": "Notion - Estado Trabajo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
       ]
     }
   },
