@@ -25,6 +25,10 @@ DO $$ BEGIN CREATE TYPE log_nivel AS ENUM
   ('INFO','RECORDATORIO','HOY','VENCIDA','URGENTE','WARN','ERROR');
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
+-- Estado del TRABAJO (ejecución del proyecto, distinto del estado del lead/venta)
+DO $$ BEGIN CREATE TYPE trabajo_estado AS ENUM ('PENDIENTE','EN_PROGRESO','EN_REVISION','ENTREGADO');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
 -- Tabla leads
 CREATE TABLE IF NOT EXISTS leads (
   id                        BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -38,6 +42,7 @@ CREATE TABLE IF NOT EXISTS leads (
   descripcion               TEXT,
   fuente                    TEXT DEFAULT 'webhook',
   estado                    lead_estado NOT NULL DEFAULT 'NUEVO',
+  estado_trabajo            trabajo_estado NOT NULL DEFAULT 'PENDIENTE',
   score                     INT NOT NULL DEFAULT 0,
   tier                      tier_tipo,
   seguimientos              INT NOT NULL DEFAULT 0,
@@ -171,3 +176,6 @@ SELECT
   (f.fecha_vencimiento::date - now()::date) AS dias_al_vencimiento
 FROM facturas f
 WHERE f.estado_pago = 'PENDIENTE';
+
+-- Migración para bases YA creadas (agrega la columna sin recrear la tabla)
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS estado_trabajo trabajo_estado NOT NULL DEFAULT 'PENDIENTE';
