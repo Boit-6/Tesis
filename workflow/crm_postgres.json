@@ -161,7 +161,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const l = $('Code - Generar Propuesta').first().json;\nconst DATABASE_ID = $env.NOTION_DATABASE_ID || 'REEMPLAZAR_DATABASE_ID'\nconst body = {\n  parent: { database_id: DATABASE_ID },\n  properties: {\n    Name: { title: [{ text: { content: String(l.nombre || 'Lead') } }] },\n    Estado: { select: { name: 'PROPUESTA_ENVIADA' } },\n    Tier: { select: { name: String(l.tier || 'COLD') } },\n    Servicio: { select: { name: String(l.servicio || 'otro') } },\n    Email: { email: String(l.email || 'sin@email.com') },\n    Presupuesto: { number: Number(l.presupuesto) || 0 },\n    Score: { number: Number(l.score) || 0 },\n    'Lead ID': { rich_text: [{ text: { content: String(l.lead_id || '') } }] }\n  }\n};\nreturn [{ json: { lead_id: l.lead_id, notion_body: body } }];"
+        "jsCode": "const l = $('Code - Generar Propuesta').first().json;\nconst DATABASE_ID = 'REEMPLAZAR_DATABASE_ID'\nconst body = {\n  parent: { database_id: DATABASE_ID },\n  properties: {\n    Name: { title: [{ text: { content: String(l.nombre || 'Lead') } }] },\n    Estado: { select: { name: 'PROPUESTA_ENVIADA' } },\n    Tier: { select: { name: String(l.tier || 'COLD') } },\n    Servicio: { select: { name: String(l.servicio || 'otro') } },\n    Email: { email: String(l.email || 'sin@email.com') },\n    Presupuesto: { number: Number(l.presupuesto) || 0 },\n    Score: { number: Number(l.score) || 0 },\n    'Lead ID': { rich_text: [{ text: { content: String(l.lead_id || '') } }] }\n  }\n};\nreturn [{ json: { lead_id: l.lead_id, notion_body: body } }];"
       },
       "id": "6f6f8741-c420-4b9f-9eb6-557687c3a37d",
       "name": "Code - Preparar Card Notion",
