@@ -3224,6 +3224,348 @@
         2704,
         3860
       ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cambio-aceptar",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
+        }
+      },
+      "id": "f1a20051-0000-4051-8051-ff0000000051",
+      "name": "✅ Webhook - Aceptar Cambio",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        4200
+      ],
+      "webhookId": "cambio-aceptar"
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $input.first().json.body || {};\nif (!b.lead_id) throw new Error('Falta lead_id');\nreturn [{ json: { lead_id: b.lead_id } }];"
+      },
+      "id": "f1a20052-0000-4052-8052-ff0000000052",
+      "name": "Code - Leer Aceptar Cambio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        4200
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET estado = 'PROPUESTA_ENVIADA', fecha_propuesta = now() WHERE lead_id = $1 AND estado = 'EN_SEGUIMIENTO' RETURNING *;",
+        "options": {
+          "queryReplacement": "={{ $json.lead_id }}"
+        }
+      },
+      "id": "f1a20053-0000-4053-8053-ff0000000053",
+      "name": "Postgres - Reabrir Propuesta",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2480,
+        4200
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.lead_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f1a20054-0000-4054-8054-ff0000000054",
+      "name": "IF - Aceptar Cambio OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2704,
+        4200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const l = $input.first().json;\nconst primerNombre = String(l.nombre || 'Cliente').split(' ')[0];\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst FRONT_BASE = 'https://formulario-leads-psi.vercel.app';\nconst acceptUrl = FRONT_BASE + '/aceptar/' + encodeURIComponent(l.lead_id) + '?token=' + encodeURIComponent(l.accept_token);\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head><body style='margin:0;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif;color:#27272a'><div style='max-width:600px;margin:0 auto;background:#ffffff'><div style='background:#111827;padding:28px 40px'><div style='color:#fbbf24;font-size:20px;font-weight:800;letter-spacing:1px'>SODEROS S.A.</div><div style='color:#9ca3af;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:4px'>Propuesta actualizada</div></div><div style='padding:40px'><p style='font-size:16px;margin:0 0 8px'>Hola <b>${primerNombre}</b>,</p><p style='font-size:15px;line-height:1.6;color:#52525b;margin:0 0 24px'>Tomamos en cuenta lo que nos pediste y ajustamos la propuesta de <b>${svc}</b>. Podés revisarla y confirmarla acá:</p><div style='text-align:center'><a href='${acceptUrl}' style='display:inline-block;background:#fbbf24;color:#111827;padding:15px 36px;border-radius:8px;text-decoration:none;font-weight:800'>Ver propuesta y responder</a></div></div><div style='background:#fafafa;padding:22px 40px;border-top:1px solid #e4e4e7'><p style='margin:0;font-size:13px;color:#71717a'>Saludos,<br><b style='color:#27272a'>Equipo Soderos S.A.</b></p></div></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { propuesta_html: html }) }];"
+      },
+      "id": "f1a20055-0000-4055-8055-ff0000000055",
+      "name": "Code - Re-Propuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2928,
+        4120
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=Propuesta actualizada para {{ $json.servicio }} — Soderos S.A.",
+        "message": "={{ $json.propuesta_html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "f1a20056-0000-4056-8056-ff0000000056",
+      "name": "Gmail - Reenviar Propuesta",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        3152,
+        4120
+      ],
+      "webhookId": "f1a20056-0000-4056-8056-ff0000000056",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Gmail - CRM Freelance"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=✅ <b>Cambio ACEPTADO</b>\nSe reenvió la propuesta a {{ $json.nombre }} ({{ $json.lead_id }})",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "f1a20057-0000-4057-8057-ff0000000057",
+      "name": "Telegram - Cambio Aceptado",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2928,
+        4280
+      ],
+      "webhookId": "tg-camb-ok",
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"ok\", \"mensaje\": \"Propuesta reenviada al cliente.\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "f1a20058-0000-4058-8058-ff0000000058",
+      "name": "Respond - Aceptar Cambio OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2928,
+        4360
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"invalido\", \"mensaje\": \"El lead no está en un pedido de cambios activo.\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "f1a20059-0000-4059-8059-ff0000000059",
+      "name": "Respond - Aceptar Cambio Invalido",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2704,
+        4460
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cambio-rechazar",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
+        }
+      },
+      "id": "f1a20061-0000-4061-8061-ff0000000061",
+      "name": "🚷 Webhook - Rechazar Cambio",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        4700
+      ],
+      "webhookId": "cambio-rechazar"
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $input.first().json.body || {};\nif (!b.lead_id) throw new Error('Falta lead_id');\nreturn [{ json: { lead_id: b.lead_id } }];"
+      },
+      "id": "f1a20062-0000-4062-8062-ff0000000062",
+      "name": "Code - Leer Rechazar Cambio",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        4700
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET estado = 'PROPUESTA_ENVIADA', fecha_propuesta = now() WHERE lead_id = $1 AND estado = 'EN_SEGUIMIENTO' RETURNING *;",
+        "options": {
+          "queryReplacement": "={{ $json.lead_id }}"
+        }
+      },
+      "id": "f1a20063-0000-4063-8063-ff0000000063",
+      "name": "Postgres - Reabrir Original",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2480,
+        4700
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.lead_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f1a20064-0000-4064-8064-ff0000000064",
+      "name": "IF - Rechazar Cambio OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2704,
+        4700
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const l = $input.first().json;\nconst primerNombre = String(l.nombre || 'Cliente').split(' ')[0];\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst FRONT_BASE = 'https://formulario-leads-psi.vercel.app';\nconst acceptUrl = FRONT_BASE + '/aceptar/' + encodeURIComponent(l.lead_id) + '?token=' + encodeURIComponent(l.accept_token);\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head><body style='margin:0;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif;color:#27272a'><div style='max-width:600px;margin:0 auto;background:#ffffff'><div style='background:#111827;padding:28px 40px'><div style='color:#fbbf24;font-size:20px;font-weight:800;letter-spacing:1px'>SODEROS S.A.</div><div style='color:#9ca3af;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:4px'>Sobre tu pedido</div></div><div style='padding:40px'><p style='font-size:16px;margin:0 0 8px'>Hola <b>${primerNombre}</b>,</p><p style='font-size:15px;line-height:1.6;color:#52525b;margin:0 0 24px'>Gracias por tu interés. Por ahora no podemos aplicar los cambios que nos pediste, pero <b>la propuesta original de ${svc} sigue en pie</b>. Podés confirmarla cuando quieras:</p><div style='text-align:center'><a href='${acceptUrl}' style='display:inline-block;background:#fbbf24;color:#111827;padding:15px 36px;border-radius:8px;text-decoration:none;font-weight:800'>Ver la propuesta</a></div></div><div style='background:#fafafa;padding:22px 40px;border-top:1px solid #e4e4e7'><p style='margin:0;font-size:13px;color:#71717a'>Saludos,<br><b style='color:#27272a'>Equipo Soderos S.A.</b></p></div></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { aviso_html: html }) }];"
+      },
+      "id": "f1a20065-0000-4065-8065-ff0000000065",
+      "name": "Code - Email No Cambios",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2928,
+        4620
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=Sobre tu pedido de cambios — Soderos S.A.",
+        "message": "={{ $json.aviso_html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "f1a20066-0000-4066-8066-ff0000000066",
+      "name": "Gmail - Aviso No Cambios",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        3152,
+        4620
+      ],
+      "webhookId": "f1a20066-0000-4066-8066-ff0000000066",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Gmail - CRM Freelance"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"ok\", \"mensaje\": \"Se avisó al cliente; la propuesta original sigue vigente.\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "f1a20067-0000-4067-8067-ff0000000067",
+      "name": "Respond - Rechazar Cambio OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2928,
+        4780
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"invalido\", \"mensaje\": \"El lead no está en un pedido de cambios activo.\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "f1a20068-0000-4068-8068-ff0000000068",
+      "name": "Respond - Rechazar Cambio Invalido",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2704,
+        4880
+      ]
     }
   ],
   "connections": {
@@ -4167,6 +4509,145 @@
         [
           {
             "node": "Respond - Cancelar Invalido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "✅ Webhook - Aceptar Cambio": {
+      "main": [
+        [
+          {
+            "node": "Code - Leer Aceptar Cambio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Leer Aceptar Cambio": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Reabrir Propuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Reabrir Propuesta": {
+      "main": [
+        [
+          {
+            "node": "IF - Aceptar Cambio OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Aceptar Cambio OK?": {
+      "main": [
+        [
+          {
+            "node": "Respond - Aceptar Cambio OK",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code - Re-Propuesta",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram - Cambio Aceptado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Aceptar Cambio Invalido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Re-Propuesta": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Reenviar Propuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🚷 Webhook - Rechazar Cambio": {
+      "main": [
+        [
+          {
+            "node": "Code - Leer Rechazar Cambio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Leer Rechazar Cambio": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Reabrir Original",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Reabrir Original": {
+      "main": [
+        [
+          {
+            "node": "IF - Rechazar Cambio OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Rechazar Cambio OK?": {
+      "main": [
+        [
+          {
+            "node": "Respond - Rechazar Cambio OK",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code - Email No Cambios",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Rechazar Cambio Invalido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Email No Cambios": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Aviso No Cambios",
             "type": "main",
             "index": 0
           }
