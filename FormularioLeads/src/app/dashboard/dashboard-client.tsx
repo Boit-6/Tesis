@@ -6,6 +6,8 @@ import {createClient} from "@/lib/supabase/client";
 
 import TrabajoEstadoSelect from "./trabajo-estado-select";
 
+const N8N_BASE = process.env.NEXT_PUBLIC_N8N_BASE;
+
 type LeadEstado =
   | "NUEVO"
   | "PROPUESTA_ENVIADA"
@@ -54,6 +56,13 @@ interface Trabajo {
   nombre: string;
   servicio: string;
   estado_trabajo: "PENDIENTE" | "EN_PROGRESO" | "EN_REVISION" | "ENTREGADO";
+}
+
+interface PedidoCambio {
+  lead_id: string;
+  nombre: string;
+  servicio: string;
+  notas: string | null;
 }
 
 const FUNNEL_ORDER: LeadEstado[] = [
@@ -150,6 +159,9 @@ export default function DashboardClient() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [facturas, setFacturas] = useState<FacturaPendiente[]>([]);
   const [trabajos, setTrabajos] = useState<Trabajo[]>([]);
+  const [pedidos, setPedidos] = useState<PedidoCambio[]>([]);
+  const [busqueda, setBusqueda] = useState("");
+  const [pagina, setPagina] = useState(0);
 
   const cargarDatos = useCallback(async () => {
     if (!supabase) {
@@ -162,24 +174,29 @@ export default function DashboardClient() {
     try {
       setError(null);
 
-      const [resMetrics, resEstados, resLeads, resFacturas, resTrabajos] = await Promise.all([
+      const [resMetrics, resEstados, resLeads, resFacturas, resTrabajos, resPedidos] = await Promise.all([
         supabase.from("metrics_mensuales").select("*").order("mes", {ascending: false}).limit(1),
         supabase.from("leads").select("estado"),
         supabase
           .from("leads")
           .select("lead_id,nombre,email,servicio,estado,tier,presupuesto,fecha_ingreso")
           .order("fecha_ingreso", {ascending: false})
-          .limit(20),
+          .limit(200),
         supabase.from("facturas_pendientes").select("*").order("dias_al_vencimiento"),
         supabase
           .from("leads")
           .select("lead_id,nombre,servicio,estado_trabajo")
           .in("estado", ["ACEPTADO", "FACTURADO"])
           .order("fecha_ingreso", {ascending: false}),
+        supabase
+          .from("leads")
+          .select("lead_id,nombre,servicio,notas")
+          .not("notas", "is", null)
+          .order("fecha_ingreso", {ascending: false}),
       ]);
 
       const fallo =
-        resMetrics.error ?? resEstados.error ?? resLeads.error ?? resFacturas.error ?? resTrabajos.error;
+        resMetrics.error ?? resEstados.error ?? resLeads.error ?? resFacturas.error ?? resTrabajos.error ?? resPedidos.error;
 
       if (fallo) throw fallo;
 
@@ -195,6 +212,7 @@ export default function DashboardClient() {
       setLeads((resLeads.data as Lead[] | null) ?? []);
       setFacturas((resFacturas.data as FacturaPendiente[] | null) ?? []);
       setTrabajos((resTrabajos.data as Trabajo[] | null) ?? []);
+      setPedidos((resPedidos.data as PedidoCambio[] | null) ?? []);
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "No pudimos cargar el dashboard.");
@@ -221,6 +239,57 @@ export default function DashboardClient() {
     };
   }, [cargarDatos, supabase]);
 
+  async function cancelar(leadId: string) {
+    if (!N8N_BASE) return;
+    if (!window.confirm("¿Cancelar este pedido? Se marca como PERDIDO y se avisa al cliente.")) return;
+
+    try {
+      const res = await fetch(`${N8N_BASE}/webhook/lead-cancelar`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json", "ngrok-skip-browser-warning": "true"},
+        body: JSON.stringify({lead_id: leadId}),
+      });
+
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+
+      cargarDatos();
+    } catch (err) {
+      console.error(err);
+      setError("No se pudo cancelar el pedido.");
+    }
+  }
+
+  async function accionCambio(pathWebhook: string, leadId: string) {
+    if (!N8N_BASE) return;
+
+    try {
+      const res = await fetch(`${N8N_BASE}/webhook/${pathWebhook}`, {
+        method: "POST",
+        headers: {"Content-Type": "application/json", "ngrok-skip-browser-warning": "true"},
+        body: JSON.stringify({lead_id: leadId}),
+      });
+
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+
+      cargarDatos();
+    } catch (err) {
+      console.error(err);
+      setError("No se pudo procesar el pedido de cambio.");
+    }
+  }
+
+  function aceptarCambio(leadId: string) {
+    if (window.confirm("¿Aceptar los cambios y reenviar la propuesta al cliente?")) {
+      accionCambio("cambio-aceptar", leadId);
+    }
+  }
+
+  function rechazarCambio(leadId: string) {
+    if (window.confirm("¿Rechazar los cambios? Se mantiene la propuesta original y se le avisa al cliente.")) {
+      accionCambio("cambio-rechazar", leadId);
+    }
+  }
+
   if (loading) {
     return (
       <p className="font-mono text-[11px] tracking-[0.2em] text-neutral-500 uppercase">
@@ -230,6 +299,15 @@ export default function DashboardClient() {
   }
 
   const funnelMax = Math.max(1, ...FUNNEL_ORDER.map((estado) => funnel[estado] ?? 0));
+
+  const POR_PAGINA = 15;
+  const q = busqueda.toLowerCase().trim();
+  const leadsFiltrados = q
+    ? leads.filter((l) => l.nombre.toLowerCase().includes(q) || l.lead_id.toLowerCase().includes(q))
+    : leads;
+  const totalPaginas = Math.max(1, Math.ceil(leadsFiltrados.length / POR_PAGINA));
+  const pag = Math.min(pagina, totalPaginas - 1);
+  const leadsPagina = leadsFiltrados.slice(pag * POR_PAGINA, (pag + 1) * POR_PAGINA);
 
   return (
     <div className="flex flex-col gap-16">
@@ -278,49 +356,85 @@ export default function DashboardClient() {
       {/* C — Leads recientes */}
       <section>
         <SectionHeader num="C" title="Leads recientes" />
-        {leads.length === 0 ? (
-          <p className="font-mono text-[12px] text-neutral-500">Sin leads para mostrar.</p>
+        <input
+          value={busqueda}
+          onChange={(e) => {
+            setBusqueda(e.target.value);
+            setPagina(0);
+          }}
+          placeholder="Buscar por nombre o ID…"
+          className="mb-6 w-full max-w-sm border-b border-neutral-700 bg-transparent pb-2 font-mono text-[13px] text-neutral-100 placeholder-neutral-600 outline-none transition focus:border-amber-400"
+        />
+        {leadsFiltrados.length === 0 ? (
+          <p className="font-mono text-[12px] text-neutral-500">
+            {busqueda ? "Sin resultados para esa búsqueda." : "Sin leads para mostrar."}
+          </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left text-[13px]">
-              <thead>
-                <tr className="border-b border-neutral-700 font-mono text-[10px] tracking-[0.15em] text-neutral-500 uppercase">
-                  <th className="py-3 pr-4 font-normal">Lead</th>
-                  <th className="py-3 pr-4 font-normal">Nombre</th>
-                  <th className="py-3 pr-4 font-normal">Servicio</th>
-                  <th className="py-3 pr-4 font-normal">Estado</th>
-                  <th className="py-3 pr-4 font-normal">Tier</th>
-                  <th className="py-3 pr-4 text-right font-normal">Presupuesto</th>
-                  <th className="py-3 text-right font-normal">Ingreso</th>
-                </tr>
-              </thead>
-              <tbody>
-                {leads.map((lead) => (
-                  <tr key={lead.lead_id} className="border-b border-neutral-900 text-neutral-300">
-                    <td className="py-3 pr-4 font-mono text-[12px] text-neutral-500">
-                      {lead.lead_id}
-                    </td>
-                    <td className="py-3 pr-4 text-neutral-100">{lead.nombre}</td>
-                    <td className="py-3 pr-4">{lead.servicio?.replace(/_/g, " ")}</td>
-                    <td className="py-3 pr-4">
-                      <Tag className="text-neutral-400">{lead.estado?.replace(/_/g, " ")}</Tag>
-                    </td>
-                    <td className="py-3 pr-4">
-                      <Tag className={lead.tier ? TIER_COLOR[lead.tier] : "text-neutral-700"}>
-                        {lead.tier ?? "—"}
-                      </Tag>
-                    </td>
-                    <td className="py-3 pr-4 text-right font-mono">
-                      {formatMoney(lead.presupuesto)}
-                    </td>
-                    <td className="py-3 text-right font-mono text-neutral-500">
-                      {formatDate(lead.fecha_ingreso)}
-                    </td>
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse text-left text-[13px]">
+                <thead>
+                  <tr className="border-b border-neutral-700 font-mono text-[10px] tracking-[0.15em] text-neutral-500 uppercase">
+                    <th className="py-3 pr-4 font-normal">Lead</th>
+                    <th className="py-3 pr-4 font-normal">Nombre</th>
+                    <th className="py-3 pr-4 font-normal">Servicio</th>
+                    <th className="py-3 pr-4 font-normal">Estado</th>
+                    <th className="py-3 pr-4 font-normal">Tier</th>
+                    <th className="py-3 pr-4 text-right font-normal">Presupuesto</th>
+                    <th className="py-3 text-right font-normal">Ingreso</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {leadsPagina.map((lead) => (
+                    <tr key={lead.lead_id} className="border-b border-neutral-900 text-neutral-300">
+                      <td className="py-3 pr-4 font-mono text-[12px] text-neutral-500">
+                        {lead.lead_id}
+                      </td>
+                      <td className="py-3 pr-4 text-neutral-100">{lead.nombre}</td>
+                      <td className="py-3 pr-4">{lead.servicio?.replace(/_/g, " ")}</td>
+                      <td className="py-3 pr-4">
+                        <Tag className="text-neutral-400">{lead.estado?.replace(/_/g, " ")}</Tag>
+                      </td>
+                      <td className="py-3 pr-4">
+                        <Tag className={lead.tier ? TIER_COLOR[lead.tier] : "text-neutral-700"}>
+                          {lead.tier ?? "—"}
+                        </Tag>
+                      </td>
+                      <td className="py-3 pr-4 text-right font-mono">
+                        {formatMoney(lead.presupuesto)}
+                      </td>
+                      <td className="py-3 text-right font-mono text-neutral-500">
+                        {formatDate(lead.fecha_ingreso)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {totalPaginas > 1 && (
+              <div className="mt-6 flex items-center justify-between font-mono text-[11px] tracking-[0.15em] text-neutral-500 uppercase">
+                <button
+                  type="button"
+                  onClick={() => setPagina((p) => Math.max(0, p - 1))}
+                  disabled={pag === 0}
+                  className="px-3 py-1 transition hover:text-amber-400 disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  ← Anterior
+                </button>
+                <span className="text-neutral-400">
+                  Página {pag + 1} de {totalPaginas} · {leadsFiltrados.length} leads
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPagina((p) => Math.min(totalPaginas - 1, p + 1))}
+                  disabled={pag >= totalPaginas - 1}
+                  className="px-3 py-1 transition hover:text-amber-400 disabled:cursor-not-allowed disabled:opacity-30"
+                >
+                  Siguiente →
+                </button>
+              </div>
+            )}
+          </>
         )}
       </section>
 
@@ -392,7 +506,8 @@ export default function DashboardClient() {
                   <th className="py-3 pr-4 font-normal">Lead</th>
                   <th className="py-3 pr-4 font-normal">Cliente</th>
                   <th className="py-3 pr-4 font-normal">Servicio</th>
-                  <th className="py-3 font-normal">Estado del trabajo</th>
+                  <th className="py-3 pr-4 font-normal">Estado del trabajo</th>
+                  <th className="py-3 font-normal">Acción</th>
                 </tr>
               </thead>
               <tbody>
@@ -401,13 +516,59 @@ export default function DashboardClient() {
                     <td className="py-3 pr-4 font-mono text-[12px] text-neutral-500">{t.lead_id}</td>
                     <td className="py-3 pr-4 text-neutral-100">{t.nombre}</td>
                     <td className="py-3 pr-4">{t.servicio?.replace(/_/g, " ")}</td>
-                    <td className="py-3">
+                    <td className="py-3 pr-4">
                       <TrabajoEstadoSelect inicial={t.estado_trabajo} leadId={t.lead_id} />
+                    </td>
+                    <td className="py-3">
+                      <button
+                        type="button"
+                        onClick={() => cancelar(t.lead_id)}
+                        className="border border-neutral-700 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-neutral-400 transition hover:border-red-500 hover:text-red-400"
+                      >
+                        Cancelar
+                      </button>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+      </section>
+
+      {/* F — Pedidos de cambio */}
+      <section>
+        <SectionHeader num="F" title="Pedidos de cambio" />
+        {pedidos.length === 0 ? (
+          <p className="font-mono text-[12px] text-neutral-500">No hay pedidos de cambio.</p>
+        ) : (
+          <div className="flex flex-col gap-5">
+            {pedidos.map((p) => (
+              <div key={p.lead_id} className="border-l-2 border-amber-500 pl-4">
+                <div className="mb-1 flex flex-wrap items-center gap-3">
+                  <span className="text-neutral-100">{p.nombre}</span>
+                  <Tag className="text-neutral-500">{p.servicio?.replace(/_/g, " ")}</Tag>
+                  <span className="font-mono text-[11px] text-neutral-600">{p.lead_id}</span>
+                </div>
+                <p className="text-sm leading-relaxed text-neutral-400">{p.notas}</p>
+                <div className="mt-3 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => aceptarCambio(p.lead_id)}
+                    className="bg-amber-400 px-4 py-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-neutral-950 transition hover:bg-amber-300"
+                  >
+                    Aceptar y reenviar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => rechazarCambio(p.lead_id)}
+                    className="border border-neutral-700 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.15em] text-neutral-400 transition hover:border-red-500 hover:text-red-400"
+                  >
+                    Rechazar
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </section>
