@@ -2820,6 +2820,186 @@
           "name": "Notion account"
         }
       }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "lead-cancelar",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
+        }
+      },
+      "id": "f1a20041-0000-4041-8041-ee0000000041",
+      "name": "🚫 Webhook - Cancelar (panel)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        2032,
+        3600
+      ],
+      "webhookId": "lead-cancelar"
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $input.first().json.body || {};\nif (!b.lead_id) throw new Error('Falta lead_id');\nreturn [{ json: { lead_id: b.lead_id } }];"
+      },
+      "id": "f1a20042-0000-4042-8042-ee0000000042",
+      "name": "Code - Leer Cancelar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2256,
+        3600
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET estado = 'PERDIDO' WHERE lead_id = $1 AND estado NOT IN ('CERRADO','PERDIDO') RETURNING *;",
+        "options": {
+          "queryReplacement": "={{ $json.lead_id }}"
+        }
+      },
+      "id": "f1a20043-0000-4043-8043-ee0000000043",
+      "name": "Postgres - Marcar Cancelado",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2480,
+        3600
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.lead_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f1a20044-0000-4044-8044-ee0000000044",
+      "name": "IF - Cancelar OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2704,
+        3600
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=🚫 <b>Pedido CANCELADO desde el panel</b>\nCliente: {{ $json.nombre }}\nLead: {{ $json.lead_id }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "f1a20045-0000-4045-8045-ee0000000045",
+      "name": "Telegram - Cancelado Panel",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2928,
+        3500
+      ],
+      "webhookId": "tg-cancel",
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/pages/{{ $json.card_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ properties: { Estado: { select: { name: 'CANCELADO' } } } }) }}",
+        "options": {}
+      },
+      "id": "f1a20046-0000-4046-8046-ee0000000046",
+      "name": "Notion - Cancelado Panel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2928,
+        3620
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"ok\", \"mensaje\": \"Pedido cancelado.\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "f1a20047-0000-4047-8047-ee0000000047",
+      "name": "Respond - Cancelar OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2928,
+        3740
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"invalido\", \"mensaje\": \"No se pudo cancelar (lead inexistente o ya cerrado).\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "f1a20048-0000-4048-8048-ee0000000048",
+      "name": "Respond - Cancelar Invalido",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2704,
+        3860
+      ]
     }
   ],
   "connections": {
@@ -3702,6 +3882,67 @@
         [
           {
             "node": "Notion - Estado Pagado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🚫 Webhook - Cancelar (panel)": {
+      "main": [
+        [
+          {
+            "node": "Code - Leer Cancelar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Leer Cancelar": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Marcar Cancelado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Marcar Cancelado": {
+      "main": [
+        [
+          {
+            "node": "IF - Cancelar OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Cancelar OK?": {
+      "main": [
+        [
+          {
+            "node": "Respond - Cancelar OK",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram - Cancelado Panel",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notion - Cancelado Panel",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Cancelar Invalido",
             "type": "main",
             "index": 0
           }
