@@ -2,6 +2,230 @@
   "nodes": [
     {
       "parameters": {
+        "content": "## 🔵 RAMA 1 · Nuevo Lead\nCapta el lead del formulario → normaliza → calcula **score/tier** → lo guarda en Supabase.\nSi es **HOT/WARM**: propuesta por email + card en Notion + Telegram. Si es **COLD**: solo aviso.",
+        "height": 470,
+        "width": 3930,
+        "color": 4
+      },
+      "id": "sticky-00-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — 🔵 RAMA 1 · Nuevo Lead",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        1125
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🟢 RAMA 2 · Aceptación\nEl cliente acepta desde la web → valida token → marca **ACEPTADO** → genera la **factura PDF** (Gotenberg) → la guarda → email + Telegram + Notion.",
+        "height": 650,
+        "width": 3630,
+        "color": 3
+      },
+      "id": "sticky-01-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — 🟢 RAMA 2 · Aceptación",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        2275
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🔵 Ver Propuesta (GET read-only)\nMuestra la propuesta al cliente **sin mutar nada**. Los pre-fetch del navegador caen acá sin disparar la aceptación.",
+        "height": 290,
+        "width": 1530,
+        "color": 5
+      },
+      "id": "sticky-02-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — 🔵 Ver Propuesta (GET read-only)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        4575
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ❌ Rechazo (cliente)\nEl cliente **rechaza** desde la web → marca **PERDIDO** + Telegram.",
+        "height": 830,
+        "width": 1530,
+        "color": 2
+      },
+      "id": "sticky-03-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — ❌ Rechazo (cliente)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        5725
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ✏️ Pedir cambios (cliente)\nEl cliente **pide cambios** → guarda el texto en `notas` → **EN_SEGUIMIENTO** → Telegram al freelancer.",
+        "height": 830,
+        "width": 1530,
+        "color": 6
+      },
+      "id": "sticky-04-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — ✏️ Pedir cambios (cliente)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        6875
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🗂️ Estado del trabajo (dashboard)\nDesde el **dashboard**: cambia el `estado_trabajo` en Supabase y lo espeja en Notion.",
+        "height": 470,
+        "width": 1530,
+        "color": 5
+      },
+      "id": "sticky-05-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — 🗂️ Estado del trabajo (dashboard)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        8025
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🚫 Cancelar (dashboard)\nDesde el **dashboard**: el freelancer **cancela** un lead → PERDIDO + Telegram + Notion CANCELADO.",
+        "height": 650,
+        "width": 1226,
+        "color": 2
+      },
+      "id": "sticky-06-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — 🚫 Cancelar (dashboard)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1977,
+        3375
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🔴 RAMA 5 · Cierre de Proyecto\n**Cierra el proyecto**: CERRADO + factura COBRADA + Notion + Telegram + email de testimonio.",
+        "height": 470,
+        "width": 2430,
+        "color": 3
+      },
+      "id": "sticky-07-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — 🔴 RAMA 5 · Cierre de Proyecto",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        3425
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🟣 RAMA 8 · Pago simulado\nEl link del PDF marca la factura **COBRADA** + Telegram. Idempotente (no cobra dos veces).",
+        "height": 830,
+        "width": 1830,
+        "color": 6
+      },
+      "id": "sticky-08-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — 🟣 RAMA 8 · Pago simulado",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        -25
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🟡 RAMA 3 · Follow-up (cron 9AM L-V)\nLeads sin respuesta → **email de seguimiento** (procesa TODOS). Al 3er intento → **PERDIDO**.",
+        "height": 470,
+        "width": 2730,
+        "color": 3
+      },
+      "id": "sticky-09-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — 🟡 RAMA 3 · Follow-up (cron 9AM L-V)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        10325
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🟠 RAMA 4 · Recordatorios de pago (cron 10AM)\nFacturas por vencer → **email de recordatorio**. Las **urgentes** también avisan por Telegram.",
+        "height": 470,
+        "width": 2130,
+        "color": 3
+      },
+      "id": "sticky-10-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — 🟠 RAMA 4 · Recordatorios de pago (cron 10AM)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        11475
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 📊 RAMA 6 · Métricas (cron 23:59)\nArma el **reporte del mes** (leads, conversión, cobros) y lo manda por Telegram.",
+        "height": 290,
+        "width": 930,
+        "color": 4
+      },
+      "id": "sticky-11-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — 📊 RAMA 6 · Métricas (cron 23:59)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        9175
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ⚠️ RAMA 7 · Manejo de errores\nCaptura **cualquier fallo** del workflow → lo registra en `logs` + 🚨 Telegram. (Requiere setear este mismo workflow como *Error Workflow* en Settings).",
+        "height": 290,
+        "width": 1230,
+        "color": 2
+      },
+      "id": "sticky-12-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — ⚠️ RAMA 7 · Manejo de errores",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        12625
+      ]
+    },
+    {
+      "parameters": {
+        "content": "# CRM Freelance — Soderos S.A.\nOrquestación en n8n. **Presentación** (Next.js/Vercel) ↔ **Orquestación** (este workflow) ↔ **Datos** (Supabase). Cada cuadro = una rama. Notificaciones por Telegram, documentos vía Gotenberg, tablero en Notion.",
+        "height": 200,
+        "width": 900,
+        "color": 7
+      },
+      "id": "sticky-top-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — General",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        150,
+        -320
+      ]
+    },
+    {
+      "parameters": {
         "path": "pago-confirmado",
         "responseMode": "responseNode",
         "options": {}
