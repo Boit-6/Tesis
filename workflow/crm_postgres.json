@@ -1439,7 +1439,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE leads SET estado = 'ACEPTADO', fecha_aceptacion = now() WHERE lead_id = $1 RETURNING *;",
+        "query": "UPDATE leads SET estado = 'ACEPTADO', fecha_aceptacion = now() WHERE lead_id = $1 AND estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO') RETURNING *;",
         "options": {
           "queryReplacement": "={{ $json.lead_id }}"
         }
@@ -1457,7 +1457,8 @@
           "id": "REEMPLAZAR_AL_IMPORTAR",
           "name": "Postgres account"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
@@ -3598,6 +3599,48 @@
         1350,
         9660
       ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.estado }}",
+              "rightValue": "ACEPTADO",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "s2aceptaplico00000000000000000001",
+      "name": "IF - Aceptación Aplicó?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1500,
+        1250
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "s2noopaceptdup000000000000000001",
+      "name": "No-op - Aceptación Duplicada",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1500,
+        1600
+      ]
     }
   ],
   "connections": {
@@ -3872,12 +3915,7 @@
       "main": [
         [
           {
-            "node": "Code - Generar Factura HTML",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Notion - Estado Aceptado",
+            "node": "IF - Aceptación Aplicó?",
             "type": "main",
             "index": 0
           }
@@ -4680,6 +4718,29 @@
         [
           {
             "node": "Gmail - Aviso No Cambios",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Aceptación Aplicó?": {
+      "main": [
+        [
+          {
+            "node": "Code - Generar Factura HTML",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notion - Estado Aceptado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No-op - Aceptación Duplicada",
             "type": "main",
             "index": 0
           }
