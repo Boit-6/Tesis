@@ -206,7 +206,7 @@ Estado: `[ ]` pendiente · `[~]` parcial · `[x]` hecho. «Doc» = editar `tesis
 - [x] **m2 · Completar la lista de tablas en §4.1 (Doc). — HECHO.** Corregido en el `.docx` (2/7/2026): §4.1 lista ahora `leads, facturas, seguimientos, logs y profiles` (cinco tablas), consistente con §4.4.
 - [x] **m3 · Abstract en inglés (Doc). — N/A.** Descartado por decisión de los autores (no requerido por el reglamento aplicable). *No se incorpora.*
 - [x] **m4 · Verificación bidireccional citas ↔ Referencias (Doc). — DADO POR COMPLETADO.** Revisado; sin huérfanos en ninguna dirección.
-- [ ] **m5 · Refrescar índice y paginación (Doc). — PENDIENTE (manual).** En Word: `Cmd+A → F9`. Hace aparecer §4.3.7 en el TOC y reasienta la paginación tras las ediciones. **Hacerlo al final.** *— A cargo de: Tobías Rivas.*
+- [~] **m5 · Refrescar índice y paginación (Doc). — SEMIAUTOMATIZADO.** Se marcó el documento con `<w:updateFields w:val="true"/>` en `word/settings.xml`: **al abrir el `.docx` en Word, este actualiza el TOC (incorpora §4.3.7) y recalcula la paginación automáticamente** (o pide confirmar «Actualizar campos» → Sí); luego **Guardar**. Ya no hace falta `Cmd+A → F9` manual. *Nota:* los números no se pueden hornear fuera de un motor de maquetación (no hay Word/LibreOffice en este entorno), por eso el cálculo final ocurre en Word al abrir. *— Acción restante: Tobías abre y guarda una vez.*
 
 ### Seguridad / integridad
 
