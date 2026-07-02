@@ -49,8 +49,8 @@ llegan dispersas, las propuestas se escriben a mano, el seguimiento queda en la 
 se persiguen por chat. El resultado es concreto: **se pierde tiempo y se proyecta
 poca profesionalidad**.
 
-Y no es un problema menor: el trabajo independiente viene creciendo de forma sostenida —los investigadores Kässi y
-Lehdonvirta, de la Universidad de Oxford, reportan un aumento cercano al **21 %** en la economía freelance, y la OIT confirma la
+Y no es un problema menor: el trabajo independiente viene creciendo de forma sostenida —un
+estudio de la Universidad de Oxford reporta un aumento cercano al **21 %** en la economía freelance, y la OIT confirma la
 tendencia—, con lo cual cada vez más personas enfrentan esta misma gestión artesanal, sin
 herramientas a su medida. Las soluciones del mercado son caras, atan al usuario a una plataforma y no
 le dan propiedad sobre sus propios datos.
@@ -81,10 +81,10 @@ una aceptación, un pago— dispare el paso siguiente. Tercero, las herramientas
 particular **n8n**, como motor de orquestación. Y cuarto, la noción de **CRM** como sistema que
 acompaña el ciclo de vida del cliente.
 
-En cuanto a los antecedentes, nos apoyamos en tres referencias que sostienen el enfoque: **Järvinen y
-Taiminen (2016)** sobre automatización en marketing, **Kässi y Lehdonvirta (2018)** sobre el
-crecimiento del trabajo freelance, y **Mero y colaboradores (2020)** sobre adopción de la
-automatización.
+En cuanto a los antecedentes, nos apoyamos en tres estudios académicos que sostienen el enfoque: uno
+de 2016 sobre cómo la automatización potencia el marketing, otro de 2018 que documenta el crecimiento
+del trabajo freelance, y un tercero de 2020 sobre la adopción de estas herramientas. Las referencias
+completas están en el documento y en la diapositiva.
 
 ¿Dónde se ubica nuestro aporte? Las plataformas existentes —HubSpot, Pipedrive, Zapier, Make—
 resuelven partes del problema, pero con **costo recurrente** y sin **propiedad total del dato**. El
