@@ -33,31 +33,30 @@
 "Buenos días. Mi nombre es **Mateo Morgui** y, junto a mi compañero Tobías Rivas, presento nuestro
 trabajo final titulado *«Automatización de un sistema de tickets para freelancers con n8n»*,
 desarrollado bajo la dirección de **Alberto Cortez** en la Tecnicatura Universitaria en Programación
-de la UTN. Le paso la palabra a Tobías para contarles cómo organizamos estos diez minutos."
+de la UTN."
 
 ## [0:25–0:45] Apertura — hoja de ruta · **TOBÍAS**
 
-"Gracias, Mateo. Buenos días. En los próximos diez minutos vamos a recorrer el **problema** que
+"En los próximos diez minutos vamos a recorrer el **problema** que
 motivó el trabajo, la **pregunta de investigación** y los **objetivos**, el **marco teórico**, la
 **metodología** y la arquitectura que construimos, los **resultados** de la validación y, para cerrar,
-las **conclusiones**, las limitaciones y las líneas de trabajo futuro. Empieza Mateo con el problema."
+las **conclusiones**, las limitaciones y las líneas de trabajo futuro."
 
 ## [0:45–2:00] Problema y motivación · **MATEO**
 
 "El freelance profesional gestiona su ciclo comercial de forma **manual y fragmentada**: las consultas
 llegan dispersas, las propuestas se escriben a mano, el seguimiento queda en la memoria y los cobros
-se persiguen por chat. El resultado es concreto: **se pierden leads, se pierde tiempo y se proyecta
+se persiguen por chat. El resultado es concreto: **se pierde tiempo y se proyecta
 poca profesionalidad**.
 
-Y no es un problema menor: el trabajo independiente viene creciendo de forma sostenida —Kässi y
-Lehdonvirta reportan un aumento cercano al **21 %** en la economía freelance, y la OIT confirma la
+Y no es un problema menor: el trabajo independiente viene creciendo de forma sostenida —los investigadores Kässi y
+Lehdonvirta, de la Universidad de Oxford, reportan un aumento cercano al **21 %** en la economía freelance, y la OIT confirma la
 tendencia—, con lo cual cada vez más personas enfrentan esta misma gestión artesanal, sin
 herramientas a su medida. Las soluciones del mercado son caras, atan al usuario a una plataforma y no
 le dan propiedad sobre sus propios datos.
 
 El **para qué** de nuestro trabajo es, entonces, darle al freelance un pipeline que automatice de
-punta a punta ese ciclo comercial: desde que entra un lead hasta el cobro y el cierre. Le paso la
-palabra a Tobías con la pregunta de investigación."
+punta a punta ese ciclo comercial: desde que entra un lead hasta el cobro y el cierre."
 
 ## [2:00–3:00] Pregunta de investigación y objetivos · **TOBÍAS**
 
@@ -71,7 +70,7 @@ calificar** leads de forma automática mediante un scoring; segundo, **generar y
 resolver de forma segura su aceptación, rechazo o pedido de cambios; tercero, **automatizar la
 facturación y el cobro**; cuarto, **centralizar la información** en una única fuente de verdad, con
 seguridad por rol y un tablero en tiempo real; y quinto, **validar** el sistema con escenarios
-controlados. Este es el mapa de lo que vamos a demostrar. Sigue Mateo con el marco teórico."
+controlados. Este es el mapa de lo que vamos a demostrar."
 
 ## [3:00–4:30] Marco teórico / antecedentes · **MATEO**
 
@@ -91,7 +90,7 @@ automatización.
 resuelven partes del problema, pero con **costo recurrente** y sin **propiedad total del dato**. El
 vacío que detectamos, y que constituye nuestra contribución, es un pipeline **auto-alojable, de bajo
 costo operativo y con control total sobre los datos**. En una frase: la decisión de **construir** en
-lugar de solo **configurar**. Tobías sigue con la metodología."
+lugar de solo **configurar**."
 
 ## [4:30–5:40] Metodología — enfoque, requisitos y arquitectura · **TOBÍAS**
 
@@ -106,8 +105,7 @@ capa de **orquestación** es **n8n**, que concentra toda la lógica de negocio: 
 procesos programados**, con **128 nodos** funcionales en total. Y la capa de **datos** es
 **PostgreSQL sobre Supabase** como **única fuente de verdad**: cinco tablas, dos vistas calculadas y
 seguridad a nivel de fila por rol *admin*. El frontend nunca escribe la base directo: habla con n8n
-por HTTP, y n8n es el único que escribe. Así cada capa se cambia sin romper las otras. Le devuelvo la
-palabra a Mateo para la validación."
+por HTTP, y n8n es el único que escribe. Así cada capa se cambia sin romper las otras."
 
 ## [5:40–6:30] Metodología — validación por escenarios · **MATEO**
 
@@ -119,8 +117,7 @@ de estado en la base y la actualización en tiempo real.
 
 Además, los nodos de código están respaldados por una **prueba de humo automatizada** que ejecuta cada
 uno con datos representativos. Somos honestos en un punto: el trabajo **no incluye un relevamiento
-primario con usuarios reales**; la validación es de la **construcción del artefacto**. Tobías presenta
-ahora los resultados."
+primario con usuarios reales**; la validación es de la **construcción del artefacto**."
 
 ## [6:30–8:00] Resultados · **TOBÍAS**
 
@@ -139,7 +136,7 @@ que solo aplica si el estado todavía lo permite, y que devuelve las filas afect
 serializa las peticiones concurrentes, de modo que si el cliente hace doble clic o abre dos pestañas,
 **solo la primera factura**; la segunda afecta cero filas y no genera nada. Con esto **eliminamos la
 doble facturación** por concurrencia. Todo esto está respaldado, además, por la prueba de humo
-automatizada de los nodos de código. Cierra Mateo con la discusión."
+automatizada de los nodos de código."
 
 ## [8:00–9:00] Discusión y conclusiones · **MATEO**
 
@@ -156,8 +153,7 @@ demostrar que **construir** una solución a medida es viable para este caso. La 
 auditar en el código.
 
 Y somos precisos con el alcance: queda **sugerido, pero no demostrado**, que la solución mejore los
-indicadores comerciales reales de un freelance —eso exigiría medir con usuarios en producción—. Tobías
-cierra con las limitaciones y el trabajo futuro."
+indicadores comerciales reales de un freelance —eso exigiría medir con usuarios en producción—."
 
 ## [9:00–10:00] Limitaciones, trabajo futuro y cierre · **TOBÍAS**
 
