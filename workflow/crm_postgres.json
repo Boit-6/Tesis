@@ -3124,6 +3124,11 @@
             "node": "HTTP - Gotenberg PDF",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Postgres - Insert Factura",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -3141,13 +3146,7 @@
     },
     "Gmail - Enviar Factura PDF": {
       "main": [
-        [
-          {
-            "node": "Postgres - Insert Factura",
-            "type": "main",
-            "index": 0
-          }
-        ]
+        []
       ]
     },
     "Postgres - Insert Factura": {
