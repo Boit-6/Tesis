@@ -2,7 +2,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## 🔵 RAMA 1 · Nuevo Lead\nCapta el lead del formulario → normaliza → calcula **score/tier** → lo guarda en Supabase.\nSi es **HOT/WARM**: propuesta por email + card en Notion + Telegram. Si es **COLD**: solo aviso.",
+        "content": "## 🔵 RAMA 1 · Nuevo Lead\nCapta el lead del formulario → normaliza → **score/tier** → lo guarda.\nSi es HOT/WARM: propuesta por email + card en Notion + Telegram. Si es COLD: solo aviso.",
         "height": 470,
         "width": 3930,
         "color": 4
@@ -13,14 +13,14 @@
       "typeVersion": 1,
       "position": [
         95,
-        1125
+        -25
       ]
     },
     {
       "parameters": {
-        "content": "## 🟢 RAMA 2 · Aceptación\nEl cliente acepta desde la web → valida token → marca **ACEPTADO** → genera la **factura PDF** (Gotenberg) → la guarda → email + Telegram + Notion.",
+        "content": "## 🟢 RAMA 2 · Aceptación\nEl cliente acepta → valida token → **ACEPTADO** → genera **factura PDF** (Gotenberg) → guarda → email + Telegram + Notion.",
         "height": 650,
-        "width": 3630,
+        "width": 3030,
         "color": 3
       },
       "id": "sticky-01-0000-4000-8000-aaaaaaaaaaaa",
@@ -29,12 +29,12 @@
       "typeVersion": 1,
       "position": [
         95,
-        2275
+        1125
       ]
     },
     {
       "parameters": {
-        "content": "## 🔵 Ver Propuesta (GET read-only)\nMuestra la propuesta al cliente **sin mutar nada**. Los pre-fetch del navegador caen acá sin disparar la aceptación.",
+        "content": "## 🔵 Ver Propuesta (GET read-only)\nMuestra la propuesta al cliente **sin mutar nada** (los pre-fetch caen acá sin daño).",
         "height": 290,
         "width": 1530,
         "color": 5
@@ -45,12 +45,12 @@
       "typeVersion": 1,
       "position": [
         95,
-        4575
+        2275
       ]
     },
     {
       "parameters": {
-        "content": "## ❌ Rechazo (cliente)\nEl cliente **rechaza** desde la web → marca **PERDIDO** + Telegram.",
+        "content": "## ❌ Rechazo (cliente)\nEl cliente **rechaza** desde la web → **PERDIDO** + Telegram.",
         "height": 830,
         "width": 1530,
         "color": 2
@@ -61,12 +61,12 @@
       "typeVersion": 1,
       "position": [
         95,
-        5725
+        3425
       ]
     },
     {
       "parameters": {
-        "content": "## ✏️ Pedir cambios (cliente)\nEl cliente **pide cambios** → guarda el texto en `notas` → **EN_SEGUIMIENTO** → Telegram al freelancer.",
+        "content": "## ✏️ Pedir cambios (cliente)\nEl cliente **pide cambios** → guarda el texto en `notas` → **EN_SEGUIMIENTO** → Telegram.",
         "height": 830,
         "width": 1530,
         "color": 6
@@ -77,12 +77,12 @@
       "typeVersion": 1,
       "position": [
         95,
-        6875
+        4575
       ]
     },
     {
       "parameters": {
-        "content": "## 🗂️ Estado del trabajo (dashboard)\nDesde el **dashboard**: cambia el `estado_trabajo` en Supabase y lo espeja en Notion.",
+        "content": "## 🗂️ Estado del trabajo (dashboard)\nDesde el panel: cambia `estado_trabajo` en Supabase + espeja en Notion.",
         "height": 470,
         "width": 1530,
         "color": 5
@@ -93,14 +93,14 @@
       "typeVersion": 1,
       "position": [
         95,
-        8025
+        5725
       ]
     },
     {
       "parameters": {
-        "content": "## 🚫 Cancelar (dashboard)\nDesde el **dashboard**: el freelancer **cancela** un lead → PERDIDO + Telegram + Notion CANCELADO.",
-        "height": 650,
-        "width": 1226,
+        "content": "## 🚫 Cancelar (dashboard)\nEl freelancer **cancela** un lead desde el panel → PERDIDO + Telegram + Notion CANCELADO.",
+        "height": 830,
+        "width": 1530,
         "color": 2
       },
       "id": "sticky-06-0000-4000-8000-aaaaaaaaaaaa",
@@ -108,83 +108,35 @@
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
-        1977,
-        3375
+        95,
+        6875
       ]
     },
     {
       "parameters": {
-        "content": "## 🔴 RAMA 5 · Cierre de Proyecto\n**Cierra el proyecto**: CERRADO + factura COBRADA + Notion + Telegram + email de testimonio.",
-        "height": 470,
-        "width": 2430,
+        "content": "## ✅ Aceptar cambio (dashboard)\nEl freelancer **acepta** el pedido → reabre PROPUESTA_ENVIADA + **reenvía la propuesta** (link nuevo) + Telegram.",
+        "height": 830,
+        "width": 1830,
         "color": 3
       },
       "id": "sticky-07-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "Nota — 🔴 RAMA 5 · Cierre de Proyecto",
+      "name": "Nota — ✅ Aceptar cambio (dashboard)",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
         95,
-        3425
+        8025
       ]
     },
     {
       "parameters": {
-        "content": "## 🟣 RAMA 8 · Pago simulado\nEl link del PDF marca la factura **COBRADA** + Telegram. Idempotente (no cobra dos veces).",
-        "height": 830,
+        "content": "## 🚷 Rechazar cambio (dashboard)\nEl freelancer **rechaza** el pedido → mantiene la propuesta original + email avisando que la oferta sigue.",
+        "height": 650,
         "width": 1830,
-        "color": 6
+        "color": 2
       },
       "id": "sticky-08-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "Nota — 🟣 RAMA 8 · Pago simulado",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        95,
-        -25
-      ]
-    },
-    {
-      "parameters": {
-        "content": "## 🟡 RAMA 3 · Follow-up (cron 9AM L-V)\nLeads sin respuesta → **email de seguimiento** (procesa TODOS). Al 3er intento → **PERDIDO**.",
-        "height": 470,
-        "width": 2730,
-        "color": 3
-      },
-      "id": "sticky-09-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "Nota — 🟡 RAMA 3 · Follow-up (cron 9AM L-V)",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        95,
-        10325
-      ]
-    },
-    {
-      "parameters": {
-        "content": "## 🟠 RAMA 4 · Recordatorios de pago (cron 10AM)\nFacturas por vencer → **email de recordatorio**. Las **urgentes** también avisan por Telegram.",
-        "height": 470,
-        "width": 2130,
-        "color": 3
-      },
-      "id": "sticky-10-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "Nota — 🟠 RAMA 4 · Recordatorios de pago (cron 10AM)",
-      "type": "n8n-nodes-base.stickyNote",
-      "typeVersion": 1,
-      "position": [
-        95,
-        11475
-      ]
-    },
-    {
-      "parameters": {
-        "content": "## 📊 RAMA 6 · Métricas (cron 23:59)\nArma el **reporte del mes** (leads, conversión, cobros) y lo manda por Telegram.",
-        "height": 290,
-        "width": 930,
-        "color": 4
-      },
-      "id": "sticky-11-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "Nota — 📊 RAMA 6 · Métricas (cron 23:59)",
+      "name": "Nota — 🚷 Rechazar cambio (dashboard)",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -194,13 +146,45 @@
     },
     {
       "parameters": {
-        "content": "## ⚠️ RAMA 7 · Manejo de errores\nCaptura **cualquier fallo** del workflow → lo registra en `logs` + 🚨 Telegram. (Requiere setear este mismo workflow como *Error Workflow* en Settings).",
-        "height": 290,
-        "width": 1230,
-        "color": 2
+        "content": "## 🔴 RAMA 5 · Cierre de Proyecto\n**Cierra**: CERRADO + factura COBRADA + Notion + Telegram + email de testimonio.",
+        "height": 470,
+        "width": 2430,
+        "color": 3
       },
-      "id": "sticky-12-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "Nota — ⚠️ RAMA 7 · Manejo de errores",
+      "id": "sticky-09-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — 🔴 RAMA 5 · Cierre de Proyecto",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        10325
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🟣 RAMA 8 · Pago simulado\nEl link del PDF marca la factura **COBRADA** + Telegram. Idempotente.",
+        "height": 830,
+        "width": 1830,
+        "color": 6
+      },
+      "id": "sticky-10-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — 🟣 RAMA 8 · Pago simulado",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        11475
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🟡 RAMA 3 · Follow-up (cron 9AM L-V)\nLeads sin respuesta → **email de seguimiento** (procesa todos). Al 3ro → PERDIDO.",
+        "height": 470,
+        "width": 2730,
+        "color": 3
+      },
+      "id": "sticky-11-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — 🟡 RAMA 3 · Follow-up (cron 9AM L-V)",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -210,8 +194,56 @@
     },
     {
       "parameters": {
-        "content": "# CRM Freelance — Soderos S.A.\nOrquestación en n8n. **Presentación** (Next.js/Vercel) ↔ **Orquestación** (este workflow) ↔ **Datos** (Supabase). Cada cuadro = una rama. Notificaciones por Telegram, documentos vía Gotenberg, tablero en Notion.",
-        "height": 200,
+        "content": "## 🟠 RAMA 4 · Recordatorios de pago (cron 10AM)\nFacturas por vencer → **email**. Las urgentes → Telegram.",
+        "height": 470,
+        "width": 2130,
+        "color": 3
+      },
+      "id": "sticky-12-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — 🟠 RAMA 4 · Recordatorios de pago (cron 10AM)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        13775
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 📊 RAMA 6 · Métricas (cron 23:59)\nArma el **reporte del mes** y lo manda por Telegram.",
+        "height": 290,
+        "width": 930,
+        "color": 4
+      },
+      "id": "sticky-13-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — 📊 RAMA 6 · Métricas (cron 23:59)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        14925
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ⚠️ RAMA 7 · Manejo de errores\nCaptura **cualquier fallo** → log en `logs` + 🚨 Telegram. (Setear este workflow como *Error Workflow* en Settings).",
+        "height": 290,
+        "width": 1230,
+        "color": 2
+      },
+      "id": "sticky-14-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — ⚠️ RAMA 7 · Manejo de errores",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        16075
+      ]
+    },
+    {
+      "parameters": {
+        "content": "# CRM Freelance — Soderos S.A.\nOrquestación en n8n. Presentación (Next.js/Vercel) ↔ Orquestación (este workflow) ↔ Datos (Supabase). Cada cuadro = una rama.",
+        "height": 180,
         "width": 900,
         "color": 7
       },
@@ -236,7 +268,7 @@
       "typeVersion": 2,
       "position": [
         150,
-        100
+        11600
       ],
       "webhookId": "p5-01"
     },
@@ -250,7 +282,7 @@
       "typeVersion": 2,
       "position": [
         450,
-        100
+        11600
       ]
     },
     {
@@ -267,7 +299,7 @@
       "typeVersion": 2.6,
       "position": [
         750,
-        100
+        11600
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -305,7 +337,7 @@
       "typeVersion": 2,
       "position": [
         1050,
-        100
+        11600
       ]
     },
     {
@@ -323,7 +355,7 @@
       "typeVersion": 1.2,
       "position": [
         1350,
-        100
+        11600
       ],
       "webhookId": "tg-pago-recibido",
       "credentials": {
@@ -355,7 +387,7 @@
       "typeVersion": 1,
       "position": [
         1350,
-        280
+        11780
       ]
     },
     {
@@ -380,7 +412,7 @@
       "typeVersion": 1,
       "position": [
         1350,
-        640
+        12140
       ]
     },
     {
@@ -393,7 +425,7 @@
       "typeVersion": 2,
       "position": [
         2550,
-        1250
+        100
       ]
     },
     {
@@ -422,7 +454,7 @@
       "typeVersion": 4,
       "position": [
         2850,
-        1250
+        100
       ],
       "credentials": {
         "notionApi": {
@@ -445,7 +477,7 @@
       "typeVersion": 2.6,
       "position": [
         3150,
-        1250
+        100
       ],
       "credentials": {
         "postgres": {
@@ -480,7 +512,7 @@
       "typeVersion": 4,
       "position": [
         1650,
-        2580
+        1430
       ],
       "credentials": {
         "notionApi": {
@@ -515,7 +547,7 @@
       "typeVersion": 4,
       "position": [
         1050,
-        3730
+        10630
       ],
       "credentials": {
         "notionApi": {
@@ -550,7 +582,7 @@
       "typeVersion": 4,
       "position": [
         2550,
-        10630
+        12930
       ],
       "credentials": {
         "notionApi": {
@@ -576,7 +608,7 @@
       "typeVersion": 1.2,
       "position": [
         150,
-        9300
+        15050
       ]
     },
     {
@@ -593,7 +625,7 @@
       "typeVersion": 2,
       "position": [
         150,
-        1250
+        100
       ],
       "webhookId": "p1-01"
     },
@@ -607,7 +639,7 @@
       "typeVersion": 2,
       "position": [
         450,
-        1250
+        100
       ]
     },
     {
@@ -992,7 +1024,7 @@
       "typeVersion": 2.6,
       "position": [
         1050,
-        1250
+        100
       ],
       "credentials": {
         "postgres": {
@@ -1011,7 +1043,7 @@
       "typeVersion": 2,
       "position": [
         750,
-        1250
+        100
       ]
     },
     {
@@ -1044,7 +1076,7 @@
       "typeVersion": 2,
       "position": [
         1350,
-        1250
+        100
       ]
     },
     {
@@ -1057,7 +1089,7 @@
       "typeVersion": 2,
       "position": [
         1650,
-        1250
+        100
       ]
     },
     {
@@ -1075,7 +1107,7 @@
       "typeVersion": 1.2,
       "position": [
         1650,
-        1430
+        280
       ],
       "webhookId": "tg-lead-frio",
       "credentials": {
@@ -1100,7 +1132,7 @@
       "typeVersion": 2,
       "position": [
         1950,
-        1250
+        100
       ],
       "webhookId": "gm-propuesta",
       "credentials": {
@@ -1124,7 +1156,7 @@
       "typeVersion": 2.6,
       "position": [
         2250,
-        1250
+        100
       ],
       "credentials": {
         "postgres": {
@@ -1275,7 +1307,7 @@
       "typeVersion": 2.6,
       "position": [
         3750,
-        1250
+        100
       ],
       "credentials": {
         "postgres": {
@@ -1299,7 +1331,7 @@
       "typeVersion": 1.2,
       "position": [
         3450,
-        1250
+        100
       ],
       "webhookId": "tg-propuesta",
       "credentials": {
@@ -1324,7 +1356,7 @@
       "typeVersion": 2,
       "position": [
         150,
-        2400
+        1250
       ],
       "webhookId": "p3-01"
     },
@@ -1338,7 +1370,7 @@
       "typeVersion": 2,
       "position": [
         450,
-        2400
+        1250
       ]
     },
     {
@@ -1355,7 +1387,7 @@
       "typeVersion": 2.6,
       "position": [
         750,
-        2400
+        1250
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -1401,7 +1433,7 @@
       "typeVersion": 2,
       "position": [
         1050,
-        2400
+        1250
       ]
     },
     {
@@ -1418,7 +1450,7 @@
       "typeVersion": 2.6,
       "position": [
         1350,
-        2400
+        1250
       ],
       "credentials": {
         "postgres": {
@@ -1441,7 +1473,7 @@
       "typeVersion": 1,
       "position": [
         1350,
-        2760
+        1610
       ]
     },
     {
@@ -1454,7 +1486,7 @@
       "typeVersion": 2,
       "position": [
         1350,
-        2580
+        1430
       ]
     },
     {
@@ -1469,7 +1501,7 @@
       "typeVersion": 1,
       "position": [
         1650,
-        2760
+        1610
       ]
     },
     {
@@ -1482,7 +1514,7 @@
       "typeVersion": 2,
       "position": [
         1650,
-        2400
+        1250
       ]
     },
     {
@@ -1515,7 +1547,7 @@
       "typeVersion": 4,
       "position": [
         1950,
-        2400
+        1250
       ]
     },
     {
@@ -1540,7 +1572,7 @@
       "typeVersion": 2,
       "position": [
         2250,
-        2400
+        1250
       ],
       "webhookId": "gm-factura",
       "credentials": {
@@ -1584,8 +1616,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2550,
-        2400
+        1950,
+        1430
       ],
       "credentials": {
         "postgres": {
@@ -1607,8 +1639,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2850,
-        2400
+        2250,
+        1430
       ],
       "credentials": {
         "postgres": {
@@ -1631,8 +1663,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        3150,
-        2400
+        2550,
+        1250
       ],
       "webhookId": "tg-acepto",
       "credentials": {
@@ -1673,8 +1705,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        3450,
-        2400
+        2850,
+        1250
       ],
       "credentials": {
         "postgres": {
@@ -1700,7 +1732,7 @@
       "typeVersion": 1.2,
       "position": [
         150,
-        10450
+        12750
       ]
     },
     {
@@ -1715,7 +1747,7 @@
       "typeVersion": 2.6,
       "position": [
         450,
-        10450
+        12750
       ],
       "credentials": {
         "postgres": {
@@ -1734,7 +1766,7 @@
       "typeVersion": 2,
       "position": [
         750,
-        10450
+        12750
       ]
     },
     {
@@ -1752,7 +1784,7 @@
       "typeVersion": 2,
       "position": [
         1050,
-        10450
+        12750
       ],
       "webhookId": "gm-followup",
       "credentials": {
@@ -1793,7 +1825,7 @@
       "typeVersion": 2.6,
       "position": [
         1350,
-        10450
+        12750
       ],
       "credentials": {
         "postgres": {
@@ -1816,7 +1848,7 @@
       "typeVersion": 2.6,
       "position": [
         1650,
-        10450
+        12750
       ],
       "credentials": {
         "postgres": {
@@ -1856,7 +1888,7 @@
       "typeVersion": 2,
       "position": [
         1950,
-        10450
+        12750
       ]
     },
     {
@@ -1873,7 +1905,7 @@
       "typeVersion": 2.6,
       "position": [
         2250,
-        10450
+        12750
       ],
       "credentials": {
         "postgres": {
@@ -1890,7 +1922,7 @@
       "typeVersion": 1,
       "position": [
         2250,
-        10630
+        12930
       ]
     },
     {
@@ -1908,7 +1940,7 @@
       "typeVersion": 1.2,
       "position": [
         2550,
-        10450
+        12750
       ],
       "webhookId": "tg-perdido",
       "credentials": {
@@ -1935,7 +1967,7 @@
       "typeVersion": 1.2,
       "position": [
         150,
-        11600
+        13900
       ]
     },
     {
@@ -1950,7 +1982,7 @@
       "typeVersion": 2.6,
       "position": [
         450,
-        11600
+        13900
       ],
       "credentials": {
         "postgres": {
@@ -1969,7 +2001,7 @@
       "typeVersion": 2,
       "position": [
         750,
-        11600
+        13900
       ]
     },
     {
@@ -1987,7 +2019,7 @@
       "typeVersion": 2,
       "position": [
         1050,
-        11600
+        13900
       ],
       "webhookId": "gm-recordatorio",
       "credentials": {
@@ -2011,7 +2043,7 @@
       "typeVersion": 2.6,
       "position": [
         1350,
-        11600
+        13900
       ],
       "credentials": {
         "postgres": {
@@ -2048,7 +2080,7 @@
       "typeVersion": 2,
       "position": [
         1650,
-        11600
+        13900
       ]
     },
     {
@@ -2066,7 +2098,7 @@
       "typeVersion": 1.2,
       "position": [
         1950,
-        11600
+        13900
       ],
       "webhookId": "tg-pago-urgente",
       "credentials": {
@@ -2084,7 +2116,7 @@
       "typeVersion": 1,
       "position": [
         1950,
-        11780
+        14080
       ]
     },
     {
@@ -2099,7 +2131,7 @@
       "typeVersion": 2,
       "position": [
         150,
-        3550
+        10450
       ],
       "webhookId": "p4-01"
     },
@@ -2113,7 +2145,7 @@
       "typeVersion": 2,
       "position": [
         450,
-        3550
+        10450
       ]
     },
     {
@@ -2130,7 +2162,7 @@
       "typeVersion": 2.6,
       "position": [
         750,
-        3550
+        10450
       ],
       "credentials": {
         "postgres": {
@@ -2153,7 +2185,7 @@
       "typeVersion": 2.6,
       "position": [
         1050,
-        3550
+        10450
       ],
       "credentials": {
         "postgres": {
@@ -2177,7 +2209,7 @@
       "typeVersion": 1.2,
       "position": [
         1350,
-        3550
+        10450
       ],
       "webhookId": "tg-cerrado",
       "credentials": {
@@ -2197,7 +2229,7 @@
       "typeVersion": 2,
       "position": [
         1650,
-        3550
+        10450
       ]
     },
     {
@@ -2215,7 +2247,7 @@
       "typeVersion": 2,
       "position": [
         1950,
-        3550
+        10450
       ],
       "webhookId": "gm-testimonio",
       "credentials": {
@@ -2257,7 +2289,7 @@
       "typeVersion": 2.6,
       "position": [
         2250,
-        3550
+        10450
       ],
       "credentials": {
         "postgres": {
@@ -2278,7 +2310,7 @@
       "typeVersion": 2.6,
       "position": [
         450,
-        9300
+        15050
       ],
       "credentials": {
         "postgres": {
@@ -2302,7 +2334,7 @@
       "typeVersion": 1.2,
       "position": [
         750,
-        9300
+        15050
       ],
       "webhookId": "tg-reporte",
       "credentials": {
@@ -2322,7 +2354,7 @@
       "typeVersion": 2,
       "position": [
         450,
-        12750
+        16200
       ]
     },
     {
@@ -2358,7 +2390,7 @@
       "typeVersion": 2.6,
       "position": [
         750,
-        12750
+        16200
       ],
       "credentials": {
         "postgres": {
@@ -2382,7 +2414,7 @@
       "typeVersion": 1.2,
       "position": [
         1050,
-        12750
+        16200
       ],
       "webhookId": "tg-error",
       "credentials": {
@@ -2407,7 +2439,7 @@
       "typeVersion": 2,
       "position": [
         150,
-        4700
+        2400
       ],
       "webhookId": "p3-00"
     },
@@ -2421,7 +2453,7 @@
       "typeVersion": 2,
       "position": [
         450,
-        4700
+        2400
       ]
     },
     {
@@ -2438,7 +2470,7 @@
       "typeVersion": 2.6,
       "position": [
         750,
-        4700
+        2400
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -2458,7 +2490,7 @@
       "typeVersion": 2,
       "position": [
         1050,
-        4700
+        2400
       ]
     },
     {
@@ -2473,7 +2505,7 @@
       "typeVersion": 1,
       "position": [
         1350,
-        4700
+        2400
       ]
     },
     {
@@ -2484,7 +2516,7 @@
       "typeVersion": 1,
       "position": [
         150,
-        12750
+        16200
       ]
     },
     {
@@ -2502,7 +2534,7 @@
       "typeVersion": 2,
       "position": [
         150,
-        5850
+        3550
       ],
       "webhookId": "lead-rechaza"
     },
@@ -2516,7 +2548,7 @@
       "typeVersion": 2,
       "position": [
         450,
-        5850
+        3550
       ]
     },
     {
@@ -2533,7 +2565,7 @@
       "typeVersion": 2.6,
       "position": [
         750,
-        5850
+        3550
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -2571,7 +2603,7 @@
       "typeVersion": 2,
       "position": [
         1050,
-        5850
+        3550
       ]
     },
     {
@@ -2588,7 +2620,7 @@
       "typeVersion": 1.2,
       "position": [
         1350,
-        5850
+        3550
       ],
       "webhookId": "f1a20005-0000-4005-8005-bb0000000005",
       "credentials": {
@@ -2612,7 +2644,7 @@
       "typeVersion": 1,
       "position": [
         1350,
-        6030
+        3730
       ]
     },
     {
@@ -2629,7 +2661,7 @@
       "typeVersion": 1,
       "position": [
         1350,
-        6390
+        4090
       ]
     },
     {
@@ -2647,7 +2679,7 @@
       "typeVersion": 2,
       "position": [
         150,
-        7000
+        4700
       ],
       "webhookId": "lead-modifica"
     },
@@ -2661,7 +2693,7 @@
       "typeVersion": 2,
       "position": [
         450,
-        7000
+        4700
       ]
     },
     {
@@ -2678,7 +2710,7 @@
       "typeVersion": 2.6,
       "position": [
         750,
-        7000
+        4700
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -2716,7 +2748,7 @@
       "typeVersion": 2,
       "position": [
         1050,
-        7000
+        4700
       ]
     },
     {
@@ -2745,7 +2777,7 @@
       "typeVersion": 2.6,
       "position": [
         1350,
-        7000
+        4700
       ],
       "credentials": {
         "postgres": {
@@ -2768,7 +2800,7 @@
       "typeVersion": 1.2,
       "position": [
         1350,
-        7180
+        4880
       ],
       "webhookId": "f1a20016-0000-4016-8016-bb0000000016",
       "credentials": {
@@ -2792,7 +2824,7 @@
       "typeVersion": 1,
       "position": [
         1350,
-        7360
+        5060
       ]
     },
     {
@@ -2809,7 +2841,7 @@
       "typeVersion": 1,
       "position": [
         1350,
-        7540
+        5240
       ]
     },
     {
@@ -2827,7 +2859,7 @@
       "typeVersion": 2,
       "position": [
         150,
-        8150
+        5850
       ],
       "webhookId": "trabajo-estado"
     },
@@ -2841,7 +2873,7 @@
       "typeVersion": 2,
       "position": [
         450,
-        8150
+        5850
       ]
     },
     {
@@ -2858,7 +2890,7 @@
       "typeVersion": 2.6,
       "position": [
         750,
-        8150
+        5850
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -2882,7 +2914,7 @@
       "typeVersion": 1,
       "position": [
         1050,
-        8150
+        5850
       ]
     },
     {
@@ -2913,7 +2945,7 @@
       "typeVersion": 2,
       "position": [
         1050,
-        8330
+        6030
       ]
     },
     {
@@ -2942,7 +2974,7 @@
       "typeVersion": 4,
       "position": [
         1350,
-        8150
+        5850
       ],
       "credentials": {
         "notionApi": {
@@ -2977,7 +3009,7 @@
       "typeVersion": 4,
       "position": [
         1350,
-        6210
+        3910
       ],
       "credentials": {
         "notionApi": {
@@ -3000,7 +3032,7 @@
       "typeVersion": 2.6,
       "position": [
         1350,
-        460
+        11960
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -3036,7 +3068,7 @@
       "typeVersion": 4,
       "position": [
         1650,
-        100
+        11600
       ],
       "credentials": {
         "notionApi": {
@@ -3059,8 +3091,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        2032,
-        3600
+        150,
+        7000
       ],
       "webhookId": "lead-cancelar"
     },
@@ -3073,8 +3105,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2256,
-        3600
+        450,
+        7000
       ]
     },
     {
@@ -3090,8 +3122,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2480,
-        3600
+        750,
+        7000
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -3128,8 +3160,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        2704,
-        3600
+        1050,
+        7000
       ]
     },
     {
@@ -3145,8 +3177,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        2928,
-        3500
+        1350,
+        7180
       ],
       "webhookId": "tg-cancel",
       "credentials": {
@@ -3181,8 +3213,8 @@
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
-        2928,
-        3620
+        1350,
+        7360
       ],
       "credentials": {
         "notionApi": {
@@ -3204,8 +3236,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        2928,
-        3740
+        1350,
+        7000
       ]
     },
     {
@@ -3221,8 +3253,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        2704,
-        3860
+        1350,
+        7540
       ]
     },
     {
@@ -3239,8 +3271,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        2032,
-        4200
+        150,
+        8150
       ],
       "webhookId": "cambio-aceptar"
     },
@@ -3253,8 +3285,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2256,
-        4200
+        450,
+        8150
       ]
     },
     {
@@ -3270,8 +3302,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2480,
-        4200
+        750,
+        8150
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -3308,8 +3340,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        2704,
-        4200
+        1050,
+        8150
       ]
     },
     {
@@ -3321,8 +3353,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2928,
-        4120
+        1350,
+        8330
       ]
     },
     {
@@ -3339,8 +3371,8 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2,
       "position": [
-        3152,
-        4120
+        1650,
+        8150
       ],
       "webhookId": "f1a20056-0000-4056-8056-ff0000000056",
       "credentials": {
@@ -3363,8 +3395,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        2928,
-        4280
+        1350,
+        8510
       ],
       "webhookId": "tg-camb-ok",
       "credentials": {
@@ -3387,8 +3419,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        2928,
-        4360
+        1350,
+        8150
       ]
     },
     {
@@ -3404,8 +3436,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        2704,
-        4460
+        1350,
+        8690
       ]
     },
     {
@@ -3422,8 +3454,8 @@
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
-        2032,
-        4700
+        150,
+        9300
       ],
       "webhookId": "cambio-rechazar"
     },
@@ -3436,8 +3468,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2256,
-        4700
+        450,
+        9300
       ]
     },
     {
@@ -3453,8 +3485,8 @@
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
-        2480,
-        4700
+        750,
+        9300
       ],
       "alwaysOutputData": true,
       "credentials": {
@@ -3491,8 +3523,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
-        2704,
-        4700
+        1050,
+        9300
       ]
     },
     {
@@ -3504,8 +3536,8 @@
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        2928,
-        4620
+        1350,
+        9480
       ]
     },
     {
@@ -3522,8 +3554,8 @@
       "type": "n8n-nodes-base.gmail",
       "typeVersion": 2,
       "position": [
-        3152,
-        4620
+        1650,
+        9300
       ],
       "webhookId": "f1a20066-0000-4066-8066-ff0000000066",
       "credentials": {
@@ -3546,8 +3578,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        2928,
-        4780
+        1350,
+        9300
       ]
     },
     {
@@ -3563,8 +3595,8 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
-        2704,
-        4880
+        1350,
+        9660
       ]
     }
   ],
