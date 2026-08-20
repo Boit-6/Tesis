@@ -7,10 +7,10 @@ const N8N_BASE = process.env.NEXT_PUBLIC_N8N_BASE;
 const ESTADOS = ["PENDIENTE", "EN_PROGRESO", "EN_REVISION", "ENTREGADO"] as const;
 
 const COLOR: Record<string, string> = {
-  PENDIENTE: "text-neutral-400 border-neutral-700",
-  EN_PROGRESO: "text-amber-400 border-amber-700",
-  EN_REVISION: "text-sky-400 border-sky-800",
-  ENTREGADO: "text-emerald-400 border-emerald-800",
+  PENDIENTE: "text-muted border-rule",
+  EN_PROGRESO: "text-ochre border-ochre/40",
+  EN_REVISION: "text-[#2f5e86] border-[#afc6da]",
+  ENTREGADO: "text-moss border-[#b4cca5]",
 };
 
 // Selector de estado del TRABAJO. Optimista: aplica el cambio en pantalla y lo
@@ -30,6 +30,7 @@ export default function TrabajoEstadoSelect({
     if (nuevo === estado || !N8N_BASE) return;
 
     const previo = estado;
+
     setEstado(nuevo);
     setGuardando(true);
     setError(false);
@@ -53,15 +54,15 @@ export default function TrabajoEstadoSelect({
 
   return (
     <select
+      className={`cursor-pointer border bg-card px-2.5 py-1.5 text-[11px] tracking-[0.08em] uppercase outline-none transition disabled:opacity-40 ${
+        error ? "border-brick text-brick" : (COLOR[estado] ?? "text-ink-soft border-rule")
+      }`}
+      disabled={guardando}
       value={estado}
       onChange={(e) => cambiar(e.target.value)}
-      disabled={guardando}
-      className={`cursor-pointer border bg-transparent px-2 py-1 font-mono text-[10px] uppercase tracking-[0.1em] outline-none transition disabled:opacity-40 ${
-        error ? "border-red-500 text-red-400" : COLOR[estado] ?? "text-neutral-300 border-neutral-700"
-      }`}
     >
       {ESTADOS.map((s) => (
-        <option key={s} value={s} className="bg-[#0d0d0d] text-neutral-200">
+        <option key={s} className="bg-card text-ink" value={s}>
           {s.replace(/_/g, " ")}
         </option>
       ))}

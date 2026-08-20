@@ -1,8 +1,32 @@
 @import 'tailwindcss';
 
+@theme {
+  /* Papel y tinta */
+  --color-paper: #f7f4ee;
+  --color-card: #ffffff;
+  --color-ink: #191713;
+  --color-ink-soft: #4f4a40;
+  --color-muted: #6e675b;
+  --color-faint: #8a8172;
+  --color-mist: #a79e8c;
+
+  /* Filetes */
+  --color-rule: #dcd5c7;
+  --color-rule-soft: #efe9de;
+
+  /* Acentos */
+  --color-ochre: #8f5f22;
+  --color-ochre-deep: #6b4514;
+  --color-moss: #4f7a3a;
+  --color-brick: #9a3b2a;
+
+  --font-sans: var(--font-instrument-sans), 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --font-serif: var(--font-instrument-serif), Georgia, 'Times New Roman', serif;
+}
+
 :root {
-  background-color: #0d0d0d;
-  color: #e8e4dc;
+  background-color: #f7f4ee;
+  color: #191713;
 }
 
 * {
@@ -10,6 +34,6 @@
 }
 
 ::selection {
-  background-color: #f59e0b;
-  color: #0d0d0d;
+  background-color: #8f5f22;
+  color: #f7f4ee;
 }

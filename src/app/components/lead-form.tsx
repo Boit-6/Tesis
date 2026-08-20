@@ -15,9 +15,9 @@ const SERVICIOS = [
 ];
 
 const URGENCIAS = [
-  {value: "baja", label: "Baja — puedo esperar"},
-  {value: "media", label: "Media — en las próximas semanas"},
-  {value: "alta", label: "Alta — lo antes posible"},
+  {value: "baja", label: "Baja", detalle: "puedo esperar"},
+  {value: "media", label: "Media", detalle: "próximas semanas"},
+  {value: "alta", label: "Alta", detalle: "lo antes posible"},
 ];
 
 interface FormData {
@@ -45,53 +45,30 @@ const PRESUPUESTO_MAX = 5000;
 const PRESUPUESTO_STEP = 100;
 
 function validate(data: FormData): string | null {
-  if (data.nombre.trim().length < 2)
-    return "El nombre debe tener al menos 2 caracteres.";
+  if (data.nombre.trim().length < 2) return "El nombre debe tener al menos 2 caracteres.";
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(data.email.trim()))
-    return "El email no tiene un formato válido.";
+
+  if (!emailRegex.test(data.email.trim())) return "El email no tiene un formato válido.";
   if (!data.servicio) return "Debés seleccionar un servicio.";
   if (data.descripcion.trim().length < 20)
     return "La descripción debe tener al menos 20 caracteres.";
+
   return null;
 }
 
 const inputClass =
-  "w-full bg-transparent border-b border-neutral-600 pb-3 pt-1 text-[15px] text-neutral-100 placeholder-neutral-600 outline-none transition duration-200 ease focus:border-amber-400 focus:placeholder-neutral-500";
+  "w-full border-b border-rule bg-transparent pt-1 pb-3 text-[15px] text-ink placeholder-mist outline-none transition duration-200 ease hover:border-mist focus:border-ochre";
 
-const labelClass =
-  "block font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-500 mb-2";
+const labelClass = "mb-2 block text-[10px] tracking-[0.16em] text-faint uppercase";
+
+const dotClass = "size-3.5 shrink-0 rounded-full bg-card transition duration-200";
 
 function SectionHeader({num, title}: {num: string; title: string}) {
   return (
-    <div className="mb-8 flex items-center gap-4">
-      <span className="font-mono text-[11px] text-neutral-500">{num}</span>
-      <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-400">
-        {title}
-      </span>
-      <div className="h-px flex-1 bg-neutral-700" />
-    </div>
-  );
-}
-
-function SelectWrapper({children}: {children: React.ReactNode}) {
-  return (
-    <div className="relative">
-      {children}
-      <div className="pointer-events-none absolute right-0 top-1 text-neutral-700">
-        <svg
-          fill="none"
-          height={14}
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={1.5}
-          viewBox="0 0 24 24"
-          width={14}
-        >
-          <path d="M19 9l-7 7-7-7" />
-        </svg>
-      </div>
+    <div className="mb-6 flex items-baseline gap-3">
+      <span className="font-serif text-[17px] text-ochre">{num}</span>
+      <span className="text-[10px] tracking-[0.2em] text-ink-soft uppercase">{title}</span>
+      <div className="h-px flex-1 bg-rule-soft" />
     </div>
   );
 }
@@ -103,16 +80,15 @@ export default function LeadForm() {
   const [success, setSuccess] = useState(false);
 
   const sliderPercent =
-    ((formData.presupuesto - PRESUPUESTO_MIN) /
-      (PRESUPUESTO_MAX - PRESUPUESTO_MIN)) *
-    100;
+    ((formData.presupuesto - PRESUPUESTO_MIN) / (PRESUPUESTO_MAX - PRESUPUESTO_MIN)) * 100;
+
+  const descripcionLength = formData.descripcion.trim().length;
 
   function handleChange(
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    >,
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   ) {
     const {name, value, type} = e.target;
+
     setFormData((prev) => ({
       ...prev,
       [name]: type === "range" ? Number(value) : value,
@@ -122,13 +98,16 @@ export default function LeadForm() {
   async function handleSubmit() {
     setError(null);
     const validationError = validate(formData);
+
     if (validationError) {
       setError(validationError);
+
       return;
     }
 
     if (!N8N_BASE) {
       setError("Falta la variable NEXT_PUBLIC_N8N_BASE.");
+
       return;
     }
 
@@ -147,8 +126,7 @@ export default function LeadForm() {
         }),
       });
 
-      if (!response.ok)
-        throw new Error(`Error del servidor: ${response.status}`);
+      if (!response.ok) throw new Error(`Error del servidor: ${response.status}`);
 
       setSuccess(true);
     } catch (err) {
@@ -165,6 +143,7 @@ export default function LeadForm() {
   function handleKeyDown(e: KeyboardEvent<HTMLFormElement>) {
     if (e.key !== "Enter") return;
     const target = e.target as HTMLElement;
+
     if (target.tagName === "TEXTAREA") return;
     e.preventDefault();
     handleSubmit();
@@ -172,17 +151,24 @@ export default function LeadForm() {
 
   if (success) {
     return (
-      <div className="flex flex-col items-start gap-6 py-16">
-        <span className="font-mono text-4xl font-black text-amber-400">✓</span>
-        <div>
-          <h2 className="text-3xl font-black tracking-tight text-neutral-100">
-            ¡Gracias!
-          </h2>
-          <p className="mt-3 max-w-xs text-sm leading-relaxed text-neutral-500">
-            Hemos recibido tus datos correctamente. Nos contactaremos muy
-            pronto.
-          </p>
-        </div>
+      <div className="flex flex-col items-start gap-5 border border-rule-soft bg-card px-8 py-16 shadow-[0_1px_2px_rgba(25,23,19,0.04),0_12px_32px_-18px_rgba(25,23,19,0.18)] sm:px-11">
+        <svg
+          fill="none"
+          height={38}
+          stroke="#8f5f22"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={1.3}
+          viewBox="0 0 24 24"
+          width={38}
+        >
+          <circle cx="12" cy="12" r="9" />
+          <path d="M8 12.4l2.6 2.6L16 9.6" />
+        </svg>
+        <h2 className="font-serif text-[38px] leading-none tracking-tight text-ink">¡Gracias!</h2>
+        <p className="max-w-xs text-[14.5px] leading-relaxed text-muted">
+          Hemos recibido tus datos correctamente. Nos contactaremos muy pronto.
+        </p>
       </div>
     );
   }
@@ -190,192 +176,215 @@ export default function LeadForm() {
   return (
     <form
       noValidate
+      className="border border-rule-soft bg-card shadow-[0_1px_2px_rgba(25,23,19,0.04),0_12px_32px_-18px_rgba(25,23,19,0.18)]"
       onKeyDown={handleKeyDown}
       onSubmit={(e) => {
         e.preventDefault();
         handleSubmit();
       }}
-      className="flex flex-col gap-12"
     >
       {error && (
         <div
+          className="border-b border-rule-soft border-l-2 border-l-brick bg-brick/5 px-8 py-4 text-[13px] text-brick sm:px-10"
           role="alert"
-          className="border-l-2 border-red-500 pl-4 font-mono text-[12px] text-red-400"
         >
           {error}
         </div>
       )}
 
-      {/* 01 — Contacto */}
-      <section>
-        <SectionHeader num="01" title="Contacto" />
-        <div className="grid gap-8 sm:grid-cols-2">
+      {/* I — Contacto */}
+      <section className="border-b border-rule-soft px-8 py-8 sm:px-10">
+        <SectionHeader num="I" title="Contacto" />
+        <div className="grid gap-6 sm:grid-cols-2">
           <div>
-            <label htmlFor="nombre" className={labelClass}>
-              Nombre <span className="text-amber-600">*</span>
+            <label className={labelClass} htmlFor="nombre">
+              Nombre <span className="text-ochre">*</span>
             </label>
             <input
+              autoComplete="name"
+              className={inputClass}
               id="nombre"
               name="nombre"
-              type="text"
-              autoComplete="name"
               placeholder="María González"
+              type="text"
               value={formData.nombre}
               onChange={handleChange}
-              className={inputClass}
             />
           </div>
 
           <div>
-            <label htmlFor="email" className={labelClass}>
-              Email <span className="text-amber-600">*</span>
+            <label className={labelClass} htmlFor="email">
+              Email <span className="text-ochre">*</span>
             </label>
             <input
+              autoComplete="email"
+              className={inputClass}
               id="email"
               name="email"
-              type="email"
-              autoComplete="email"
               placeholder="tu@email.com"
+              type="email"
               value={formData.email}
               onChange={handleChange}
-              className={inputClass}
             />
           </div>
 
           <div className="sm:col-span-2 sm:max-w-xs">
-            <label htmlFor="telefono" className={labelClass}>
+            <label className={labelClass} htmlFor="telefono">
               Teléfono
             </label>
             <input
+              autoComplete="tel"
+              className={inputClass}
               id="telefono"
               name="telefono"
-              type="tel"
-              autoComplete="tel"
               placeholder="+54 11 1234-5678"
+              type="tel"
               value={formData.telefono}
               onChange={handleChange}
-              className={inputClass}
             />
           </div>
         </div>
       </section>
 
-      {/* 02 — Proyecto */}
-      <section>
-        <SectionHeader num="02" title="Proyecto" />
-        <div className="grid gap-8 sm:grid-cols-2">
-          <div>
-            <label htmlFor="servicio" className={labelClass}>
-              Servicio <span className="text-amber-600">*</span>
-            </label>
-            <SelectWrapper>
-              <select
-                id="servicio"
-                name="servicio"
-                value={formData.servicio}
-                onChange={handleChange}
-                className={`${inputClass} cursor-pointer appearance-none pr-6`}
-              >
-                <option value="" className="bg-[#0d0d0d]">
-                  Seleccioná…
-                </option>
-                {SERVICIOS.map((s) => (
-                  <option key={s} value={s} className="bg-[#0d0d0d]">
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </SelectWrapper>
-          </div>
+      {/* II — Proyecto */}
+      <section className="border-b border-rule-soft px-8 py-8 sm:px-10">
+        <SectionHeader num="II" title="Proyecto" />
 
-          <div>
-            <label htmlFor="urgencia" className={labelClass}>
-              Urgencia
-            </label>
-            <SelectWrapper>
-              <select
-                id="urgencia"
-                name="urgencia"
-                value={formData.urgencia}
-                onChange={handleChange}
-                className={`${inputClass} cursor-pointer appearance-none pr-6`}
-              >
-                <option value="" className="bg-[#0d0d0d]">
-                  Seleccioná…
-                </option>
-                {URGENCIAS.map((u) => (
-                  <option key={u.value} value={u.value} className="bg-[#0d0d0d]">
-                    {u.label}
-                  </option>
-                ))}
-              </select>
-            </SelectWrapper>
+        <fieldset className="mb-7">
+          <legend className={labelClass}>
+            Servicio <span className="text-ochre">*</span>
+          </legend>
+          <div className="grid gap-x-6 sm:grid-cols-2">
+            {SERVICIOS.map((servicio) => {
+              const activo = formData.servicio === servicio;
+
+              return (
+                <label
+                  key={servicio}
+                  className={`flex cursor-pointer items-center gap-2.5 py-2.5 text-[14px] transition duration-200 hover:text-ochre ${
+                    activo ? "text-ink" : "text-ink-soft"
+                  }`}
+                >
+                  <input
+                    checked={activo}
+                    className="peer sr-only"
+                    name="servicio"
+                    type="radio"
+                    value={servicio}
+                    onChange={handleChange}
+                  />
+                  <span
+                    className={`${dotClass} peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ochre ${
+                      activo ? "border-4 border-ochre" : "border border-rule"
+                    }`}
+                  />
+                  <span>{servicio}</span>
+                </label>
+              );
+            })}
           </div>
-        </div>
+        </fieldset>
+
+        <fieldset>
+          <legend className={labelClass}>Urgencia</legend>
+          <div className="grid gap-x-6 sm:grid-cols-2">
+            {URGENCIAS.map((urgencia) => {
+              const activo = formData.urgencia === urgencia.value;
+
+              return (
+                <label
+                  key={urgencia.value}
+                  className={`flex cursor-pointer items-center gap-2.5 py-2.5 text-[14px] transition duration-200 hover:text-ochre ${
+                    activo ? "text-ink" : "text-ink-soft"
+                  }`}
+                >
+                  <input
+                    checked={activo}
+                    className="peer sr-only"
+                    name="urgencia"
+                    type="radio"
+                    value={urgencia.value}
+                    onChange={handleChange}
+                  />
+                  <span
+                    className={`${dotClass} peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ochre ${
+                      activo ? "border-4 border-ochre" : "border border-rule"
+                    }`}
+                  />
+                  <span>
+                    {urgencia.label} <span className="text-[12.5px] text-mist">— {urgencia.detalle}</span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </fieldset>
       </section>
 
-      {/* 03 — Presupuesto */}
-      <section>
-        <SectionHeader num="03" title="Presupuesto" />
-        <div className="flex flex-col gap-5">
-          <div className="flex items-baseline justify-between">
-            <label htmlFor="presupuesto" className={labelClass}>
-              Estimado en USD
-            </label>
-            <span className="font-mono text-xl font-bold text-amber-400">
-              ${formData.presupuesto.toLocaleString("es-AR")}
-            </span>
-          </div>
-          <input
-            id="presupuesto"
-            name="presupuesto"
-            type="range"
-            min={PRESUPUESTO_MIN}
-            max={PRESUPUESTO_MAX}
-            step={PRESUPUESTO_STEP}
-            value={formData.presupuesto}
-            onChange={handleChange}
-            style={{
-              background: `linear-gradient(to right, #f59e0b ${sliderPercent}%, #404040 ${sliderPercent}%)`,
-            }}
-            className="h-px w-full cursor-pointer appearance-none rounded-none outline-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-0 [&::-webkit-slider-thumb]:bg-amber-400 [&::-webkit-slider-thumb]:shadow-none [&::-webkit-slider-thumb]:transition [&::-webkit-slider-thumb]:duration-200 [&::-webkit-slider-thumb]:ease-[cubic-bezier(.25,.46,.45,.94)]"
-          />
-          <div className="flex justify-between font-mono text-[11px] text-neutral-500">
-            <span>${PRESUPUESTO_MIN.toLocaleString("es-AR")}</span>
-            <span>${PRESUPUESTO_MAX.toLocaleString("es-AR")}</span>
-          </div>
-        </div>
-      </section>
-
-      {/* 04 — Descripción */}
-      <section>
-        <SectionHeader num="04" title="Descripción" />
-        <div>
-          <label htmlFor="descripcion" className={labelClass}>
-            Contanos tu proyecto <span className="text-amber-600">*</span>
+      {/* III — Presupuesto */}
+      <section className="border-b border-rule-soft px-8 py-8 sm:px-10">
+        <SectionHeader num="III" title="Presupuesto" />
+        <div className="flex items-baseline justify-between">
+          <label className={labelClass} htmlFor="presupuesto">
+            Estimado en USD
           </label>
-          <textarea
-            id="descripcion"
-            name="descripcion"
-            rows={5}
-            placeholder="Describí brevemente en qué consiste tu proyecto…"
-            value={formData.descripcion}
-            onChange={handleChange}
-            className="w-full resize-y bg-transparent border-b border-neutral-600 pb-3 pt-1 text-[15px] text-neutral-100 placeholder-neutral-600 outline-none transition duration-200 ease focus:border-amber-400"
-          />
-          <p className="mt-2 font-mono text-[11px] text-neutral-500">
-            {formData.descripcion.trim().length} / 20 mín.
-          </p>
+          <span className="font-serif text-[40px] leading-none tracking-tight text-ink">
+            ${formData.presupuesto.toLocaleString("es-AR")}
+          </span>
+        </div>
+        <input
+          className="mt-3 h-px w-full cursor-pointer appearance-none rounded-none outline-none [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:border-0 [&::-webkit-slider-thumb]:bg-ochre [&::-webkit-slider-thumb]:transition [&::-webkit-slider-thumb]:duration-200 [&::-webkit-slider-thumb]:ease-[cubic-bezier(.25,.46,.45,.94)]"
+          id="presupuesto"
+          max={PRESUPUESTO_MAX}
+          min={PRESUPUESTO_MIN}
+          name="presupuesto"
+          step={PRESUPUESTO_STEP}
+          style={{
+            background: `linear-gradient(to right, #8f5f22 ${sliderPercent}%, #dcd5c7 ${sliderPercent}%)`,
+          }}
+          type="range"
+          value={formData.presupuesto}
+          onChange={handleChange}
+        />
+        <div className="mt-4 flex justify-between text-[11px] text-mist">
+          <span>${PRESUPUESTO_MIN.toLocaleString("es-AR")}</span>
+          <span>${PRESUPUESTO_MAX.toLocaleString("es-AR")}</span>
         </div>
       </section>
 
-      <button
-        type="submit"
-        disabled={loading}
-        className="w-full bg-amber-400 py-4 font-mono text-[13px] uppercase tracking-[0.2em] font-bold text-neutral-950 transition duration-200 ease hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
-      >
-        {loading ? "Enviando..." : "Enviar consulta →"}
-      </button>
+      {/* IV — Descripción */}
+      <section className="px-8 py-8 sm:px-10">
+        <SectionHeader num="IV" title="Descripción" />
+        <label className={labelClass} htmlFor="descripcion">
+          Contanos tu proyecto <span className="text-ochre">*</span>
+        </label>
+        <textarea
+          className={`${inputClass} resize-y leading-relaxed`}
+          id="descripcion"
+          name="descripcion"
+          placeholder="Describí brevemente en qué consiste tu proyecto…"
+          rows={4}
+          value={formData.descripcion}
+          onChange={handleChange}
+        />
+        <p
+          className={`mt-2 text-right font-serif text-[14px] italic ${
+            descripcionLength >= 20 ? "text-moss" : "text-mist"
+          }`}
+        >
+          {descripcionLength} / 20 mín.
+        </p>
+      </section>
+
+      <div className="px-8 pb-9 sm:px-10">
+        <button
+          className="ease w-full bg-ink py-5 text-[11px] font-medium tracking-[0.2em] text-paper uppercase transition duration-200 hover:bg-ochre disabled:cursor-not-allowed disabled:opacity-40"
+          disabled={loading}
+          type="submit"
+        >
+          {loading ? "Enviando..." : "Enviar consulta"}
+        </button>
+      </div>
     </form>
   );
 }
