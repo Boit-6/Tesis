@@ -1,6 +1,6 @@
 "use client";
 
-import {useEffect, useState} from "react";
+import {type ReactNode, useEffect, useState} from "react";
 
 const N8N_BASE = process.env.NEXT_PUBLIC_N8N_BASE;
 const HEADERS = {
@@ -35,10 +35,36 @@ interface ApiResponse {
 }
 
 interface StatusContent {
-  symbol: string;
+  icon: ReactNode;
   accent: string;
   title: string;
   message: string;
+}
+
+const cardClass =
+  "flex flex-col items-start gap-5 border border-rule-soft bg-card px-8 py-12 shadow-[0_1px_2px_rgba(25,23,19,0.04),0_12px_32px_-18px_rgba(25,23,19,0.18)] sm:px-11";
+
+const primaryButtonClass =
+  "ease bg-ink px-8 py-4 text-[11px] font-medium tracking-[0.2em] text-paper uppercase transition duration-200 hover:bg-ochre disabled:cursor-not-allowed disabled:opacity-40";
+
+const ghostButtonClass =
+  "ease border border-rule px-4 py-3.5 text-[11px] tracking-[0.14em] text-muted uppercase transition duration-200 hover:border-ochre hover:text-ochre disabled:cursor-not-allowed disabled:opacity-40";
+
+function Icono({children}: {children: ReactNode}) {
+  return (
+    <svg
+      fill="none"
+      height={36}
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth={1.3}
+      viewBox="0 0 24 24"
+      width={36}
+    >
+      {children}
+    </svg>
+  );
 }
 
 function isApiStatus(value: unknown): value is ApiStatus {
@@ -52,68 +78,95 @@ function buildContent(
   switch (estado) {
     case "aceptado":
       return {
-        symbol: "✓",
-        accent: "text-amber-400",
+        icon: (
+          <Icono>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M8 12.4l2.6 2.6L16 9.6" />
+          </Icono>
+        ),
+        accent: "text-ochre",
         title: "¡Propuesta aceptada!",
         message: mensaje ?? "En breve te llega la factura por email.",
       };
     case "rechazado":
       return {
-        symbol: "✕",
-        accent: "text-neutral-400",
+        icon: (
+          <Icono>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M9 9l6 6M15 9l-6 6" />
+          </Icono>
+        ),
+        accent: "text-muted",
         title: "Propuesta rechazada",
         message: mensaje ?? "Gracias por avisarnos. Quedamos a disposición.",
       };
     case "modificado":
       return {
-        symbol: "✎",
-        accent: "text-amber-400",
+        icon: (
+          <Icono>
+            <path d="M4 20h4l10.5-10.5a2 2 0 000-2.8l-1.2-1.2a2 2 0 00-2.8 0L4 16v4z" />
+            <path d="M13.5 6.5l4 4" />
+          </Icono>
+        ),
+        accent: "text-ochre",
         title: "Pedido recibido",
         message: mensaje ?? "Recibimos tu pedido. Te contactamos para ajustar la propuesta.",
       };
     case "ya_procesado":
       return {
-        symbol: "↺",
-        accent: "text-neutral-400",
+        icon: (
+          <Icono>
+            <path d="M4 12a8 8 0 108-8" />
+            <path d="M4 4v4h4" />
+          </Icono>
+        ),
+        accent: "text-muted",
         title: "Enlace ya usado",
         message: mensaje ?? "Este enlace ya fue usado. Si tenés dudas, escribinos.",
       };
     case "invalido":
       return {
-        symbol: "✕",
-        accent: "text-red-400",
+        icon: (
+          <Icono>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M9 9l6 6M15 9l-6 6" />
+          </Icono>
+        ),
+        accent: "text-brick",
         title: "Enlace no válido",
         message: mensaje ?? "Enlace no válido o vencido.",
       };
     case "error":
       return {
-        symbol: "!",
-        accent: "text-red-400",
+        icon: (
+          <Icono>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7.5v5.5" />
+            <path d="M12 16.4v.2" />
+          </Icono>
+        ),
+        accent: "text-brick",
         title: "No pudimos procesar tu solicitud",
         message: "Reintentá en un momento.",
       };
   }
 }
 
-function StatusView({accent, symbol, title, message}: StatusContent) {
+function StatusView({accent, icon, title, message}: StatusContent) {
   return (
-    <div className="flex flex-col items-start gap-6 py-16">
-      <span className={`font-mono text-4xl font-black ${accent}`}>{symbol}</span>
-      <div>
-        <h2 className="text-3xl font-black tracking-tight text-neutral-100">{title}</h2>
-        <p className="mt-3 max-w-xs text-sm leading-relaxed text-neutral-500">{message}</p>
-      </div>
+    <div className={cardClass}>
+      <span className={accent}>{icon}</span>
+      <h2 className="text-ink font-serif text-[32px] leading-none tracking-tight">{title}</h2>
+      <p className="text-muted max-w-sm text-[14.5px] leading-relaxed">{message}</p>
     </div>
   );
 }
 
 function LoadingView() {
   return (
-    <div className="flex flex-col items-start gap-6 py-16">
-      <span className="font-mono text-[11px] tracking-[0.2em] text-neutral-500 uppercase">
-        Cargando propuesta…
-      </span>
-      <div className="h-px w-24 animate-pulse bg-amber-400" />
+    <div className={cardClass}>
+      <span className="text-faint text-[10px] tracking-[0.2em] uppercase">Cargando propuesta…</span>
+      <div className="bg-ochre h-px w-24 animate-pulse" />
     </div>
   );
 }
@@ -134,41 +187,38 @@ function ConfirmarView({
   const servicio = lead?.servicio ? lead.servicio.replace(/_/g, " ") : "tu servicio";
 
   return (
-    <div className="flex flex-col items-start gap-6 py-16">
-      <span className="font-mono text-[11px] tracking-[0.2em] text-amber-500 uppercase">
+    <div className={cardClass}>
+      <span className="text-ochre text-[10px] tracking-[0.2em] uppercase">
         Confirmá tu decisión
       </span>
-      <div>
-        <h2 className="text-3xl font-black tracking-tight text-neutral-100">
-          {lead?.nombre ? `Hola, ${lead.nombre}.` : "Hola."}
-        </h2>
-        <p className="mt-3 max-w-sm text-sm leading-relaxed text-neutral-500">
-          Te enviamos la propuesta de{" "}
-          <span className="text-neutral-300 capitalize">{servicio}</span>
-          {lead?.presupuesto != null ? (
-            <>
-              {" "}
-              por{" "}
-              <span className="font-mono text-amber-400">
-                ${lead.presupuesto.toLocaleString("es-AR")} USD
-              </span>
-            </>
-          ) : null}
-          . ¿Cómo querés seguir?
-        </p>
-      </div>
+      <h2 className="text-ink font-serif text-[32px] leading-none tracking-tight">
+        {lead?.nombre ? `Hola, ${lead.nombre}.` : "Hola."}
+      </h2>
+      <p className="text-muted max-w-sm text-[14.5px] leading-relaxed">
+        Te enviamos la propuesta de <span className="text-ink capitalize">{servicio}</span>
+        {lead?.presupuesto != null ? (
+          <>
+            {" "}
+            por{" "}
+            <span className="text-ochre font-serif text-[19px]">
+              ${lead.presupuesto.toLocaleString("es-AR")} USD
+            </span>
+          </>
+        ) : null}
+        . ¿Cómo querés seguir?
+      </p>
       <div className="flex w-full max-w-sm flex-col gap-3">
         <button
-          className="ease bg-amber-400 px-8 py-4 font-mono text-[13px] font-bold tracking-[0.2em] text-neutral-950 uppercase transition duration-200 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+          className={primaryButtonClass}
           disabled={enviando}
           type="button"
           onClick={onAceptar}
         >
-          {enviando ? "Procesando…" : "Aceptar propuesta →"}
+          {enviando ? "Procesando…" : "Aceptar propuesta"}
         </button>
         <div className="flex gap-3">
           <button
-            className="ease flex-1 border border-neutral-600 px-4 py-3 font-mono text-[12px] tracking-[0.15em] text-neutral-300 uppercase transition duration-200 hover:border-amber-400 hover:text-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
+            className={`${ghostButtonClass} flex-1`}
             disabled={enviando}
             type="button"
             onClick={onPedirCambios}
@@ -176,7 +226,7 @@ function ConfirmarView({
             Pedir cambios
           </button>
           <button
-            className="ease flex-1 px-4 py-3 font-mono text-[12px] tracking-[0.15em] text-neutral-600 uppercase transition duration-200 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-40"
+            className="ease text-mist hover:text-brick flex-1 px-4 py-3.5 text-[11px] tracking-[0.14em] uppercase transition duration-200 disabled:cursor-not-allowed disabled:opacity-40"
             disabled={enviando}
             type="button"
             onClick={onRechazar}
@@ -203,16 +253,14 @@ function PedirCambiosView({
   onVolver: () => void;
 }) {
   return (
-    <div className="flex flex-col items-start gap-6 py-16">
-      <span className="font-mono text-[11px] tracking-[0.2em] text-amber-500 uppercase">
-        Pedir cambios
-      </span>
+    <div className={cardClass}>
+      <span className="text-ochre text-[10px] tracking-[0.2em] uppercase">Pedir cambios</span>
       <div className="w-full max-w-sm">
-        <p className="mb-4 text-sm leading-relaxed text-neutral-500">
+        <p className="text-muted mb-4 text-[14.5px] leading-relaxed">
           Contanos qué te gustaría ajustar y te contactamos para revisarlo.
         </p>
         <textarea
-          className="ease w-full resize-y border-b border-neutral-600 bg-transparent pt-1 pb-3 text-[15px] text-neutral-100 placeholder-neutral-600 transition duration-200 outline-none focus:border-amber-400"
+          className="ease border-rule text-ink placeholder-mist hover:border-mist focus:border-ochre w-full resize-y border-b bg-transparent pt-1 pb-3 text-[15px] leading-relaxed transition duration-200 outline-none"
           placeholder="Ej: me gustaría ajustar el precio, sumar SEO y cambiar los colores…"
           rows={5}
           value={mensaje}
@@ -220,15 +268,15 @@ function PedirCambiosView({
         />
         <div className="mt-6 flex gap-3">
           <button
-            className="ease bg-amber-400 px-6 py-3 font-mono text-[12px] font-bold tracking-[0.2em] text-neutral-950 uppercase transition duration-200 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+            className="ease bg-ink text-paper hover:bg-ochre px-6 py-3.5 text-[11px] font-medium tracking-[0.18em] uppercase transition duration-200 disabled:cursor-not-allowed disabled:opacity-40"
             disabled={enviando || mensaje.trim().length < 5}
             type="button"
             onClick={onEnviar}
           >
-            {enviando ? "Enviando…" : "Enviar pedido →"}
+            {enviando ? "Enviando…" : "Enviar pedido"}
           </button>
           <button
-            className="ease px-4 py-3 font-mono text-[12px] tracking-[0.15em] text-neutral-600 uppercase transition duration-200 hover:text-neutral-300 disabled:opacity-40"
+            className="ease text-mist hover:text-ink px-4 py-3.5 text-[11px] tracking-[0.14em] uppercase transition duration-200 disabled:opacity-40"
             disabled={enviando}
             type="button"
             onClick={onVolver}

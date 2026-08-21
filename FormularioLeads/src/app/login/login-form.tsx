@@ -8,9 +8,9 @@ import {createClient} from "@/lib/supabase/client";
 import {translateAuthError} from "@/lib/supabase/auth-errors";
 
 const inputClass =
-  "w-full bg-transparent border-b border-neutral-600 pb-3 pt-1 text-[15px] text-neutral-100 placeholder-neutral-600 outline-none transition duration-200 ease focus:border-amber-400 focus:placeholder-neutral-500";
+  "w-full border-b border-rule bg-transparent pt-1 pb-3 text-[15px] text-ink placeholder-mist outline-none transition duration-200 ease hover:border-mist focus:border-ochre";
 
-const labelClass = "block font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-500 mb-2";
+const labelClass = "mb-2 block text-[10px] tracking-[0.16em] text-faint uppercase";
 
 export default function LoginForm() {
   const router = useRouter();
@@ -55,7 +55,7 @@ export default function LoginForm() {
     <form className="flex flex-col gap-8" onSubmit={handleSubmit}>
       {error && (
         <div
-          className="border-l-2 border-red-500 pl-4 font-mono text-[12px] text-red-400"
+          className="border-brick bg-brick/5 text-brick border-l-2 px-5 py-3.5 text-[13px]"
           role="alert"
         >
           {error}
@@ -97,16 +97,16 @@ export default function LoginForm() {
       </div>
 
       <button
-        className="ease w-full bg-amber-400 py-4 font-mono text-[13px] font-bold tracking-[0.2em] text-neutral-950 uppercase transition duration-200 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+        className="ease bg-ink text-paper hover:bg-ochre w-full py-4.5 text-[11px] font-medium tracking-[0.2em] uppercase transition duration-200 disabled:cursor-not-allowed disabled:opacity-40"
         disabled={loading}
         type="submit"
       >
-        {loading ? "Ingresando..." : "Ingresar →"}
+        {loading ? "Ingresando..." : "Ingresar"}
       </button>
 
-      <p className="text-center font-mono text-[12px] text-neutral-500">
+      <p className="text-muted text-center text-[13px]">
         ¿No tenés cuenta?{" "}
-        <Link className="text-amber-500 hover:text-amber-400" href="/register">
+        <Link className="text-ochre underline-offset-4 hover:underline" href="/register">
           Registrate
         </Link>
       </p>

@@ -5,10 +5,10 @@ import {useState} from "react";
 const ESTADOS = ["PENDIENTE", "EN_PROGRESO", "EN_REVISION", "ENTREGADO"] as const;
 
 const COLOR: Record<string, string> = {
-  PENDIENTE: "text-neutral-400 border-neutral-700",
-  EN_PROGRESO: "text-amber-400 border-amber-700",
-  EN_REVISION: "text-sky-400 border-sky-800",
-  ENTREGADO: "text-emerald-400 border-emerald-800",
+  PENDIENTE: "text-muted border-rule",
+  EN_PROGRESO: "text-ochre border-ochre/40",
+  EN_REVISION: "text-[#2f5e86] border-[#afc6da]",
+  ENTREGADO: "text-moss border-[#b4cca5]",
 };
 
 // Selector de estado del TRABAJO. Optimista: aplica el cambio en pantalla y lo
@@ -49,17 +49,15 @@ export default function TrabajoEstadoSelect({leadId, inicial}: {leadId: string; 
 
   return (
     <select
-      className={`cursor-pointer border bg-transparent px-2 py-1 font-mono text-[10px] tracking-[0.1em] uppercase transition outline-none disabled:opacity-40 ${
-        error
-          ? "border-red-500 text-red-400"
-          : (COLOR[estado] ?? "border-neutral-700 text-neutral-300")
+      className={`bg-card cursor-pointer border px-2.5 py-1.5 text-[11px] tracking-[0.08em] uppercase transition outline-none disabled:opacity-40 ${
+        error ? "border-brick text-brick" : (COLOR[estado] ?? "text-ink-soft border-rule")
       }`}
       disabled={guardando}
       value={estado}
       onChange={(e) => cambiar(e.target.value)}
     >
       {ESTADOS.map((s) => (
-        <option key={s} className="bg-[#0d0d0d] text-neutral-200" value={s}>
+        <option key={s} className="bg-card text-ink" value={s}>
           {s.replace(/_/g, " ")}
         </option>
       ))}

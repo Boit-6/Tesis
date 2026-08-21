@@ -8,9 +8,9 @@ import {createClient} from "@/lib/supabase/client";
 import {translateAuthError} from "@/lib/supabase/auth-errors";
 
 const inputClass =
-  "w-full bg-transparent border-b border-neutral-600 pb-3 pt-1 text-[15px] text-neutral-100 placeholder-neutral-600 outline-none transition duration-200 ease focus:border-amber-400 focus:placeholder-neutral-500";
+  "w-full border-b border-rule bg-transparent pt-1 pb-3 text-[15px] text-ink placeholder-mist outline-none transition duration-200 ease hover:border-mist focus:border-ochre";
 
-const labelClass = "block font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-500 mb-2";
+const labelClass = "mb-2 block text-[10px] tracking-[0.16em] text-faint uppercase";
 
 function validate(email: string, password: string, confirmPassword: string): string | null {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -81,14 +81,26 @@ export default function RegisterForm() {
 
   if (checkEmail) {
     return (
-      <div className="flex flex-col items-start gap-6 py-16">
-        <span className="font-mono text-4xl font-black text-amber-400">✓</span>
-        <div>
-          <h2 className="text-3xl font-black tracking-tight text-neutral-100">Revisá tu correo.</h2>
-          <p className="mt-3 max-w-xs text-sm leading-relaxed text-neutral-500">
-            Te enviamos un link de confirmación a {email}. Confirmalo para poder iniciar sesión.
-          </p>
-        </div>
+      <div className="border-rule-soft bg-card flex flex-col items-start gap-5 border px-8 py-14">
+        <svg
+          fill="none"
+          height={36}
+          stroke="#8f5f22"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth={1.3}
+          viewBox="0 0 24 24"
+          width={36}
+        >
+          <rect height="14" rx="1.5" width="18" x="3" y="5" />
+          <path d="M3.5 6.5l8.5 6 8.5-6" />
+        </svg>
+        <h2 className="text-ink font-serif text-[32px] leading-none tracking-tight">
+          Revisá tu correo.
+        </h2>
+        <p className="text-muted max-w-xs text-[14.5px] leading-relaxed">
+          Te enviamos un link de confirmación a {email}. Confirmalo para poder iniciar sesión.
+        </p>
       </div>
     );
   }
@@ -97,7 +109,7 @@ export default function RegisterForm() {
     <form className="flex flex-col gap-8" onSubmit={handleSubmit}>
       {error && (
         <div
-          className="border-l-2 border-red-500 pl-4 font-mono text-[12px] text-red-400"
+          className="border-brick bg-brick/5 text-brick border-l-2 px-5 py-3.5 text-[13px]"
           role="alert"
         >
           {error}
@@ -156,16 +168,16 @@ export default function RegisterForm() {
       </div>
 
       <button
-        className="ease w-full bg-amber-400 py-4 font-mono text-[13px] font-bold tracking-[0.2em] text-neutral-950 uppercase transition duration-200 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+        className="ease bg-ink text-paper hover:bg-ochre w-full py-4.5 text-[11px] font-medium tracking-[0.2em] uppercase transition duration-200 disabled:cursor-not-allowed disabled:opacity-40"
         disabled={loading}
         type="submit"
       >
-        {loading ? "Creando cuenta..." : "Crear cuenta →"}
+        {loading ? "Creando cuenta..." : "Crear cuenta"}
       </button>
 
-      <p className="text-center font-mono text-[12px] text-neutral-500">
+      <p className="text-muted text-center text-[13px]">
         ¿Ya tenés cuenta?{" "}
-        <Link className="text-amber-500 hover:text-amber-400" href="/login">
+        <Link className="text-ochre underline-offset-4 hover:underline" href="/login">
           Iniciá sesión
         </Link>
       </p>
