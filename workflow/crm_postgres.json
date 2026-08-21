@@ -2,7 +2,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## 🔵 RAMA 1 · Nuevo Lead\nCapta el lead del formulario → normaliza → **score/tier** → lo guarda.\nSi es HOT/WARM: propuesta por email + card en Notion + Telegram. Si es COLD: solo aviso.",
+        "content": "## 🔵 Captación y calificación (RAMA 1)\nCapta el lead del formulario → normaliza → **score/tier** → lo guarda.\nSi es HOT/WARM: propuesta por email + card en Notion + Telegram. Si es COLD: solo aviso.",
         "height": 470,
         "width": 3930,
         "color": 4
@@ -18,7 +18,7 @@
     },
     {
       "parameters": {
-        "content": "## 🟢 RAMA 2 · Aceptación\nEl cliente acepta → valida token → **ACEPTADO** → genera **factura PDF** (Gotenberg) → guarda → email + Telegram + Notion.",
+        "content": "## 🟢 Aceptación y facturación (RAMA 2)\nEl cliente acepta → valida token → **ACEPTADO** → genera **factura PDF** (Gotenberg) → guarda → email + Telegram + Notion.\n\n**Tickets del proyecto:** al aplicar la aceptación se siembran los tickets en el tablero de Notion llamando al webhook del módulo `tickets_notion.json`. Es una llamada HTTP con `onError: continuar`: si el módulo no está activo, la aceptación no se ve afectada.",
         "height": 650,
         "width": 3030,
         "color": 3
@@ -146,7 +146,7 @@
     },
     {
       "parameters": {
-        "content": "## 🔴 RAMA 5 · Cierre de Proyecto\n**Cierra**: CERRADO + factura COBRADA + Notion + Telegram + email de testimonio.",
+        "content": "## 🔴 Cierre de proyecto (RAMA 5)\n**Cierra**: CERRADO + factura COBRADA + Notion + Telegram + email de testimonio.",
         "height": 470,
         "width": 2430,
         "color": 3
@@ -162,13 +162,13 @@
     },
     {
       "parameters": {
-        "content": "## 🟣 RAMA 8 · Pago simulado\nEl link del PDF marca la factura **COBRADA** + Telegram. Idempotente.",
+        "content": "## 🟣 Pago (RAMA 8 · integración real con MercadoPago)\nIzquierda: link de la factura → **preferencia real de MercadoPago** (RAMA 2 la crea) → notificación acá confirma el pago vía la API de MP y marca la factura **COBRADO**. Sin `MP_ACCESS_TOKEN` configurado, el link cae al modo de desarrollo (webhook GET, marca cobrado a mano). Idempotente en ambos casos.",
         "height": 830,
-        "width": 1830,
+        "width": 4050,
         "color": 6
       },
       "id": "sticky-10-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "Nota — 🟣 RAMA 8 · Pago simulado",
+      "name": "Nota — 🟣 RAMA 8 · Cobro con MercadoPago",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -178,7 +178,7 @@
     },
     {
       "parameters": {
-        "content": "## 🟡 RAMA 3 · Follow-up (cron 9AM L-V)\nLeads sin respuesta → **email de seguimiento** (procesa todos). Al 3ro → PERDIDO.",
+        "content": "## 🟡 Seguimiento de propuestas (RAMA 3, cron 9AM L-V)\nLeads sin respuesta → **email de seguimiento** (procesa todos). Al 3ro → PERDIDO.",
         "height": 470,
         "width": 2730,
         "color": 3
@@ -194,7 +194,7 @@
     },
     {
       "parameters": {
-        "content": "## 🟠 RAMA 4 · Recordatorios de pago (cron 10AM)\nFacturas por vencer → **email**. Las urgentes → Telegram.",
+        "content": "## 🟠 Recordatorios de pago (RAMA 4, cron 10AM)\nFacturas por vencer → **email**. Las urgentes → Telegram.",
         "height": 470,
         "width": 2130,
         "color": 3
@@ -210,7 +210,7 @@
     },
     {
       "parameters": {
-        "content": "## 📊 RAMA 6 · Métricas (cron 23:59)\nArma el **reporte del mes** y lo manda por Telegram.",
+        "content": "## 📊 Reporte diario de métricas (RAMA 6, cron 23:59)\nArma el **reporte del mes** y lo manda por Telegram.",
         "height": 290,
         "width": 930,
         "color": 4
@@ -226,7 +226,7 @@
     },
     {
       "parameters": {
-        "content": "## ⚠️ RAMA 7 · Manejo de errores\nCaptura **cualquier fallo** → log en `logs` + 🚨 Telegram. (Setear este workflow como *Error Workflow* en Settings).",
+        "content": "## ⚠️ Manejo de errores (RAMA 7)\nCaptura **cualquier fallo** → log en `logs` + 🚨 Telegram. (Setear este workflow como *Error Workflow* en Settings).",
         "height": 290,
         "width": 1230,
         "color": 2
@@ -304,7 +304,7 @@
       "alwaysOutputData": true,
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -343,7 +343,7 @@
     {
       "parameters": {
         "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=💳 <b>Pago recibido (simulacion)</b>\nFactura: {{ $json.factura_id }}\nCliente: {{ $json.cliente }}\nMonto: ${{ $json.monto }} {{ $json.moneda }}",
+        "text": "=💳 <b>Pago recibido</b>\nFactura: {{ $json.factura_id }}\nCliente: {{ $json.cliente }}\nMonto: ${{ $json.monto }} {{ $json.moneda }}",
         "additionalFields": {
           "appendAttribution": false,
           "parse_mode": "HTML"
@@ -360,7 +360,7 @@
       "webhookId": "tg-pago-recibido",
       "credentials": {
         "telegramApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
       }
@@ -417,7 +417,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const l = $('Code - Generar Propuesta').first().json;\nconst DATABASE_ID = 'REEMPLAZAR_DATABASE_ID'\nconst body = {\n  parent: { database_id: DATABASE_ID },\n  properties: {\n    Name: { title: [{ text: { content: String(l.nombre || 'Lead') } }] },\n    Estado: { select: { name: 'PROPUESTA_ENVIADA' } },\n    Tier: { select: { name: String(l.tier || 'COLD') } },\n    Servicio: { select: { name: String(l.servicio || 'otro') } },\n    Email: { email: String(l.email || 'sin@email.com') },\n    Presupuesto: { number: Number(l.presupuesto) || 0 },\n    Score: { number: Number(l.score) || 0 },\n    'Lead ID': { rich_text: [{ text: { content: String(l.lead_id || '') } }] }\n  }\n};\nreturn [{ json: { lead_id: l.lead_id, notion_body: body } }];"
+        "jsCode": "const l = $('Code - Generar Propuesta').first().json;\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n// Base de Notion con las cards de leads. Requiere N8N_BLOCK_ENV_ACCESS_IN_NODE=false.\nconst DATABASE_ID = leerEnv('NOTION_DATABASE_ID', 'REEMPLAZAR_DATABASE_ID');\nconst body = {\n  parent: { database_id: DATABASE_ID },\n  properties: {\n    Name: { title: [{ text: { content: String(l.nombre || 'Lead') } }] },\n    Estado: { select: { name: 'PROPUESTA_ENVIADA' } },\n    Tier: { select: { name: String(l.tier || 'COLD') } },\n    Servicio: { select: { name: String(l.servicio || 'otro') } },\n    Email: { email: String(l.email || 'sin@email.com') },\n    Presupuesto: { number: Number(l.presupuesto) || 0 },\n    Score: { number: Number(l.score) || 0 },\n    'Lead ID': { rich_text: [{ text: { content: String(l.lead_id || '') } }] }\n  }\n};\nreturn [{ json: { lead_id: l.lead_id, notion_body: body } }];"
       },
       "id": "6f6f8741-c420-4b9f-9eb6-557687c3a37d",
       "name": "Code - Preparar Card Notion",
@@ -458,17 +458,18 @@
       ],
       "credentials": {
         "notionApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "ixGL80lti6fEq518",
           "name": "Notion account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE leads SET card_id = $1 WHERE lead_id = $2;",
+        "query": "UPDATE leads SET card_id = COALESCE(NULLIF($1, ''), card_id) WHERE lead_id = $2;",
         "options": {
-          "queryReplacement": "={{ $json.id }},={{ $('Code - Preparar Card Notion').item.json.lead_id }}"
+          "queryReplacement": "={{ $json.id || '' }},={{ $('Code - Preparar Card Notion').item.json.lead_id }}"
         }
       },
       "id": "0afbc8e1-d009-4a3f-af1a-252c5f1ca56f",
@@ -481,7 +482,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -516,10 +517,11 @@
       ],
       "credentials": {
         "notionApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "ixGL80lti6fEq518",
           "name": "Notion account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -551,10 +553,11 @@
       ],
       "credentials": {
         "notionApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "ixGL80lti6fEq518",
           "name": "Notion account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -586,10 +589,11 @@
       ],
       "credentials": {
         "notionApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "ixGL80lti6fEq518",
           "name": "Notion account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -616,7 +620,7 @@
         "httpMethod": "POST",
         "path": "lead/nuevo",
         "options": {
-          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
+          "allowedOrigins": "={{ $env.CORS_ORIGINS || 'http://localhost:3000,https://formulario-leads-psi.vercel.app' }}"
         }
       },
       "id": "8a11afd6-695a-4ae7-bc8e-f4a7ab860dad",
@@ -631,7 +635,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json.body || {};\nconst nombre = (item.nombre || '').trim().replace(/\\s+/g, ' ');\nconst email = (item.email || '').toLowerCase().trim();\nconst presupuesto = parseInt(item.presupuesto) || 0;\nconst urg = ['alta', 'media', 'baja'];\nconst urgencia = urg.includes((item.urgencia || '').toLowerCase()) ? item.urgencia.toLowerCase() : 'media';\nconst svcMap = { 'desarrollo web':'desarrollo_web','diseño ux/ui':'diseno_ui','diseno ux/ui':'diseno_ui','marketing digital':'marketing','seo / posicionamiento':'seo','seo/posicionamiento':'seo','consultoría':'consultoria','consultoria':'consultoria','otro':'soporte','ecommerce':'ecommerce','app_movil':'app_movil','automatizacion':'automatizacion','soporte':'soporte','desarrollo_web':'desarrollo_web','diseno_ui':'diseno_ui','marketing':'marketing','seo':'seo' };\nconst servicio = svcMap[(item.servicio || '').toLowerCase().trim()] || 'desarrollo_web';\nconst errores = [];\nif (!email.includes('@')) errores.push('email invalido');\nif (nombre.length < 2) errores.push('nombre muy corto');\nif (presupuesto <= 0) errores.push('presupuesto invalido');\nif (errores.length) throw new Error('Validacion fallida: ' + errores.join(', '));\nconst ts = Date.now();\nconst rand = Math.random().toString(36).substring(2, 6).toUpperCase();\nreturn [{ json: { lead_id: 'LD-' + ts + '-' + rand, nombre, email, presupuesto, urgencia, servicio, telefono: (item.telefono || '').trim(), descripcion: (item.descripcion || '').trim().substring(0, 2000), fuente: item.fuente || 'webhook' } }];"
+        "jsCode": "const item = $input.first().json.body || {};\nconst capitalizar = (s) => s.replace(/\\S+/gu, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());\nconst nombre = capitalizar((item.nombre || '').trim().replace(/\\s+/g, ' '));\nconst email = (item.email || '').toLowerCase().trim();\nconst presupuesto = parseInt(item.presupuesto) || 0;\nconst urg = ['alta', 'media', 'baja'];\nconst urgencia = urg.includes((item.urgencia || '').toLowerCase()) ? item.urgencia.toLowerCase() : 'media';\nconst svcMap = { 'desarrollo web':'desarrollo_web','e-commerce':'ecommerce','ecommerce':'ecommerce','app móvil':'app_movil','app movil':'app_movil','app_movil':'app_movil','diseño ux/ui':'diseno_ui','diseno ux/ui':'diseno_ui','marketing digital':'marketing','seo / posicionamiento':'seo','seo/posicionamiento':'seo','automatización de procesos':'automatizacion','automatizacion de procesos':'automatizacion','automatizacion':'automatizacion','consultoría':'consultoria','consultoria':'consultoria','otro':'soporte','soporte':'soporte','desarrollo_web':'desarrollo_web','diseno_ui':'diseno_ui','marketing':'marketing','seo':'seo' };\nconst servicio = svcMap[(item.servicio || '').toLowerCase().trim()] || 'desarrollo_web';\nconst errores = [];\nif (!email.includes('@')) errores.push('email invalido');\nif (nombre.length < 2) errores.push('nombre muy corto');\nif (presupuesto <= 0) errores.push('presupuesto invalido');\nif (errores.length) throw new Error('Validacion fallida: ' + errores.join(', '));\nconst ts = Date.now();\nconst rand = Math.random().toString(36).substring(2, 6).toUpperCase();\nreturn [{ json: { lead_id: 'LD-' + ts + '-' + rand, nombre, email, presupuesto, urgencia, servicio, telefono: (item.telefono || '').trim(), descripcion: (item.descripcion || '').trim().substring(0, 2000), fuente: item.fuente || 'webhook' } }];"
       },
       "id": "1a0698a2-bfce-4254-99e8-87cce4909c32",
       "name": "Code - Normalizar Lead",
@@ -1028,14 +1032,14 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "const l = $input.first().json;\nlet score = 0;\nconst b = parseInt(l.presupuesto) || 0;\nif (b >= 5000) score += 40;\nelse if (b >= 2000) score += 30;\nelse if (b >= 1000) score += 20;\nelse if (b >= 300) score += 10;\nscore += ({ alta: 30, media: 15, baja: 5 }[l.urgencia] || 5);\nscore += ({ desarrollo_web: 20, ecommerce: 20, app_movil: 18, automatizacion: 18, marketing: 15, seo: 15, diseno_ui: 15, consultoria: 12, soporte: 5 }[l.servicio] || 8);\nif (l.telefono && l.telefono.length > 6) score += 5;\nif (l.descripcion && l.descripcion.length > 50) score += 5;\nconst tier = score >= 70 ? 'HOT' : score >= 40 ? 'WARM' : 'COLD';\nreturn [{ json: Object.assign({}, l, { score: score, tier: tier }) }];"
+        "jsCode": "// Calificación del lead. Los pesos y los umbrales de tier NO son constantes\n// de código: salen de variables de entorno, de modo que el criterio de\n// calificación se puede recalibrar sin tocar el workflow (§6, cuestión 3 del\n// dictamen). Los defaults reproducen exactamente la Tabla 4 de la tesis.\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n// \"umbral:puntos,umbral:puntos\" evaluado de mayor a menor.\nconst tramos = (clave, porDefecto) => leerEnv(clave, porDefecto)\n  .split(',')\n  .map((p) => p.split(':'))\n  .map(([k, v]) => [Number(k), Number(v)])\n  .filter(([k, v]) => Number.isFinite(k) && Number.isFinite(v))\n  .sort((a, b) => b[0] - a[0]);\n// \"clave:puntos,clave:puntos\"\nconst tabla = (clave, porDefecto) => Object.fromEntries(\n  leerEnv(clave, porDefecto)\n    .split(',')\n    .map((p) => p.split(':'))\n    .filter((p) => p.length === 2)\n    .map(([k, v]) => [String(k).trim(), Number(v)])\n);\n\nconst l = $input.first().json;\nlet score = 0;\n\nconst presupuesto = parseInt(l.presupuesto) || 0;\nfor (const [minimo, puntos] of tramos('SCORING_PRESUPUESTO', '5000:40,2000:30,1000:20,300:10')) {\n  if (presupuesto >= minimo) { score += puntos; break; }\n}\n\nconst porUrgencia = tabla('SCORING_URGENCIA', 'alta:30,media:15,baja:5');\nscore += porUrgencia[l.urgencia] !== undefined ? porUrgencia[l.urgencia] : Number(leerEnv('SCORING_URGENCIA_DEFAULT', '5'));\n\nconst porServicio = tabla('SCORING_SERVICIO', 'desarrollo_web:20,ecommerce:20,app_movil:18,automatizacion:18,marketing:15,seo:15,diseno_ui:15,consultoria:12,soporte:5');\nscore += porServicio[l.servicio] !== undefined ? porServicio[l.servicio] : Number(leerEnv('SCORING_SERVICIO_DEFAULT', '8'));\n\nif (l.telefono && l.telefono.length > 6) score += Number(leerEnv('SCORING_BONUS_TELEFONO', '5'));\nif (l.descripcion && l.descripcion.length > 50) score += Number(leerEnv('SCORING_BONUS_DESCRIPCION', '5'));\n\nconst umbralHot = Number(leerEnv('SCORING_UMBRAL_HOT', '70'));\nconst umbralWarm = Number(leerEnv('SCORING_UMBRAL_WARM', '40'));\nconst tier = score >= umbralHot ? 'HOT' : score >= umbralWarm ? 'WARM' : 'COLD';\n\nreturn [{ json: Object.assign({}, l, { score: score, tier: tier }) }];"
       },
       "id": "1888b7c6-aa9a-4c4a-958a-5b11f32fbfc9",
       "name": "Code - Scoring",
@@ -1081,7 +1085,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const l = $input.first().json;\nconst primerNombre = String(l.nombre || 'Cliente').split(' ')[0];\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst tiempo = (l.urgencia === 'alta') ? '3-5 dias habiles' : '1-2 semanas';\nconst FRONT_BASE = 'https://formulario-leads-psi.vercel.app';\nconst acceptUrl = FRONT_BASE + '/aceptar/' + encodeURIComponent(l.lead_id) + '?token=' + encodeURIComponent(l.accept_token);\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head><body style='margin:0;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif;color:#27272a'><div style='max-width:600px;margin:0 auto;background:#ffffff'><div style='background:#111827;padding:32px 40px'><div style='color:#fbbf24;font-size:20px;font-weight:800;letter-spacing:1px'>SODEROS S.A.</div><div style='color:#9ca3af;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:4px'>Propuesta de trabajo</div></div><div style='padding:40px'><p style='font-size:16px;margin:0 0 8px'>Hola <b>${primerNombre}</b>,</p><p style='font-size:15px;line-height:1.6;color:#52525b;margin:0 0 28px'>Gracias por tu interes. Preparamos una propuesta para tu proyecto de <b>${svc}</b>:</p><table style='width:100%;border-collapse:collapse;margin:0 0 28px'><tr><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;color:#71717a;font-size:13px'>Servicio</td><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;text-align:right;font-weight:700'>${svc}</td></tr><tr><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;color:#71717a;font-size:13px'>Tiempo de entrega</td><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;text-align:right;font-weight:700'>${tiempo}</td></tr><tr><td style='padding:14px 0;color:#71717a;font-size:13px'>Inversion</td><td style='padding:14px 0;text-align:right;font-weight:800;font-size:18px;color:#111827'>$${l.presupuesto} USD</td></tr></table><div style='text-align:center;margin:0 0 24px'><a href='${acceptUrl}' style='display:inline-block;background:#fbbf24;color:#111827;padding:16px 40px;border-radius:8px;text-decoration:none;font-weight:800;font-size:15px'>Ver propuesta y responder</a></div><p style='font-size:13px;line-height:1.6;color:#a1a1aa;text-align:center;margin:0'>Desde el enlace vas a poder <b>aceptar</b>, <b>pedir cambios</b> o <b>rechazar</b> la propuesta.</p></div><div style='background:#fafafa;padding:24px 40px;border-top:1px solid #e4e4e7'><p style='margin:0;font-size:13px;color:#71717a'>Saludos,<br><b style='color:#27272a'>Equipo Soderos S.A.</b></p></div></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { propuesta_html: html, accept_url: acceptUrl }) }];"
+        "jsCode": "const l = $input.first().json;\nconst primerNombre = String(l.nombre || 'Cliente').split(' ')[0];\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst tiempo = (l.urgencia === 'alta') ? '3-5 dias habiles' : '1-2 semanas';\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n// URL pública del front. Se configura con FRONTEND_URL (ver .env.example).\nconst FRONT_BASE = leerEnv('FRONTEND_URL', 'http://localhost:3000').replace(/\\/+$/, '');\nconst acceptUrl = FRONT_BASE + '/aceptar/' + encodeURIComponent(l.lead_id) + '?token=' + encodeURIComponent(l.accept_token);\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head><body style='margin:0;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif;color:#27272a'><div style='max-width:600px;margin:0 auto;background:#ffffff'><div style='background:#111827;padding:32px 40px'><div style='color:#fbbf24;font-size:20px;font-weight:800;letter-spacing:1px'>SODEROS S.A.</div><div style='color:#9ca3af;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:4px'>Propuesta de trabajo</div></div><div style='padding:40px'><p style='font-size:16px;margin:0 0 8px'>Hola <b>${primerNombre}</b>,</p><p style='font-size:15px;line-height:1.6;color:#52525b;margin:0 0 28px'>Gracias por tu interes. Preparamos una propuesta para tu proyecto de <b>${svc}</b>:</p><table style='width:100%;border-collapse:collapse;margin:0 0 28px'><tr><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;color:#71717a;font-size:13px'>Servicio</td><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;text-align:right;font-weight:700'>${svc}</td></tr><tr><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;color:#71717a;font-size:13px'>Tiempo de entrega</td><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;text-align:right;font-weight:700'>${tiempo}</td></tr><tr><td style='padding:14px 0;color:#71717a;font-size:13px'>Inversion</td><td style='padding:14px 0;text-align:right;font-weight:800;font-size:18px;color:#111827'>$${l.presupuesto} USD</td></tr></table><div style='text-align:center;margin:0 0 24px'><a href='${acceptUrl}' style='display:inline-block;background:#fbbf24;color:#111827;padding:16px 40px;border-radius:8px;text-decoration:none;font-weight:800;font-size:15px'>Ver propuesta y responder</a></div><p style='font-size:13px;line-height:1.6;color:#a1a1aa;text-align:center;margin:0'>Desde el enlace vas a poder <b>aceptar</b>, <b>pedir cambios</b> o <b>rechazar</b> la propuesta.</p></div><div style='background:#fafafa;padding:24px 40px;border-top:1px solid #e4e4e7'><p style='margin:0;font-size:13px;color:#71717a'>Saludos,<br><b style='color:#27272a'>Equipo Soderos S.A.</b></p></div></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { propuesta_html: html, accept_url: acceptUrl }) }];"
       },
       "id": "b9af8421-c555-4320-a2d7-09912761c111",
       "name": "Code - Generar Propuesta",
@@ -1112,7 +1116,7 @@
       "webhookId": "tg-lead-frio",
       "credentials": {
         "telegramApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
       }
@@ -1137,15 +1141,15 @@
       "webhookId": "gm-propuesta",
       "credentials": {
         "gmailOAuth2": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
-          "name": "Gmail - CRM Freelance"
+          "id": "KN5umVWzd1RZZuYM",
+          "name": "Gmail account"
         }
       }
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE leads SET estado = 'PROPUESTA_ENVIADA', fecha_propuesta = now() WHERE lead_id = $1;",
+        "query": "=UPDATE leads SET estado = 'PROPUESTA_ENVIADA', fecha_propuesta = now(), token_expira_en = now() + make_interval(days => {{ $env.TOKEN_VIGENCIA_DIAS || 14 }}) WHERE lead_id = $1;",
         "options": {
           "queryReplacement": "={{ $('Code - Generar Propuesta').item.json.lead_id }}"
         }
@@ -1160,7 +1164,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -1311,7 +1315,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -1336,7 +1340,7 @@
       "webhookId": "tg-propuesta",
       "credentials": {
         "telegramApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
       }
@@ -1347,7 +1351,7 @@
         "path": "lead-acepta",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
+          "allowedOrigins": "={{ $env.CORS_ORIGINS || 'http://localhost:3000,https://formulario-leads-psi.vercel.app' }}"
         }
       },
       "id": "12ec8c4f-8e53-4bfb-87ce-395293462536",
@@ -1376,7 +1380,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM leads WHERE lead_id = $1 AND accept_token = $2::uuid LIMIT 1;",
+        "query": "SELECT * FROM leads WHERE lead_id = $1 AND accept_token = $2::uuid AND (token_expira_en IS NULL OR token_expira_en > now()) LIMIT 1;",
         "options": {
           "queryReplacement": "={{ $json.lead_id }},{{ $json.token }}"
         }
@@ -1392,7 +1396,7 @@
       "alwaysOutputData": true,
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -1454,7 +1458,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       },
@@ -1507,7 +1511,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const l = $input.first().json;\nconst fid = 'FAC-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);\nconst vencISO = new Date(Date.now() + 15 * 86400000).toISOString();\nconst BASE = 'https://unison-frolic-untainted.ngrok-free.dev';\nconst payUrl = BASE + '/webhook/pago-confirmado?factura_id=' + fid + '&lead_id=' + l.lead_id;\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst hoy = new Date().toLocaleDateString('es-AR');\nconst venc = new Date(vencISO).toLocaleDateString('es-AR');\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body style='font-family:Arial,Helvetica,sans-serif;padding:48px;color:#27272a'><div style='display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #111827;padding-bottom:24px'><div><div style='font-size:22px;font-weight:800;color:#111827;letter-spacing:1px'>[TU NOMBRE / EMPRESA]</div><div style='color:#71717a;font-size:13px;margin-top:4px'>[tu@email.com]</div></div><div style='text-align:right'><div style='font-size:24px;font-weight:800;color:#fbbf24'>FACTURA</div><div style='font-size:13px;color:#71717a;margin-top:6px'>N ${fid}</div><div style='font-size:13px;color:#71717a'>Emisión: ${hoy}</div><div style='font-size:13px;color:#71717a'>Vence: ${venc}</div></div></div><p style='margin:24px 0;font-size:14px'><b>Cliente:</b> ${l.nombre}<br><b>Email:</b> ${l.email}</p><table style='width:100%;border-collapse:collapse;margin:0 0 24px'><tr style='background:#111827;color:#fff'><th style='padding:12px;text-align:left;font-size:13px'>Descripción</th><th style='padding:12px;font-size:13px'>Cant.</th><th style='padding:12px;text-align:right;font-size:13px'>Total</th></tr><tr><td style='padding:12px;border-bottom:1px solid #e4e4e7'>${svc}</td><td style='padding:12px;border-bottom:1px solid #e4e4e7;text-align:center'>1</td><td style='padding:12px;border-bottom:1px solid #e4e4e7;text-align:right'>$${l.presupuesto}</td></tr><tr style='font-weight:800;background:#fafafa'><td colspan='2' style='padding:12px;text-align:right'>TOTAL</td><td style='padding:12px;text-align:right;font-size:18px'>$${l.presupuesto} USD</td></tr></table><div style='text-align:center;margin:28px 0'><a href='${payUrl}' style='display:inline-block;background:#fbbf24;color:#111827;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:800'>💳 Pagar ahora (simulación)</a></div><div style='background:#f8fafc;border-left:4px solid #111827;padding:16px;font-size:13px'><b>Datos de pago:</b><br>[Tu CBU / Alias / PayPal]</div></body></html>`;\nconst b64 = Buffer.from(html, 'utf8').toString('base64');\nreturn [{ json: Object.assign({}, l, { factura_id: fid, fecha_emision_iso: new Date().toISOString(), fecha_vencimiento_iso: vencISO }), binary: { factura_html_file: { data: b64, mimeType: 'text/html', fileName: 'index.html', fileExtension: 'html' } } }];"
+        "jsCode": "const l = $input.first().json;\nconst payUrl = l.payUrl;\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst hoy = new Date().toLocaleDateString('es-AR');\nconst venc = new Date(l.fecha_vencimiento_iso).toLocaleDateString('es-AR');\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body style='font-family:Arial,Helvetica,sans-serif;padding:48px;color:#27272a'><div style='display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #111827;padding-bottom:24px'><div><div style='font-size:22px;font-weight:800;color:#111827;letter-spacing:1px'>[TU NOMBRE / EMPRESA]</div><div style='color:#71717a;font-size:13px;margin-top:4px'>[tu@email.com]</div></div><div style='text-align:right'><div style='font-size:24px;font-weight:800;color:#fbbf24'>FACTURA</div><div style='font-size:13px;color:#71717a;margin-top:6px'>N ${l.factura_id}</div><div style='font-size:13px;color:#71717a'>Emisión: ${hoy}</div><div style='font-size:13px;color:#71717a'>Vence: ${venc}</div></div></div><p style='margin:24px 0;font-size:14px'><b>Cliente:</b> ${l.nombre}<br><b>Email:</b> ${l.email}</p><table style='width:100%;border-collapse:collapse;margin:0 0 24px'><tr style='background:#111827;color:#fff'><th style='padding:12px;text-align:left;font-size:13px'>Descripción</th><th style='padding:12px;font-size:13px'>Cant.</th><th style='padding:12px;text-align:right;font-size:13px'>Total</th></tr><tr><td style='padding:12px;border-bottom:1px solid #e4e4e7'>${svc}</td><td style='padding:12px;border-bottom:1px solid #e4e4e7;text-align:center'>1</td><td style='padding:12px;border-bottom:1px solid #e4e4e7;text-align:right'>$${l.presupuesto}</td></tr><tr style='font-weight:800;background:#fafafa'><td colspan='2' style='padding:12px;text-align:right'>TOTAL</td><td style='padding:12px;text-align:right;font-size:18px'>${l.presupuesto} ${l.moneda}</td></tr></table><div style='text-align:center;margin:28px 0'><a href='${payUrl}' style='display:inline-block;background:#fbbf24;color:#111827;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:800'>💳 Pagar ahora</a></div><div style='background:#f8fafc;border-left:4px solid #111827;padding:16px;font-size:13px'><b>Datos de pago:</b><br>[Tu CBU / Alias / PayPal]</div></body></html>`;\nconst b64 = Buffer.from(html, 'utf8').toString('base64');\nreturn [{ json: l, binary: { factura_html_file: { data: b64, mimeType: 'text/html', fileName: 'index.html', fileExtension: 'html' } } }];"
       },
       "id": "fbd489b7-a2c5-46a1-9c92-922c8caff89f",
       "name": "Code - Generar Factura HTML",
@@ -1521,7 +1525,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://gotenberg:3000/forms/chromium/convert/html",
+        "url": "={{ $env.GOTENBERG_URL || 'http://gotenberg:3000/forms/chromium/convert/html' }}",
         "sendBody": true,
         "contentType": "multipart-form-data",
         "bodyParameters": {
@@ -1578,8 +1582,8 @@
       "webhookId": "gm-factura",
       "credentials": {
         "gmailOAuth2": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
-          "name": "Gmail - CRM Freelance"
+          "id": "KN5umVWzd1RZZuYM",
+          "name": "Gmail account"
         }
       }
     },
@@ -1605,7 +1609,10 @@
             "servicio": "={{ $('Code - Generar Factura HTML').item.json.servicio }}",
             "monto": "={{ $('Code - Generar Factura HTML').item.json.presupuesto }}",
             "fecha_emision": "={{ $('Code - Generar Factura HTML').item.json.fecha_emision_iso }}",
-            "fecha_vencimiento": "={{ $('Code - Generar Factura HTML').item.json.fecha_vencimiento_iso }}"
+            "fecha_vencimiento": "={{ $('Code - Generar Factura HTML').item.json.fecha_vencimiento_iso }}",
+            "mp_preference_id": "={{ $('Code - Generar Factura HTML').item.json.mp_preference_id }}",
+            "comision_plataforma": "={{ $('Code - Generar Factura HTML').item.json.comision_plataforma }}",
+            "moneda": "={{ $('Code - Generar Factura HTML').item.json.moneda }}"
           },
           "matchingColumns": [],
           "schema": []
@@ -1622,7 +1629,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -1645,7 +1652,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -1670,7 +1677,7 @@
       "webhookId": "tg-acepto",
       "credentials": {
         "telegramApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
       }
@@ -1711,7 +1718,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -1752,7 +1759,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -1790,8 +1797,8 @@
       "webhookId": "gm-followup",
       "credentials": {
         "gmailOAuth2": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
-          "name": "Gmail - CRM Freelance"
+          "id": "KN5umVWzd1RZZuYM",
+          "name": "Gmail account"
         }
       }
     },
@@ -1830,7 +1837,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -1853,7 +1860,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -1910,7 +1917,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -1946,7 +1953,7 @@
       "webhookId": "tg-perdido",
       "credentials": {
         "telegramApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
       }
@@ -1987,7 +1994,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -2025,8 +2032,8 @@
       "webhookId": "gm-recordatorio",
       "credentials": {
         "gmailOAuth2": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
-          "name": "Gmail - CRM Freelance"
+          "id": "KN5umVWzd1RZZuYM",
+          "name": "Gmail account"
         }
       }
     },
@@ -2048,7 +2055,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -2104,7 +2111,7 @@
       "webhookId": "tg-pago-urgente",
       "credentials": {
         "telegramApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
       }
@@ -2167,7 +2174,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -2190,7 +2197,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -2215,14 +2222,14 @@
       "webhookId": "tg-cerrado",
       "credentials": {
         "telegramApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
       }
     },
     {
       "parameters": {
-        "jsCode": "const l = $('Postgres - Lead Cerrado').first().json;\nconst svc = String(l.servicio || 'proyecto').replace(/_/g, ' ');\nconst nombre = String(l.nombre || '').split(' ')[0];\nconst formUrl = 'https://forms.gle/TU-FORMULARIO';\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head><body style='margin:0;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif;color:#27272a'><div style='max-width:600px;margin:0 auto;background:#ffffff'><div style='background:#111827;padding:28px 40px'><div style='color:#fbbf24;font-size:20px;font-weight:800;letter-spacing:1px'>SODEROS S.A.</div><div style='color:#9ca3af;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:4px'>Proyecto completado 🎉</div></div><div style='padding:40px'><p style='font-size:16px;margin:0 0 8px'>Hola <b>${nombre}</b>,</p><p style='font-size:15px;line-height:1.6;color:#52525b;margin:0 0 24px'>Fue un gusto trabajar en tu proyecto de <b>${svc}</b>. ¿Te animás a dejarme una reseña rápida? Nos ayuda muchísimo.</p><div style='text-align:center'><a href='${formUrl}' style='display:inline-block;background:#fbbf24;color:#111827;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:800'>Dejar mi reseña (2 min)</a></div></div><div style='background:#fafafa;padding:22px 40px;border-top:1px solid #e4e4e7'><p style='margin:0;font-size:13px;color:#71717a'>Saludos,<br><b style='color:#27272a'>Equipo Soderos S.A.</b></p></div></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { testimonio_html: html }) }];"
+        "jsCode": "const l = $('Postgres - Lead Cerrado').first().json;\nconst svc = String(l.servicio || 'proyecto').replace(/_/g, ' ');\nconst nombre = String(l.nombre || '').split(' ')[0];\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n// Formulario de reseñas. Se configura con RESENAS_FORM_URL.\nconst formUrl = leerEnv('RESENAS_FORM_URL', 'https://forms.gle/TU-FORMULARIO');\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head><body style='margin:0;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif;color:#27272a'><div style='max-width:600px;margin:0 auto;background:#ffffff'><div style='background:#111827;padding:28px 40px'><div style='color:#fbbf24;font-size:20px;font-weight:800;letter-spacing:1px'>SODEROS S.A.</div><div style='color:#9ca3af;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:4px'>Proyecto completado 🎉</div></div><div style='padding:40px'><p style='font-size:16px;margin:0 0 8px'>Hola <b>${nombre}</b>,</p><p style='font-size:15px;line-height:1.6;color:#52525b;margin:0 0 24px'>Fue un gusto trabajar en tu proyecto de <b>${svc}</b>. ¿Te animás a dejarme una reseña rápida? Nos ayuda muchísimo.</p><div style='text-align:center'><a href='${formUrl}' style='display:inline-block;background:#fbbf24;color:#111827;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:800'>Dejar mi reseña (2 min)</a></div></div><div style='background:#fafafa;padding:22px 40px;border-top:1px solid #e4e4e7'><p style='margin:0;font-size:13px;color:#71717a'>Saludos,<br><b style='color:#27272a'>Equipo Soderos S.A.</b></p></div></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { testimonio_html: html }) }];"
       },
       "id": "73a0ab26-1759-4e7d-a2a5-89412039776c",
       "name": "Code - Email Testimonio",
@@ -2253,8 +2260,8 @@
       "webhookId": "gm-testimonio",
       "credentials": {
         "gmailOAuth2": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
-          "name": "Gmail - CRM Freelance"
+          "id": "KN5umVWzd1RZZuYM",
+          "name": "Gmail account"
         }
       }
     },
@@ -2294,7 +2301,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -2315,7 +2322,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -2340,7 +2347,7 @@
       "webhookId": "tg-reporte",
       "credentials": {
         "telegramApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
       }
@@ -2395,7 +2402,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -2420,7 +2427,7 @@
       "webhookId": "tg-error",
       "credentials": {
         "telegramApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
       }
@@ -2431,7 +2438,7 @@
         "path": "lead-propuesta",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
+          "allowedOrigins": "={{ $env.CORS_ORIGINS || 'http://localhost:3000,https://formulario-leads-psi.vercel.app' }}"
         }
       },
       "id": "e1a2b3c4-0001-4f01-8a01-aa0000000001",
@@ -2460,7 +2467,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM leads WHERE lead_id = $1 AND accept_token::text = $2 LIMIT 1;",
+        "query": "SELECT * FROM leads WHERE lead_id = $1 AND accept_token::text = $2 AND (token_expira_en IS NULL OR token_expira_en > now()) LIMIT 1;",
         "options": {
           "queryReplacement": "={{ $json.lead_id }},{{ $json.token }}"
         }
@@ -2476,7 +2483,7 @@
       "alwaysOutputData": true,
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -2526,7 +2533,7 @@
         "path": "lead-rechaza",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
+          "allowedOrigins": "={{ $env.CORS_ORIGINS || 'http://localhost:3000,https://formulario-leads-psi.vercel.app' }}"
         }
       },
       "id": "f1a20001-0000-4001-8001-bb0000000001",
@@ -2555,7 +2562,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE leads SET estado = 'PERDIDO' WHERE lead_id = $1 AND accept_token::text = $2 AND estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO') RETURNING *;",
+        "query": "UPDATE leads SET estado = 'PERDIDO' WHERE lead_id = $1 AND accept_token::text = $2 AND estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO') AND (token_expira_en IS NULL OR token_expira_en > now()) RETURNING *;",
         "options": {
           "queryReplacement": "={{ $json.lead_id }},{{ $json.token }}"
         }
@@ -2571,7 +2578,7 @@
       "alwaysOutputData": true,
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -2626,7 +2633,7 @@
       "webhookId": "f1a20005-0000-4005-8005-bb0000000005",
       "credentials": {
         "telegramApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
       }
@@ -2671,7 +2678,7 @@
         "path": "lead-modifica",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
+          "allowedOrigins": "={{ $env.CORS_ORIGINS || 'http://localhost:3000,https://formulario-leads-psi.vercel.app' }}"
         }
       },
       "id": "f1a20011-0000-4011-8011-bb0000000011",
@@ -2700,7 +2707,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE leads SET estado = 'EN_SEGUIMIENTO' WHERE lead_id = $1 AND accept_token::text = $2 AND estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO') RETURNING *;",
+        "query": "UPDATE leads SET estado = 'EN_SEGUIMIENTO' WHERE lead_id = $1 AND accept_token::text = $2 AND estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO') AND (token_expira_en IS NULL OR token_expira_en > now()) RETURNING *;",
         "options": {
           "queryReplacement": "={{ $json.lead_id }},{{ $json.token }}"
         }
@@ -2716,7 +2723,7 @@
       "alwaysOutputData": true,
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -2782,7 +2789,7 @@
       ],
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -2806,7 +2813,7 @@
       "webhookId": "f1a20016-0000-4016-8016-bb0000000016",
       "credentials": {
         "telegramApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
       }
@@ -2851,8 +2858,9 @@
         "path": "trabajo-estado",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
-        }
+          "allowedOrigins": "={{ $env.CORS_ORIGINS || 'http://localhost:3000,https://formulario-leads-psi.vercel.app' }}"
+        },
+        "authentication": "headerAuth"
       },
       "id": "f1a20021-0000-4021-8021-cc0000000021",
       "name": "🗂️ Webhook - Estado Trabajo",
@@ -2862,7 +2870,13 @@
         150,
         5850
       ],
-      "webhookId": "trabajo-estado"
+      "webhookId": "trabajo-estado",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "CRM - Header Auth (panel)"
+        }
+      }
     },
     {
       "parameters": {
@@ -2896,7 +2910,7 @@
       "alwaysOutputData": true,
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -2979,10 +2993,11 @@
       ],
       "credentials": {
         "notionApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "ixGL80lti6fEq518",
           "name": "Notion account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -3014,10 +3029,11 @@
       ],
       "credentials": {
         "notionApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "ixGL80lti6fEq518",
           "name": "Notion account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -3038,7 +3054,7 @@
       "alwaysOutputData": true,
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -3073,10 +3089,11 @@
       ],
       "credentials": {
         "notionApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "ixGL80lti6fEq518",
           "name": "Notion account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -3084,8 +3101,9 @@
         "path": "lead-cancelar",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
-        }
+          "allowedOrigins": "={{ $env.CORS_ORIGINS || 'http://localhost:3000,https://formulario-leads-psi.vercel.app' }}"
+        },
+        "authentication": "headerAuth"
       },
       "id": "f1a20041-0000-4041-8041-ee0000000041",
       "name": "🚫 Webhook - Cancelar (panel)",
@@ -3095,7 +3113,13 @@
         150,
         7000
       ],
-      "webhookId": "lead-cancelar"
+      "webhookId": "lead-cancelar",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "CRM - Header Auth (panel)"
+        }
+      }
     },
     {
       "parameters": {
@@ -3129,7 +3153,7 @@
       "alwaysOutputData": true,
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -3184,7 +3208,7 @@
       "webhookId": "tg-cancel",
       "credentials": {
         "telegramApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
       }
@@ -3219,10 +3243,11 @@
       ],
       "credentials": {
         "notionApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "ixGL80lti6fEq518",
           "name": "Notion account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -3264,8 +3289,9 @@
         "path": "cambio-aceptar",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
-        }
+          "allowedOrigins": "={{ $env.CORS_ORIGINS || 'http://localhost:3000,https://formulario-leads-psi.vercel.app' }}"
+        },
+        "authentication": "headerAuth"
       },
       "id": "f1a20051-0000-4051-8051-ff0000000051",
       "name": "✅ Webhook - Aceptar Cambio",
@@ -3275,7 +3301,13 @@
         150,
         8150
       ],
-      "webhookId": "cambio-aceptar"
+      "webhookId": "cambio-aceptar",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "CRM - Header Auth (panel)"
+        }
+      }
     },
     {
       "parameters": {
@@ -3293,7 +3325,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE leads SET estado = 'PROPUESTA_ENVIADA', fecha_propuesta = now() WHERE lead_id = $1 AND estado = 'EN_SEGUIMIENTO' RETURNING *;",
+        "query": "=UPDATE leads SET estado = 'PROPUESTA_ENVIADA', fecha_propuesta = now(), token_expira_en = now() + make_interval(days => {{ $env.TOKEN_VIGENCIA_DIAS || 14 }}) WHERE lead_id = $1 AND estado = 'EN_SEGUIMIENTO' RETURNING *;",
         "options": {
           "queryReplacement": "={{ $json.lead_id }}"
         }
@@ -3309,7 +3341,7 @@
       "alwaysOutputData": true,
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -3347,7 +3379,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const l = $input.first().json;\nconst primerNombre = String(l.nombre || 'Cliente').split(' ')[0];\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst FRONT_BASE = 'https://formulario-leads-psi.vercel.app';\nconst acceptUrl = FRONT_BASE + '/aceptar/' + encodeURIComponent(l.lead_id) + '?token=' + encodeURIComponent(l.accept_token);\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head><body style='margin:0;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif;color:#27272a'><div style='max-width:600px;margin:0 auto;background:#ffffff'><div style='background:#111827;padding:28px 40px'><div style='color:#fbbf24;font-size:20px;font-weight:800;letter-spacing:1px'>SODEROS S.A.</div><div style='color:#9ca3af;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:4px'>Propuesta actualizada</div></div><div style='padding:40px'><p style='font-size:16px;margin:0 0 8px'>Hola <b>${primerNombre}</b>,</p><p style='font-size:15px;line-height:1.6;color:#52525b;margin:0 0 24px'>Tomamos en cuenta lo que nos pediste y ajustamos la propuesta de <b>${svc}</b>. Podés revisarla y confirmarla acá:</p><div style='text-align:center'><a href='${acceptUrl}' style='display:inline-block;background:#fbbf24;color:#111827;padding:15px 36px;border-radius:8px;text-decoration:none;font-weight:800'>Ver propuesta y responder</a></div></div><div style='background:#fafafa;padding:22px 40px;border-top:1px solid #e4e4e7'><p style='margin:0;font-size:13px;color:#71717a'>Saludos,<br><b style='color:#27272a'>Equipo Soderos S.A.</b></p></div></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { propuesta_html: html }) }];"
+        "jsCode": "const l = $input.first().json;\nconst primerNombre = String(l.nombre || 'Cliente').split(' ')[0];\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\nconst FRONT_BASE = leerEnv('FRONTEND_URL', 'http://localhost:3000').replace(/\\/+$/, '');\nconst acceptUrl = FRONT_BASE + '/aceptar/' + encodeURIComponent(l.lead_id) + '?token=' + encodeURIComponent(l.accept_token);\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head><body style='margin:0;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif;color:#27272a'><div style='max-width:600px;margin:0 auto;background:#ffffff'><div style='background:#111827;padding:28px 40px'><div style='color:#fbbf24;font-size:20px;font-weight:800;letter-spacing:1px'>SODEROS S.A.</div><div style='color:#9ca3af;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:4px'>Propuesta actualizada</div></div><div style='padding:40px'><p style='font-size:16px;margin:0 0 8px'>Hola <b>${primerNombre}</b>,</p><p style='font-size:15px;line-height:1.6;color:#52525b;margin:0 0 24px'>Tomamos en cuenta lo que nos pediste y ajustamos la propuesta de <b>${svc}</b>. Podés revisarla y confirmarla acá:</p><div style='text-align:center'><a href='${acceptUrl}' style='display:inline-block;background:#fbbf24;color:#111827;padding:15px 36px;border-radius:8px;text-decoration:none;font-weight:800'>Ver propuesta y responder</a></div></div><div style='background:#fafafa;padding:22px 40px;border-top:1px solid #e4e4e7'><p style='margin:0;font-size:13px;color:#71717a'>Saludos,<br><b style='color:#27272a'>Equipo Soderos S.A.</b></p></div></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { propuesta_html: html }) }];"
       },
       "id": "f1a20055-0000-4055-8055-ff0000000055",
       "name": "Code - Re-Propuesta",
@@ -3378,8 +3410,8 @@
       "webhookId": "f1a20056-0000-4056-8056-ff0000000056",
       "credentials": {
         "gmailOAuth2": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
-          "name": "Gmail - CRM Freelance"
+          "id": "KN5umVWzd1RZZuYM",
+          "name": "Gmail account"
         }
       }
     },
@@ -3402,7 +3434,7 @@
       "webhookId": "tg-camb-ok",
       "credentials": {
         "telegramApi": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
       }
@@ -3447,8 +3479,9 @@
         "path": "cambio-rechazar",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
-        }
+          "allowedOrigins": "={{ $env.CORS_ORIGINS || 'http://localhost:3000,https://formulario-leads-psi.vercel.app' }}"
+        },
+        "authentication": "headerAuth"
       },
       "id": "f1a20061-0000-4061-8061-ff0000000061",
       "name": "🚷 Webhook - Rechazar Cambio",
@@ -3458,7 +3491,13 @@
         150,
         9300
       ],
-      "webhookId": "cambio-rechazar"
+      "webhookId": "cambio-rechazar",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "CRM - Header Auth (panel)"
+        }
+      }
     },
     {
       "parameters": {
@@ -3476,7 +3515,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE leads SET estado = 'PROPUESTA_ENVIADA', fecha_propuesta = now() WHERE lead_id = $1 AND estado = 'EN_SEGUIMIENTO' RETURNING *;",
+        "query": "=UPDATE leads SET estado = 'PROPUESTA_ENVIADA', fecha_propuesta = now(), token_expira_en = now() + make_interval(days => {{ $env.TOKEN_VIGENCIA_DIAS || 14 }}) WHERE lead_id = $1 AND estado = 'EN_SEGUIMIENTO' RETURNING *;",
         "options": {
           "queryReplacement": "={{ $json.lead_id }}"
         }
@@ -3492,7 +3531,7 @@
       "alwaysOutputData": true,
       "credentials": {
         "postgres": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
       }
@@ -3530,7 +3569,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const l = $input.first().json;\nconst primerNombre = String(l.nombre || 'Cliente').split(' ')[0];\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst FRONT_BASE = 'https://formulario-leads-psi.vercel.app';\nconst acceptUrl = FRONT_BASE + '/aceptar/' + encodeURIComponent(l.lead_id) + '?token=' + encodeURIComponent(l.accept_token);\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head><body style='margin:0;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif;color:#27272a'><div style='max-width:600px;margin:0 auto;background:#ffffff'><div style='background:#111827;padding:28px 40px'><div style='color:#fbbf24;font-size:20px;font-weight:800;letter-spacing:1px'>SODEROS S.A.</div><div style='color:#9ca3af;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:4px'>Sobre tu pedido</div></div><div style='padding:40px'><p style='font-size:16px;margin:0 0 8px'>Hola <b>${primerNombre}</b>,</p><p style='font-size:15px;line-height:1.6;color:#52525b;margin:0 0 24px'>Gracias por tu interés. Por ahora no podemos aplicar los cambios que nos pediste, pero <b>la propuesta original de ${svc} sigue en pie</b>. Podés confirmarla cuando quieras:</p><div style='text-align:center'><a href='${acceptUrl}' style='display:inline-block;background:#fbbf24;color:#111827;padding:15px 36px;border-radius:8px;text-decoration:none;font-weight:800'>Ver la propuesta</a></div></div><div style='background:#fafafa;padding:22px 40px;border-top:1px solid #e4e4e7'><p style='margin:0;font-size:13px;color:#71717a'>Saludos,<br><b style='color:#27272a'>Equipo Soderos S.A.</b></p></div></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { aviso_html: html }) }];"
+        "jsCode": "const l = $input.first().json;\nconst primerNombre = String(l.nombre || 'Cliente').split(' ')[0];\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\nconst FRONT_BASE = leerEnv('FRONTEND_URL', 'http://localhost:3000').replace(/\\/+$/, '');\nconst acceptUrl = FRONT_BASE + '/aceptar/' + encodeURIComponent(l.lead_id) + '?token=' + encodeURIComponent(l.accept_token);\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head><body style='margin:0;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif;color:#27272a'><div style='max-width:600px;margin:0 auto;background:#ffffff'><div style='background:#111827;padding:28px 40px'><div style='color:#fbbf24;font-size:20px;font-weight:800;letter-spacing:1px'>SODEROS S.A.</div><div style='color:#9ca3af;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:4px'>Sobre tu pedido</div></div><div style='padding:40px'><p style='font-size:16px;margin:0 0 8px'>Hola <b>${primerNombre}</b>,</p><p style='font-size:15px;line-height:1.6;color:#52525b;margin:0 0 24px'>Gracias por tu interés. Por ahora no podemos aplicar los cambios que nos pediste, pero <b>la propuesta original de ${svc} sigue en pie</b>. Podés confirmarla cuando quieras:</p><div style='text-align:center'><a href='${acceptUrl}' style='display:inline-block;background:#fbbf24;color:#111827;padding:15px 36px;border-radius:8px;text-decoration:none;font-weight:800'>Ver la propuesta</a></div></div><div style='background:#fafafa;padding:22px 40px;border-top:1px solid #e4e4e7'><p style='margin:0;font-size:13px;color:#71717a'>Saludos,<br><b style='color:#27272a'>Equipo Soderos S.A.</b></p></div></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { aviso_html: html }) }];"
       },
       "id": "f1a20065-0000-4065-8065-ff0000000065",
       "name": "Code - Email No Cambios",
@@ -3561,8 +3600,8 @@
       "webhookId": "f1a20066-0000-4066-8066-ff0000000066",
       "credentials": {
         "gmailOAuth2": {
-          "id": "REEMPLAZAR_AL_IMPORTAR",
-          "name": "Gmail - CRM Freelance"
+          "id": "KN5umVWzd1RZZuYM",
+          "name": "Gmail account"
         }
       }
     },
@@ -3640,6 +3679,260 @@
       "position": [
         1500,
         1600
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Al aceptarse la propuesta, siembra los tickets del proyecto en el tablero\n// (workflow tickets_notion.json). El enganche es por HTTP y no por nodos\n// compartidos: el módulo de tickets sigue siendo independiente y reusable.\n// La plantilla es configurable con TICKETS_PLANTILLA_PROYECTO, con filas\n// \"Titulo|PRIORIDAD|dias_hasta_vencer\" separadas por \";\".\nconst lead = $input.first().json || {};\nconst env = (typeof $env !== 'undefined' && $env) ? $env : {};\nconst leer = (k, def) => {\n  let v;\n  try { v = env[k]; } catch (e) { v = undefined; }\n  return (v === undefined || v === null || v === '') ? def : String(v);\n};\n\nconst base = leer('TICKETS_WEBHOOK_BASE', 'http://localhost:5678').replace(/\\/+$/, '');\nconst plantilla = leer(\n  'TICKETS_PLANTILLA_PROYECTO',\n  'Kickoff con {cliente}|ALTA|2;Primera entrega de {servicio}|MEDIA|7;Revision y ajustes|MEDIA|14;Cobrar la factura de {cliente}|ALTA|10'\n);\n\nconst cliente = String(lead.nombre || 'el cliente');\nconst servicio = String(lead.servicio || 'el proyecto').replace(/_/g, ' ');\nconst enDias = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);\n\nconst items = [];\nfor (const fila of plantilla.split(';')) {\n  const partes = fila.split('|').map((s) => String(s || '').trim());\n  const titulo = partes[0];\n  if (!titulo) continue;\n  const dias = Number(partes[2]);\n  const ticket = {\n    titulo: titulo.replace(/\\{cliente\\}/g, cliente).replace(/\\{servicio\\}/g, servicio),\n    prioridad: partes[1] || 'MEDIA',\n    origen: 'CRM',\n    ref: String(lead.lead_id || ''),\n    etiquetas: ['proyecto', servicio.replace(/\\s+/g, '-')],\n    notas: 'Generado automaticamente al aceptarse la propuesta de ' + cliente + '.'\n  };\n  if (Number.isFinite(dias) && dias > 0) ticket.vence = enDias(dias);\n  items.push({ json: { url: base + '/webhook/ticket/nuevo', ticket: ticket } });\n}\nreturn items;"
+      },
+      "id": "tkcrm-01-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Code - Tickets del Proyecto",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1950,
+        1610
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $env.TICKETS_API_KEY || '' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.ticket) }}",
+        "options": {}
+      },
+      "id": "tkcrm-02-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "HTTP - Crear Ticket Proyecto",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2250,
+        1610
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const l = $input.first().json;\nconst fid = 'FAC-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);\nconst vencISO = new Date(Date.now() + 15 * 86400000).toISOString();\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n// Comisión de la plataforma sobre el total facturado (MP_COMISION_PORCENTAJE,\n// 1% por defecto). Es contable: MercadoPago no la separa sola (ver RAMA 8).\nconst pct = Number(leerEnv('MP_COMISION_PORCENTAJE', '1')) || 0;\nconst monto = Number(l.presupuesto) || 0;\nconst moneda = leerEnv('MP_CURRENCY', 'ARS');\nconst comision = Math.round(monto * (pct / 100) * 100) / 100;\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst BASE = leerEnv('N8N_PUBLIC_URL', 'http://localhost:5678/').replace(/\\/+$/, '');\nconst FRONT = leerEnv('FRONTEND_URL', 'http://localhost:3000').replace(/\\/+$/, '');\n// Preferencia de pago de MercadoPago (Checkout Pro). Se crea en el próximo\n// nodo; acá solo se arma el cuerpo para no repetir esta lógica ahí.\nconst preferencia = {\n  items: [{ title: svc, quantity: 1, unit_price: monto, currency_id: moneda }],\n  external_reference: fid,\n  notification_url: BASE + '/webhook/mp/notificacion',\n  back_urls: {\n    success: FRONT + '/pago-exitoso',\n    pending: FRONT + '/pago-pendiente',\n    failure: FRONT + '/pago-fallido'\n  },\n  auto_return: 'approved'\n};\nreturn [{ json: Object.assign({}, l, { factura_id: fid, fecha_emision_iso: new Date().toISOString(), fecha_vencimiento_iso: vencISO, comision_plataforma: comision, moneda, mp_preference_body: preferencia }) }];"
+      },
+      "id": "mp-01-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Code - Generar ID Factura",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1650,
+        1070
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.mercadopago.com/checkout/preferences",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.MP_ACCESS_TOKEN || '' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.mp_preference_body) }}",
+        "options": {}
+      },
+      "id": "mp-02-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "HTTP - MercadoPago Crear Preferencia",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1950,
+        1070
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const l = $('Code - Generar ID Factura').first().json;\nconst r = $input.first().json || {};\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\nconst BASE = leerEnv('N8N_PUBLIC_URL', 'http://localhost:5678/').replace(/\\/+$/, '');\n// Sin MP_ACCESS_TOKEN configurado (o si MercadoPago no respondió), cae al\n// link de desarrollo que marca la factura pagada a mano (RAMA 8, modo\n// simulado) — así el flujo sigue siendo probable sin credenciales reales.\nconst linkDesarrollo = BASE + '/webhook/pago-confirmado?factura_id=' + l.factura_id + '&lead_id=' + l.lead_id;\nconst initPoint = r.init_point || r.sandbox_init_point || '';\nreturn [{ json: Object.assign({}, l, { payUrl: initPoint || linkDesarrollo, mp_preference_id: r.id || null }) }];"
+      },
+      "id": "mp-03-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Code - Resolver Link de Pago",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2250,
+        1070
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "mp/notificacion",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "mp-04-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "🟣 Webhook - Notificacion MercadoPago",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        2000,
+        11600
+      ],
+      "webhookId": "mp-notif-01"
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json || {};\nconst body = item.body || {};\nconst query = item.query || {};\nconst headers = item.headers || {};\n\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n\n// MercadoPago manda el id del pago en el body (Webhooks v2: {type, data:{id}})\n// o, en notificaciones IPN viejas, por query (?topic=payment&id=123).\nlet paymentId = '';\nif (body && body.data && body.data.id) paymentId = String(body.data.id);\nelse if (query && query['data.id']) paymentId = String(query['data.id']);\nelse if (body && body.type === 'payment' && body.id) paymentId = String(body.id);\nelse if (query && query.topic === 'payment' && query.id) paymentId = String(query.id);\n\n// Firma opcional (MP_WEBHOOK_SECRET vacío = no se valida). Formato oficial:\n// header x-signature \"ts=...,v1=...\", manifest \"id:{id};request-id:{req};ts:{ts};\"\n// HMAC-SHA256 con el secreto. Requiere NODE_FUNCTION_ALLOW_BUILTIN=crypto.\nconst secreto = leerEnv('MP_WEBHOOK_SECRET', '');\nlet firmaValida = true;\nif (secreto && paymentId) {\n  firmaValida = false;\n  try {\n    const crypto = require('crypto');\n    const firma = String(headers['x-signature'] || '');\n    const requestId = String(headers['x-request-id'] || '');\n    const partes = {};\n    for (const par of firma.split(',')) {\n      const kv = par.split('=');\n      const k = (kv[0] || '').trim();\n      const v = (kv[1] || '').trim();\n      if (k) partes[k] = v;\n    }\n    if (partes.ts && partes.v1) {\n      const manifest = 'id:' + paymentId.toLowerCase() + ';request-id:' + requestId + ';ts:' + partes.ts + ';';\n      const hmac = crypto.createHmac('sha256', secreto).update(manifest).digest('hex');\n      firmaValida = hmac === partes.v1;\n    }\n  } catch (e) {\n    firmaValida = false;\n  }\n}\n\nreturn [{ json: { payment_id: firmaValida ? paymentId : '' } }];"
+      },
+      "id": "mp-05-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Code - Leer Notificacion MP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2300,
+        11600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.mercadopago.com/v1/payments/{{ $json.payment_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.MP_ACCESS_TOKEN || '' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "mp-06-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "HTTP - MercadoPago Obtener Pago",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        2600,
+        11600
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const r = $input.first().json || {};\nconst aprobado = r.status === 'approved' && !!r.external_reference && r.id !== undefined && r.id !== null;\nconst idNum = aprobado ? String(Number(r.id)) : '';\nconst idSano = /^[0-9]+$/.test(idNum) ? idNum : '';\nreturn [{ json: { factura_id: (aprobado && idSano) ? String(r.external_reference) : '', mp_payment_id: idSano } }];"
+      },
+      "id": "mp-07-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Code - Procesar Pago MP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2900,
+        11600
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE facturas SET estado_pago = 'COBRADO', fecha_cobro = now(), mp_payment_id = '{{ $json.mp_payment_id }}' WHERE factura_id = $1 AND estado_pago = 'PENDIENTE' RETURNING *;",
+        "options": {
+          "queryReplacement": "={{ $json.factura_id }}"
+        }
+      },
+      "id": "mp-08-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Postgres - Marcar Cobrado MP",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3200,
+        11600
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.estado_pago }}",
+              "rightValue": "COBRADO",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "mp-09-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "IF - Actualizacion Aplico MP?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3500,
+        11600
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"ok\": true }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "mp-10-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Respond - Notificacion MP OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        3800,
+        11600
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"ok\": false }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "mp-11-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Respond - Notificacion MP Ignorada",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        3800,
+        11780
       ]
     }
   ],
@@ -3892,12 +4185,12 @@
       "main": [
         [
           {
-            "node": "Postgres - Marcar Aceptado",
+            "node": "Code - HTML Confirmacion",
             "type": "main",
             "index": 0
           },
           {
-            "node": "Code - HTML Confirmacion",
+            "node": "Postgres - Marcar Aceptado",
             "type": "main",
             "index": 0
           }
@@ -4728,7 +5021,7 @@
       "main": [
         [
           {
-            "node": "Code - Generar Factura HTML",
+            "node": "Code - Generar ID Factura",
             "type": "main",
             "index": 0
           },
@@ -4736,11 +5029,143 @@
             "node": "Notion - Estado Aceptado",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Code - Tickets del Proyecto",
+            "type": "main",
+            "index": 0
           }
         ],
         [
           {
             "node": "No-op - Aceptación Duplicada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Tickets del Proyecto": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Crear Ticket Proyecto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Generar ID Factura": {
+      "main": [
+        [
+          {
+            "node": "HTTP - MercadoPago Crear Preferencia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - MercadoPago Crear Preferencia": {
+      "main": [
+        [
+          {
+            "node": "Code - Resolver Link de Pago",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Resolver Link de Pago": {
+      "main": [
+        [
+          {
+            "node": "Code - Generar Factura HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🟣 Webhook - Notificacion MercadoPago": {
+      "main": [
+        [
+          {
+            "node": "Code - Leer Notificacion MP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Leer Notificacion MP": {
+      "main": [
+        [
+          {
+            "node": "HTTP - MercadoPago Obtener Pago",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - MercadoPago Obtener Pago": {
+      "main": [
+        [
+          {
+            "node": "Code - Procesar Pago MP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Procesar Pago MP": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Marcar Cobrado MP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Marcar Cobrado MP": {
+      "main": [
+        [
+          {
+            "node": "IF - Actualizacion Aplico MP?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Actualizacion Aplico MP?": {
+      "main": [
+        [
+          {
+            "node": "Respond - Notificacion MP OK",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram - Pago Recibido",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Postgres - Buscar Card Pago",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Notificacion MP Ignorada",
             "type": "main",
             "index": 0
           }

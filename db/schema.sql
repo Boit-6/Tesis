@@ -75,6 +75,10 @@ CREATE TABLE IF NOT EXISTS leads (
   notas                     TEXT,
   card_id                   TEXT,
   accept_token              UUID NOT NULL DEFAULT gen_random_uuid(),
+  -- Vigencia del enlace de aceptación. La estampa n8n al enviar la propuesta
+  -- (`now() + TOKEN_VIGENCIA_DIAS`) y la revalidan todas las consultas que
+  -- aceptan el token. NULL = sin vencimiento (leads anteriores a la columna).
+  token_expira_en           TIMESTAMPTZ,
   fecha_ingreso             TIMESTAMPTZ NOT NULL DEFAULT now(),
   fecha_propuesta           TIMESTAMPTZ,
   fecha_ultimo_seguimiento  TIMESTAMPTZ,
@@ -99,6 +103,15 @@ CREATE TABLE IF NOT EXISTS facturas (
   fecha_emision          TIMESTAMPTZ NOT NULL DEFAULT now(),
   fecha_vencimiento      TIMESTAMPTZ NOT NULL,
   fecha_cobro            TIMESTAMPTZ,
+  -- Cobro real con MercadoPago (RAMA 8). `mp_preference_id` se guarda al
+  -- generarse la factura; `mp_payment_id` recién al confirmarse el pago vía
+  -- notificación. `comision_plataforma` es lo que se reserva la plataforma
+  -- sobre `monto` (MP_COMISION_PORCENTAJE, 1% por defecto) — se calcula al
+  -- facturar y es contable: no se transfiere sola, queda anotada para
+  -- liquidar aparte (ver docs/modulo-pagos.md).
+  mp_preference_id       TEXT,
+  mp_payment_id          TEXT,
+  comision_plataforma    NUMERIC(12,2) NOT NULL DEFAULT 0,
   creado_en              TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -141,6 +154,25 @@ CREATE INDEX IF NOT EXISTS idx_leads_fecha_ing    ON leads(fecha_ingreso);
 CREATE INDEX IF NOT EXISTS idx_facturas_estado    ON facturas(estado_pago);
 CREATE INDEX IF NOT EXISTS idx_facturas_lead      ON facturas(lead_id);
 CREATE INDEX IF NOT EXISTS idx_seguimientos_lead  ON seguimientos(lead_id);
+
+-- `logs` es la tabla de auditoría: crece sin techo y se consulta por lead y
+-- por fecha. No tenía ningún índice.
+CREATE INDEX IF NOT EXISTS idx_logs_creado_en     ON logs(creado_en DESC);
+CREATE INDEX IF NOT EXISTS idx_logs_lead          ON logs(lead_id);
+CREATE INDEX IF NOT EXISTS idx_logs_nivel         ON logs(nivel) WHERE nivel IN ('WARN','ERROR');
+
+-- El cron de recordatorios lee `facturas_pendientes` (estado_pago='PENDIENTE')
+-- ordenando por vencimiento: el índice compuesto resuelve filtro y orden juntos.
+CREATE INDEX IF NOT EXISTS idx_facturas_venc      ON facturas(estado_pago, fecha_vencimiento);
+
+-- La búsqueda por token es la ruta más caliente del flujo de aceptación.
+-- `lead_id` ya es UNIQUE, pero el índice parcial permite resolver la validación
+-- de vigencia sin tocar la tabla.
+CREATE INDEX IF NOT EXISTS idx_leads_token_venc   ON leads(accept_token, token_expira_en);
+
+-- Nota de alcance: a la escala del MVP (decenas de filas) estos índices no
+-- cambian los tiempos de forma observable. Se agregan porque las consultas que
+-- los usan ya están escritas y son las que crecerían en un uso real.
 
 -- ---------------------------------------------------------------------
 -- Trigger: mantiene actualizado_en al día en cada UPDATE
@@ -220,7 +252,10 @@ fact_mes AS (
     count(*) FILTER (WHERE estado_pago = 'PENDIENTE'
                       AND fecha_vencimiento < now())                   AS facturas_vencidas,
     round(100.0 * coalesce(sum(monto) FILTER (WHERE estado_pago = 'COBRADO'), 0)
-                 / NULLIF(sum(monto), 0), 1)                           AS tasa_cobro_pct
+                 / NULLIF(sum(monto), 0), 1)                           AS tasa_cobro_pct,
+    -- Comisión de la plataforma (MP_COMISION_PORCENTAJE) realizada sobre lo
+    -- efectivamente cobrado. Es contable: MercadoPago no la separa sola.
+    coalesce(sum(comision_plataforma) FILTER (WHERE estado_pago = 'COBRADO'), 0) AS comision_cobrada
   FROM facturas
   GROUP BY 1
 )
@@ -237,7 +272,8 @@ SELECT
   coalesce(f.cobrado, 0)            AS cobrado,
   coalesce(f.pendiente, 0)          AS pendiente,
   coalesce(f.facturas_vencidas, 0)  AS facturas_vencidas,
-  coalesce(f.tasa_cobro_pct, 0)     AS tasa_cobro_pct
+  coalesce(f.tasa_cobro_pct, 0)     AS tasa_cobro_pct,
+  coalesce(f.comision_cobrada, 0)   AS comision_cobrada
 FROM lead_mes l
 FULL OUTER JOIN fact_mes f ON l.mes = f.mes
 ORDER BY mes DESC;
@@ -341,6 +377,29 @@ END $$;
 -- Columna de estado del trabajo (para bases creadas antes de agregarla).
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS estado_trabajo trabajo_estado NOT NULL DEFAULT 'PENDIENTE';
 
+-- Vigencia del enlace de aceptación (para bases ya creadas). Se deja NULL en
+-- las filas existentes: los enlaces ya emitidos siguen siendo válidos y las
+-- consultas los aceptan con `token_expira_en IS NULL`.
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS token_expira_en TIMESTAMPTZ;
+
 -- Servicios marketing/seo que ofrece el formulario (para bases ya creadas).
 ALTER TYPE servicio_tipo ADD VALUE IF NOT EXISTS 'marketing';
 ALTER TYPE servicio_tipo ADD VALUE IF NOT EXISTS 'seo';
+
+-- Coherencia de fechas de facturación. NOT VALID: se aplica a las filas nuevas
+-- sin exigir que las existentes la cumplan, para que el script siga siendo
+-- ejecutable sobre una base con datos.
+DO $$ BEGIN
+  ALTER TABLE facturas ADD CONSTRAINT chk_facturas_fechas
+    CHECK (fecha_vencimiento >= fecha_emision) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+-- Cobro real con MercadoPago (para bases ya creadas). Ver RAMA 8 del
+-- workflow y docs/modulo-pagos.md.
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS mp_preference_id TEXT;
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS mp_payment_id TEXT;
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS comision_plataforma NUMERIC(12,2) NOT NULL DEFAULT 0;
+DO $$ BEGIN
+  ALTER TABLE facturas ADD CONSTRAINT chk_facturas_comision
+    CHECK (comision_plataforma >= 0) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN null; END $$;

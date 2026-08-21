@@ -1,0 +1,1106 @@
+{
+  "name": "Módulo de Tickets (Notion)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ticket/nuevo",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "={{ $env.TICKETS_CORS_ORIGINS || '*' }}"
+        }
+      },
+      "id": "tk-wh-0001",
+      "name": "🎫 Webhook - Ticket Nuevo",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        180,
+        100
+      ],
+      "webhookId": "tickets-ticket-nuevo"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ─── CONFIG DEL MÓDULO ──────────────────────────────────────────────────────\n// Todo sale de variables de entorno. Los defaults dejan el módulo andando sin\n// configurar nada salvo NOTION_TICKETS_DATABASE_ID. Requiere en n8n:\n// N8N_BLOCK_ENV_ACCESS_IN_NODE=false (leer $env dentro de nodos Code).\nconst ENV = (typeof $env !== 'undefined' && $env) ? $env : {};\nconst val = (k, def) => {\n  let v;\n  try { v = ENV[k]; } catch (e) { v = undefined; }\n  return (v === undefined || v === null || v === '') ? def : String(v);\n};\nconst lista = (k, def) => val(k, def).split(',').map((s) => s.trim()).filter(Boolean);\nconst mapa = (k, def) => {\n  const out = {};\n  for (const par of lista(k, def)) {\n    const i = par.indexOf(':');\n    if (i < 0) continue;\n    out[par.slice(0, i).trim().toUpperCase()] = Number(par.slice(i + 1).trim());\n  }\n  return out;\n};\nconst bool = (k, def) => val(k, def ? 'true' : 'false').toLowerCase() === 'true';\n\n// Nombres de las propiedades en Notion. Se pueden remapear enteros con\n// TICKETS_PROPS (JSON) para engancharse a una base que ya existe.\nconst PROPS = Object.assign({\n  titulo: 'Name',\n  estado: 'Estado',\n  prioridad: 'Prioridad',\n  prioridadInicial: 'Prioridad inicial',\n  score: 'Score',\n  etiquetas: 'Etiquetas',\n  proyecto: 'Proyecto',\n  origen: 'Origen',\n  ref: 'Ref',\n  creado: 'Creado',\n  movimiento: 'Ultimo movimiento',\n  escaladas: 'Escaladas',\n  vence: 'Vence',\n  notas: 'Notas',\n}, JSON.parse(val('TICKETS_PROPS', '{}')));\n\nconst CFG = {\n  databaseId: val('NOTION_TICKETS_DATABASE_ID', ''),\n  proyecto: val('TICKETS_PROYECTO', 'CRM Freelance'),\n  estados: lista('TICKETS_ESTADOS', 'BACKLOG,EN_CURSO,BLOQUEADO,HECHO'),\n  estadosCerrados: lista('TICKETS_ESTADOS_CERRADOS', 'HECHO'),\n  prioridades: lista('TICKETS_PRIORIDADES', 'BAJA,MEDIA,ALTA,CRITICA'),\n  origenes: lista('TICKETS_ORIGENES', 'MANUAL,API,CRM,DASHBOARD'),\n  // Días sin movimiento que tolera cada prioridad antes de subir un escalón.\n  // Es el corazón del \"que no quede en el olvido\".\n  diasEscalada: mapa('TICKETS_DIAS_ESCALADA', 'BAJA:10,MEDIA:7,ALTA:4'),\n  pesoPrioridad: mapa('TICKETS_PESO_PRIORIDAD', 'BAJA:10,MEDIA:25,ALTA:50,CRITICA:80'),\n  puntosPorDia: Number(val('TICKETS_PUNTOS_POR_DIA', '2')),\n  scoreMax: Number(val('TICKETS_SCORE_MAX', '100')),\n  filtrarPorProyecto: bool('TICKETS_FILTRAR_POR_PROYECTO', true),\n  apiKey: val('TICKETS_API_KEY', ''),\n  props: PROPS,\n};\nCFG.prioridadDefault = (function () {\n  const p = val('TICKETS_PRIORIDAD_DEFAULT', 'MEDIA').toUpperCase();\n  return CFG.prioridades.includes(p) ? p : CFG.prioridades[0];\n})();\nCFG.estadoInicial = (function () {\n  const e = val('TICKETS_ESTADO_INICIAL', '').toUpperCase();\n  return CFG.estados.includes(e) ? e : CFG.estados[0];\n})();\n\n// score = peso de la prioridad + puntos por cada día abierto (topeado).\n// Así un ticket viejo de prioridad baja termina pesando más que uno nuevo.\nconst calcularScore = (prioridad, diasAbierto) => {\n  const base = Number(CFG.pesoPrioridad[String(prioridad).toUpperCase()] || 0);\n  const suma = CFG.puntosPorDia * Math.max(0, Number(diasAbierto) || 0);\n  return Math.max(0, Math.min(CFG.scoreMax, Math.round(base + suma)));\n};\n\nconst HOY = new Date().toISOString().slice(0, 10);\nconst diasDesde = (iso) => {\n  if (!iso) return 0;\n  const t = Date.parse(String(iso).length <= 10 ? String(iso) + 'T00:00:00Z' : iso);\n  if (!Number.isFinite(t)) return 0;\n  return Math.max(0, Math.floor((Date.parse(HOY + 'T00:00:00Z') - t) / 86400000));\n};\n\n// Si TICKETS_API_KEY está vacía el módulo queda abierto (útil en local).\nconst autorizado = (headers) => {\n  if (!CFG.apiKey) return true;\n  const h = headers || {};\n  return String(h['x-api-key'] || h['X-API-Key'] || '') === CFG.apiKey;\n};\n\nconst enLista = (v, opciones, def) => {\n  const u = String(v == null ? '' : v).trim().toUpperCase();\n  return opciones.includes(u) ? u : def;\n};\n\n// Lee una propiedad de una página de Notion sin importar su tipo.\nconst leerProp = (page, nombre) => {\n  const p = (page && page.properties) ? page.properties[nombre] : null;\n  if (!p) return null;\n  if (p.type === 'title') return (p.title[0] || {}).plain_text || '';\n  if (p.type === 'rich_text') return (p.rich_text[0] || {}).plain_text || '';\n  if (p.type === 'select') return p.select ? p.select.name : null;\n  if (p.type === 'multi_select') return p.multi_select.map((t) => t.name);\n  if (p.type === 'number') return p.number;\n  if (p.type === 'date') return p.date ? p.date.start : null;\n  return null;\n};\n\n// Arma el filtro de Notion para \"tickets abiertos de este proyecto\".\nconst filtroAbiertos = (proyecto) => {\n  const f = [];\n  if (CFG.filtrarPorProyecto && proyecto) {\n    f.push({ property: CFG.props.proyecto, select: { equals: String(proyecto) } });\n  }\n  for (const e of CFG.estadosCerrados) {\n    f.push({ property: CFG.props.estado, select: { does_not_equal: e } });\n  }\n  return f;\n};\n// ─── FIN CONFIG ─────────────────────────────────────────────────────────────\n\n// Valida el POST /webhook/ticket/nuevo y arma el body de creación de Notion.\n// Salida: { ok:true, notion_body } o { ok:false, http_code, error }.\nconst req = $input.first().json || {};\nconst body = req.body || {};\nconst headers = req.headers || {};\n\nif (!autorizado(headers)) {\n  return [{ json: { ok: false, http_code: 401, error: 'No autorizado (falta o no coincide x-api-key).' } }];\n}\nif (!CFG.databaseId) {\n  return [{ json: { ok: false, http_code: 500, error: 'Falta la variable de entorno NOTION_TICKETS_DATABASE_ID.' } }];\n}\n\nconst titulo = String(body.titulo || body.title || '').trim();\nif (!titulo) {\n  return [{ json: { ok: false, http_code: 400, error: 'Falta \"titulo\": el ticket describe una tarea pendiente.' } }];\n}\n\nconst prioridad = enLista(body.prioridad, CFG.prioridades, CFG.prioridadDefault);\nconst estado = enLista(body.estado, CFG.estados, CFG.estadoInicial);\nconst origen = enLista(body.origen, CFG.origenes, 'API');\nconst proyecto = String(body.proyecto || CFG.proyecto).trim().slice(0, 100);\n\nconst crudas = Array.isArray(body.etiquetas) ? body.etiquetas : String(body.etiquetas || '').split(',');\nconst etiquetas = crudas.map((t) => String(t).trim()).filter(Boolean).slice(0, 10);\n\nconst P = CFG.props;\nconst properties = {};\nproperties[P.titulo] = { title: [{ text: { content: titulo.slice(0, 200) } }] };\nproperties[P.estado] = { select: { name: estado } };\nproperties[P.prioridad] = { select: { name: prioridad } };\nproperties[P.prioridadInicial] = { select: { name: prioridad } };\nproperties[P.score] = { number: calcularScore(prioridad, 0) };\nproperties[P.escaladas] = { number: 0 };\nproperties[P.proyecto] = { select: { name: proyecto } };\nproperties[P.origen] = { select: { name: origen } };\nproperties[P.creado] = { date: { start: HOY } };\nproperties[P.movimiento] = { date: { start: HOY } };\nif (etiquetas.length) properties[P.etiquetas] = { multi_select: etiquetas.map((n) => ({ name: n.slice(0, 100) })) };\nif (body.ref) properties[P.ref] = { rich_text: [{ text: { content: String(body.ref).slice(0, 200) } }] };\nif (body.notas) properties[P.notas] = { rich_text: [{ text: { content: String(body.notas).slice(0, 1800) } }] };\nif (body.vence) properties[P.vence] = { date: { start: String(body.vence).slice(0, 10) } };\n\nreturn [{\n  json: {\n    ok: true,\n    titulo,\n    estado,\n    prioridad,\n    proyecto,\n    etiquetas,\n    notion_body: { parent: { database_id: CFG.databaseId }, properties },\n  },\n}];"
+      },
+      "id": "tk-code-0002",
+      "name": "Code - Validar Ticket Nuevo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "tk-if-0003",
+      "name": "IF - Ticket Valido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        660,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.notion.com/v1/pages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.notion_body) }}",
+        "options": {}
+      },
+      "id": "tk-http-0004",
+      "name": "HTTP - Notion Crear Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        900,
+        20
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ─── CONFIG DEL MÓDULO ──────────────────────────────────────────────────────\n// Todo sale de variables de entorno. Los defaults dejan el módulo andando sin\n// configurar nada salvo NOTION_TICKETS_DATABASE_ID. Requiere en n8n:\n// N8N_BLOCK_ENV_ACCESS_IN_NODE=false (leer $env dentro de nodos Code).\nconst ENV = (typeof $env !== 'undefined' && $env) ? $env : {};\nconst val = (k, def) => {\n  let v;\n  try { v = ENV[k]; } catch (e) { v = undefined; }\n  return (v === undefined || v === null || v === '') ? def : String(v);\n};\nconst lista = (k, def) => val(k, def).split(',').map((s) => s.trim()).filter(Boolean);\nconst mapa = (k, def) => {\n  const out = {};\n  for (const par of lista(k, def)) {\n    const i = par.indexOf(':');\n    if (i < 0) continue;\n    out[par.slice(0, i).trim().toUpperCase()] = Number(par.slice(i + 1).trim());\n  }\n  return out;\n};\nconst bool = (k, def) => val(k, def ? 'true' : 'false').toLowerCase() === 'true';\n\n// Nombres de las propiedades en Notion. Se pueden remapear enteros con\n// TICKETS_PROPS (JSON) para engancharse a una base que ya existe.\nconst PROPS = Object.assign({\n  titulo: 'Name',\n  estado: 'Estado',\n  prioridad: 'Prioridad',\n  prioridadInicial: 'Prioridad inicial',\n  score: 'Score',\n  etiquetas: 'Etiquetas',\n  proyecto: 'Proyecto',\n  origen: 'Origen',\n  ref: 'Ref',\n  creado: 'Creado',\n  movimiento: 'Ultimo movimiento',\n  escaladas: 'Escaladas',\n  vence: 'Vence',\n  notas: 'Notas',\n}, JSON.parse(val('TICKETS_PROPS', '{}')));\n\nconst CFG = {\n  databaseId: val('NOTION_TICKETS_DATABASE_ID', ''),\n  proyecto: val('TICKETS_PROYECTO', 'CRM Freelance'),\n  estados: lista('TICKETS_ESTADOS', 'BACKLOG,EN_CURSO,BLOQUEADO,HECHO'),\n  estadosCerrados: lista('TICKETS_ESTADOS_CERRADOS', 'HECHO'),\n  prioridades: lista('TICKETS_PRIORIDADES', 'BAJA,MEDIA,ALTA,CRITICA'),\n  origenes: lista('TICKETS_ORIGENES', 'MANUAL,API,CRM,DASHBOARD'),\n  // Días sin movimiento que tolera cada prioridad antes de subir un escalón.\n  // Es el corazón del \"que no quede en el olvido\".\n  diasEscalada: mapa('TICKETS_DIAS_ESCALADA', 'BAJA:10,MEDIA:7,ALTA:4'),\n  pesoPrioridad: mapa('TICKETS_PESO_PRIORIDAD', 'BAJA:10,MEDIA:25,ALTA:50,CRITICA:80'),\n  puntosPorDia: Number(val('TICKETS_PUNTOS_POR_DIA', '2')),\n  scoreMax: Number(val('TICKETS_SCORE_MAX', '100')),\n  filtrarPorProyecto: bool('TICKETS_FILTRAR_POR_PROYECTO', true),\n  apiKey: val('TICKETS_API_KEY', ''),\n  props: PROPS,\n};\nCFG.prioridadDefault = (function () {\n  const p = val('TICKETS_PRIORIDAD_DEFAULT', 'MEDIA').toUpperCase();\n  return CFG.prioridades.includes(p) ? p : CFG.prioridades[0];\n})();\nCFG.estadoInicial = (function () {\n  const e = val('TICKETS_ESTADO_INICIAL', '').toUpperCase();\n  return CFG.estados.includes(e) ? e : CFG.estados[0];\n})();\n\n// score = peso de la prioridad + puntos por cada día abierto (topeado).\n// Así un ticket viejo de prioridad baja termina pesando más que uno nuevo.\nconst calcularScore = (prioridad, diasAbierto) => {\n  const base = Number(CFG.pesoPrioridad[String(prioridad).toUpperCase()] || 0);\n  const suma = CFG.puntosPorDia * Math.max(0, Number(diasAbierto) || 0);\n  return Math.max(0, Math.min(CFG.scoreMax, Math.round(base + suma)));\n};\n\nconst HOY = new Date().toISOString().slice(0, 10);\nconst diasDesde = (iso) => {\n  if (!iso) return 0;\n  const t = Date.parse(String(iso).length <= 10 ? String(iso) + 'T00:00:00Z' : iso);\n  if (!Number.isFinite(t)) return 0;\n  return Math.max(0, Math.floor((Date.parse(HOY + 'T00:00:00Z') - t) / 86400000));\n};\n\n// Si TICKETS_API_KEY está vacía el módulo queda abierto (útil en local).\nconst autorizado = (headers) => {\n  if (!CFG.apiKey) return true;\n  const h = headers || {};\n  return String(h['x-api-key'] || h['X-API-Key'] || '') === CFG.apiKey;\n};\n\nconst enLista = (v, opciones, def) => {\n  const u = String(v == null ? '' : v).trim().toUpperCase();\n  return opciones.includes(u) ? u : def;\n};\n\n// Lee una propiedad de una página de Notion sin importar su tipo.\nconst leerProp = (page, nombre) => {\n  const p = (page && page.properties) ? page.properties[nombre] : null;\n  if (!p) return null;\n  if (p.type === 'title') return (p.title[0] || {}).plain_text || '';\n  if (p.type === 'rich_text') return (p.rich_text[0] || {}).plain_text || '';\n  if (p.type === 'select') return p.select ? p.select.name : null;\n  if (p.type === 'multi_select') return p.multi_select.map((t) => t.name);\n  if (p.type === 'number') return p.number;\n  if (p.type === 'date') return p.date ? p.date.start : null;\n  return null;\n};\n\n// Arma el filtro de Notion para \"tickets abiertos de este proyecto\".\nconst filtroAbiertos = (proyecto) => {\n  const f = [];\n  if (CFG.filtrarPorProyecto && proyecto) {\n    f.push({ property: CFG.props.proyecto, select: { equals: String(proyecto) } });\n  }\n  for (const e of CFG.estadosCerrados) {\n    f.push({ property: CFG.props.estado, select: { does_not_equal: e } });\n  }\n  return f;\n};\n// ─── FIN CONFIG ─────────────────────────────────────────────────────────────\n\n// Traduce la página creada en Notion a la respuesta del webhook.\nconst page = $input.first().json || {};\nconst prev = $('Code - Validar Ticket Nuevo').first().json || {};\n\nreturn [{\n  json: {\n    ok: true,\n    ticket_id: page.id || null,\n    url: page.url || null,\n    titulo: prev.titulo || '',\n    estado: prev.estado || '',\n    prioridad: prev.prioridad || '',\n    proyecto: prev.proyecto || '',\n    etiquetas: prev.etiquetas || [],\n  },\n}];"
+      },
+      "id": "tk-code-0005",
+      "name": "Code - Salida Ticket Creado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 201
+        }
+      },
+      "id": "tk-resp-0006",
+      "name": "Respond - Ticket Creado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1380,
+        20
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, error: $json.error }) }}",
+        "options": {
+          "responseCode": "={{ $json.http_code || 400 }}"
+        }
+      },
+      "id": "tk-resp-0007",
+      "name": "Respond - Ticket Rechazado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        900,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ticket/estado",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "={{ $env.TICKETS_CORS_ORIGINS || '*' }}"
+        }
+      },
+      "id": "tk-wh-0008",
+      "name": "🔄 Webhook - Ticket Estado",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        180,
+        700
+      ],
+      "webhookId": "tickets-ticket-estado"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ─── CONFIG DEL MÓDULO ──────────────────────────────────────────────────────\n// Todo sale de variables de entorno. Los defaults dejan el módulo andando sin\n// configurar nada salvo NOTION_TICKETS_DATABASE_ID. Requiere en n8n:\n// N8N_BLOCK_ENV_ACCESS_IN_NODE=false (leer $env dentro de nodos Code).\nconst ENV = (typeof $env !== 'undefined' && $env) ? $env : {};\nconst val = (k, def) => {\n  let v;\n  try { v = ENV[k]; } catch (e) { v = undefined; }\n  return (v === undefined || v === null || v === '') ? def : String(v);\n};\nconst lista = (k, def) => val(k, def).split(',').map((s) => s.trim()).filter(Boolean);\nconst mapa = (k, def) => {\n  const out = {};\n  for (const par of lista(k, def)) {\n    const i = par.indexOf(':');\n    if (i < 0) continue;\n    out[par.slice(0, i).trim().toUpperCase()] = Number(par.slice(i + 1).trim());\n  }\n  return out;\n};\nconst bool = (k, def) => val(k, def ? 'true' : 'false').toLowerCase() === 'true';\n\n// Nombres de las propiedades en Notion. Se pueden remapear enteros con\n// TICKETS_PROPS (JSON) para engancharse a una base que ya existe.\nconst PROPS = Object.assign({\n  titulo: 'Name',\n  estado: 'Estado',\n  prioridad: 'Prioridad',\n  prioridadInicial: 'Prioridad inicial',\n  score: 'Score',\n  etiquetas: 'Etiquetas',\n  proyecto: 'Proyecto',\n  origen: 'Origen',\n  ref: 'Ref',\n  creado: 'Creado',\n  movimiento: 'Ultimo movimiento',\n  escaladas: 'Escaladas',\n  vence: 'Vence',\n  notas: 'Notas',\n}, JSON.parse(val('TICKETS_PROPS', '{}')));\n\nconst CFG = {\n  databaseId: val('NOTION_TICKETS_DATABASE_ID', ''),\n  proyecto: val('TICKETS_PROYECTO', 'CRM Freelance'),\n  estados: lista('TICKETS_ESTADOS', 'BACKLOG,EN_CURSO,BLOQUEADO,HECHO'),\n  estadosCerrados: lista('TICKETS_ESTADOS_CERRADOS', 'HECHO'),\n  prioridades: lista('TICKETS_PRIORIDADES', 'BAJA,MEDIA,ALTA,CRITICA'),\n  origenes: lista('TICKETS_ORIGENES', 'MANUAL,API,CRM,DASHBOARD'),\n  // Días sin movimiento que tolera cada prioridad antes de subir un escalón.\n  // Es el corazón del \"que no quede en el olvido\".\n  diasEscalada: mapa('TICKETS_DIAS_ESCALADA', 'BAJA:10,MEDIA:7,ALTA:4'),\n  pesoPrioridad: mapa('TICKETS_PESO_PRIORIDAD', 'BAJA:10,MEDIA:25,ALTA:50,CRITICA:80'),\n  puntosPorDia: Number(val('TICKETS_PUNTOS_POR_DIA', '2')),\n  scoreMax: Number(val('TICKETS_SCORE_MAX', '100')),\n  filtrarPorProyecto: bool('TICKETS_FILTRAR_POR_PROYECTO', true),\n  apiKey: val('TICKETS_API_KEY', ''),\n  props: PROPS,\n};\nCFG.prioridadDefault = (function () {\n  const p = val('TICKETS_PRIORIDAD_DEFAULT', 'MEDIA').toUpperCase();\n  return CFG.prioridades.includes(p) ? p : CFG.prioridades[0];\n})();\nCFG.estadoInicial = (function () {\n  const e = val('TICKETS_ESTADO_INICIAL', '').toUpperCase();\n  return CFG.estados.includes(e) ? e : CFG.estados[0];\n})();\n\n// score = peso de la prioridad + puntos por cada día abierto (topeado).\n// Así un ticket viejo de prioridad baja termina pesando más que uno nuevo.\nconst calcularScore = (prioridad, diasAbierto) => {\n  const base = Number(CFG.pesoPrioridad[String(prioridad).toUpperCase()] || 0);\n  const suma = CFG.puntosPorDia * Math.max(0, Number(diasAbierto) || 0);\n  return Math.max(0, Math.min(CFG.scoreMax, Math.round(base + suma)));\n};\n\nconst HOY = new Date().toISOString().slice(0, 10);\nconst diasDesde = (iso) => {\n  if (!iso) return 0;\n  const t = Date.parse(String(iso).length <= 10 ? String(iso) + 'T00:00:00Z' : iso);\n  if (!Number.isFinite(t)) return 0;\n  return Math.max(0, Math.floor((Date.parse(HOY + 'T00:00:00Z') - t) / 86400000));\n};\n\n// Si TICKETS_API_KEY está vacía el módulo queda abierto (útil en local).\nconst autorizado = (headers) => {\n  if (!CFG.apiKey) return true;\n  const h = headers || {};\n  return String(h['x-api-key'] || h['X-API-Key'] || '') === CFG.apiKey;\n};\n\nconst enLista = (v, opciones, def) => {\n  const u = String(v == null ? '' : v).trim().toUpperCase();\n  return opciones.includes(u) ? u : def;\n};\n\n// Lee una propiedad de una página de Notion sin importar su tipo.\nconst leerProp = (page, nombre) => {\n  const p = (page && page.properties) ? page.properties[nombre] : null;\n  if (!p) return null;\n  if (p.type === 'title') return (p.title[0] || {}).plain_text || '';\n  if (p.type === 'rich_text') return (p.rich_text[0] || {}).plain_text || '';\n  if (p.type === 'select') return p.select ? p.select.name : null;\n  if (p.type === 'multi_select') return p.multi_select.map((t) => t.name);\n  if (p.type === 'number') return p.number;\n  if (p.type === 'date') return p.date ? p.date.start : null;\n  return null;\n};\n\n// Arma el filtro de Notion para \"tickets abiertos de este proyecto\".\nconst filtroAbiertos = (proyecto) => {\n  const f = [];\n  if (CFG.filtrarPorProyecto && proyecto) {\n    f.push({ property: CFG.props.proyecto, select: { equals: String(proyecto) } });\n  }\n  for (const e of CFG.estadosCerrados) {\n    f.push({ property: CFG.props.estado, select: { does_not_equal: e } });\n  }\n  return f;\n};\n// ─── FIN CONFIG ─────────────────────────────────────────────────────────────\n\n// Valida el POST /webhook/ticket/estado (mover de columna / cambiar prioridad).\n// No arma el patch todavía: primero hay que leer la página para saber desde\n// cuándo está abierta y recalcular el score sin perder el envejecimiento.\nconst req = $input.first().json || {};\nconst body = req.body || {};\nconst headers = req.headers || {};\n\nif (!autorizado(headers)) {\n  return [{ json: { ok: false, http_code: 401, error: 'No autorizado (falta o no coincide x-api-key).' } }];\n}\n\nconst ticketId = String(body.ticket_id || body.id || '').trim();\nif (!ticketId) {\n  return [{ json: { ok: false, http_code: 400, error: 'Falta \"ticket_id\" (el id de la página de Notion).' } }];\n}\n\nconst pideEstado = body.estado != null && String(body.estado).trim() !== '';\nconst pidePrioridad = body.prioridad != null && String(body.prioridad).trim() !== '';\nconst pideNotas = body.notas != null && String(body.notas).trim() !== '';\n\nif (!pideEstado && !pidePrioridad && !pideNotas) {\n  return [{ json: { ok: false, http_code: 400, error: 'Nada para actualizar: mandá \"estado\", \"prioridad\" o \"notas\".' } }];\n}\nif (pideEstado && !CFG.estados.includes(String(body.estado).trim().toUpperCase())) {\n  return [{ json: { ok: false, http_code: 400, error: 'Estado inválido. Válidos: ' + CFG.estados.join(', ') } }];\n}\nif (pidePrioridad && !CFG.prioridades.includes(String(body.prioridad).trim().toUpperCase())) {\n  return [{ json: { ok: false, http_code: 400, error: 'Prioridad inválida. Válidas: ' + CFG.prioridades.join(', ') } }];\n}\n\nreturn [{\n  json: {\n    ok: true,\n    ticket_id: ticketId,\n    estado: pideEstado ? String(body.estado).trim().toUpperCase() : null,\n    prioridad: pidePrioridad ? String(body.prioridad).trim().toUpperCase() : null,\n    notas: pideNotas ? String(body.notas).slice(0, 1800) : null,\n  },\n}];"
+      },
+      "id": "tk-code-0009",
+      "name": "Code - Validar Cambio Ticket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "tk-if-0010",
+      "name": "IF - Cambio Valido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        660,
+        700
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.notion.com/v1/pages/{{ $json.ticket_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "tk-http-0011",
+      "name": "HTTP - Notion Leer Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        900,
+        620
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ─── CONFIG DEL MÓDULO ──────────────────────────────────────────────────────\n// Todo sale de variables de entorno. Los defaults dejan el módulo andando sin\n// configurar nada salvo NOTION_TICKETS_DATABASE_ID. Requiere en n8n:\n// N8N_BLOCK_ENV_ACCESS_IN_NODE=false (leer $env dentro de nodos Code).\nconst ENV = (typeof $env !== 'undefined' && $env) ? $env : {};\nconst val = (k, def) => {\n  let v;\n  try { v = ENV[k]; } catch (e) { v = undefined; }\n  return (v === undefined || v === null || v === '') ? def : String(v);\n};\nconst lista = (k, def) => val(k, def).split(',').map((s) => s.trim()).filter(Boolean);\nconst mapa = (k, def) => {\n  const out = {};\n  for (const par of lista(k, def)) {\n    const i = par.indexOf(':');\n    if (i < 0) continue;\n    out[par.slice(0, i).trim().toUpperCase()] = Number(par.slice(i + 1).trim());\n  }\n  return out;\n};\nconst bool = (k, def) => val(k, def ? 'true' : 'false').toLowerCase() === 'true';\n\n// Nombres de las propiedades en Notion. Se pueden remapear enteros con\n// TICKETS_PROPS (JSON) para engancharse a una base que ya existe.\nconst PROPS = Object.assign({\n  titulo: 'Name',\n  estado: 'Estado',\n  prioridad: 'Prioridad',\n  prioridadInicial: 'Prioridad inicial',\n  score: 'Score',\n  etiquetas: 'Etiquetas',\n  proyecto: 'Proyecto',\n  origen: 'Origen',\n  ref: 'Ref',\n  creado: 'Creado',\n  movimiento: 'Ultimo movimiento',\n  escaladas: 'Escaladas',\n  vence: 'Vence',\n  notas: 'Notas',\n}, JSON.parse(val('TICKETS_PROPS', '{}')));\n\nconst CFG = {\n  databaseId: val('NOTION_TICKETS_DATABASE_ID', ''),\n  proyecto: val('TICKETS_PROYECTO', 'CRM Freelance'),\n  estados: lista('TICKETS_ESTADOS', 'BACKLOG,EN_CURSO,BLOQUEADO,HECHO'),\n  estadosCerrados: lista('TICKETS_ESTADOS_CERRADOS', 'HECHO'),\n  prioridades: lista('TICKETS_PRIORIDADES', 'BAJA,MEDIA,ALTA,CRITICA'),\n  origenes: lista('TICKETS_ORIGENES', 'MANUAL,API,CRM,DASHBOARD'),\n  // Días sin movimiento que tolera cada prioridad antes de subir un escalón.\n  // Es el corazón del \"que no quede en el olvido\".\n  diasEscalada: mapa('TICKETS_DIAS_ESCALADA', 'BAJA:10,MEDIA:7,ALTA:4'),\n  pesoPrioridad: mapa('TICKETS_PESO_PRIORIDAD', 'BAJA:10,MEDIA:25,ALTA:50,CRITICA:80'),\n  puntosPorDia: Number(val('TICKETS_PUNTOS_POR_DIA', '2')),\n  scoreMax: Number(val('TICKETS_SCORE_MAX', '100')),\n  filtrarPorProyecto: bool('TICKETS_FILTRAR_POR_PROYECTO', true),\n  apiKey: val('TICKETS_API_KEY', ''),\n  props: PROPS,\n};\nCFG.prioridadDefault = (function () {\n  const p = val('TICKETS_PRIORIDAD_DEFAULT', 'MEDIA').toUpperCase();\n  return CFG.prioridades.includes(p) ? p : CFG.prioridades[0];\n})();\nCFG.estadoInicial = (function () {\n  const e = val('TICKETS_ESTADO_INICIAL', '').toUpperCase();\n  return CFG.estados.includes(e) ? e : CFG.estados[0];\n})();\n\n// score = peso de la prioridad + puntos por cada día abierto (topeado).\n// Así un ticket viejo de prioridad baja termina pesando más que uno nuevo.\nconst calcularScore = (prioridad, diasAbierto) => {\n  const base = Number(CFG.pesoPrioridad[String(prioridad).toUpperCase()] || 0);\n  const suma = CFG.puntosPorDia * Math.max(0, Number(diasAbierto) || 0);\n  return Math.max(0, Math.min(CFG.scoreMax, Math.round(base + suma)));\n};\n\nconst HOY = new Date().toISOString().slice(0, 10);\nconst diasDesde = (iso) => {\n  if (!iso) return 0;\n  const t = Date.parse(String(iso).length <= 10 ? String(iso) + 'T00:00:00Z' : iso);\n  if (!Number.isFinite(t)) return 0;\n  return Math.max(0, Math.floor((Date.parse(HOY + 'T00:00:00Z') - t) / 86400000));\n};\n\n// Si TICKETS_API_KEY está vacía el módulo queda abierto (útil en local).\nconst autorizado = (headers) => {\n  if (!CFG.apiKey) return true;\n  const h = headers || {};\n  return String(h['x-api-key'] || h['X-API-Key'] || '') === CFG.apiKey;\n};\n\nconst enLista = (v, opciones, def) => {\n  const u = String(v == null ? '' : v).trim().toUpperCase();\n  return opciones.includes(u) ? u : def;\n};\n\n// Lee una propiedad de una página de Notion sin importar su tipo.\nconst leerProp = (page, nombre) => {\n  const p = (page && page.properties) ? page.properties[nombre] : null;\n  if (!p) return null;\n  if (p.type === 'title') return (p.title[0] || {}).plain_text || '';\n  if (p.type === 'rich_text') return (p.rich_text[0] || {}).plain_text || '';\n  if (p.type === 'select') return p.select ? p.select.name : null;\n  if (p.type === 'multi_select') return p.multi_select.map((t) => t.name);\n  if (p.type === 'number') return p.number;\n  if (p.type === 'date') return p.date ? p.date.start : null;\n  return null;\n};\n\n// Arma el filtro de Notion para \"tickets abiertos de este proyecto\".\nconst filtroAbiertos = (proyecto) => {\n  const f = [];\n  if (CFG.filtrarPorProyecto && proyecto) {\n    f.push({ property: CFG.props.proyecto, select: { equals: String(proyecto) } });\n  }\n  for (const e of CFG.estadosCerrados) {\n    f.push({ property: CFG.props.estado, select: { does_not_equal: e } });\n  }\n  return f;\n};\n// ─── FIN CONFIG ─────────────────────────────────────────────────────────────\n\n// Con la página ya leída de Notion, arma el PATCH del cambio manual.\n// Tocar un ticket reinicia su reloj de envejecimiento (Ultimo movimiento): si\n// lo estás atendiendo no hace falta que el cron lo siga escalando.\nconst page = $input.first().json || {};\nconst pedido = $('Code - Validar Cambio Ticket').first().json || {};\nconst P = CFG.props;\n\nconst prioridadActual = leerProp(page, P.prioridad) || CFG.prioridadDefault;\nconst estadoActual = leerProp(page, P.estado) || CFG.estadoInicial;\nconst creado = leerProp(page, P.creado) || page.created_time;\n\nconst prioridad = pedido.prioridad || prioridadActual;\nconst estado = pedido.estado || estadoActual;\nconst cerrado = CFG.estadosCerrados.includes(estado);\nconst diasAbierto = diasDesde(creado);\n\nconst properties = {};\nif (pedido.estado) properties[P.estado] = { select: { name: estado } };\nif (pedido.prioridad) properties[P.prioridad] = { select: { name: prioridad } };\nif (pedido.notas != null) properties[P.notas] = { rich_text: [{ text: { content: pedido.notas } }] };\nproperties[P.movimiento] = { date: { start: HOY } };\n// Un ticket cerrado deja de competir por atención: score a 0.\nproperties[P.score] = { number: cerrado ? 0 : calcularScore(prioridad, diasAbierto) };\n\nreturn [{\n  json: {\n    ticket_id: pedido.ticket_id,\n    titulo: leerProp(page, P.titulo) || '',\n    estado,\n    prioridad,\n    cerrado,\n    dias_abierto: diasAbierto,\n    notion_patch: { properties },\n  },\n}];"
+      },
+      "id": "tk-code-0012",
+      "name": "Code - Preparar Patch Ticket",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/pages/{{ $('Code - Preparar Patch Ticket').item.json.ticket_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.notion_patch) }}",
+        "options": {}
+      },
+      "id": "tk-http-0013",
+      "name": "HTTP - Notion Actualizar Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1380,
+        620
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ─── CONFIG DEL MÓDULO ──────────────────────────────────────────────────────\n// Todo sale de variables de entorno. Los defaults dejan el módulo andando sin\n// configurar nada salvo NOTION_TICKETS_DATABASE_ID. Requiere en n8n:\n// N8N_BLOCK_ENV_ACCESS_IN_NODE=false (leer $env dentro de nodos Code).\nconst ENV = (typeof $env !== 'undefined' && $env) ? $env : {};\nconst val = (k, def) => {\n  let v;\n  try { v = ENV[k]; } catch (e) { v = undefined; }\n  return (v === undefined || v === null || v === '') ? def : String(v);\n};\nconst lista = (k, def) => val(k, def).split(',').map((s) => s.trim()).filter(Boolean);\nconst mapa = (k, def) => {\n  const out = {};\n  for (const par of lista(k, def)) {\n    const i = par.indexOf(':');\n    if (i < 0) continue;\n    out[par.slice(0, i).trim().toUpperCase()] = Number(par.slice(i + 1).trim());\n  }\n  return out;\n};\nconst bool = (k, def) => val(k, def ? 'true' : 'false').toLowerCase() === 'true';\n\n// Nombres de las propiedades en Notion. Se pueden remapear enteros con\n// TICKETS_PROPS (JSON) para engancharse a una base que ya existe.\nconst PROPS = Object.assign({\n  titulo: 'Name',\n  estado: 'Estado',\n  prioridad: 'Prioridad',\n  prioridadInicial: 'Prioridad inicial',\n  score: 'Score',\n  etiquetas: 'Etiquetas',\n  proyecto: 'Proyecto',\n  origen: 'Origen',\n  ref: 'Ref',\n  creado: 'Creado',\n  movimiento: 'Ultimo movimiento',\n  escaladas: 'Escaladas',\n  vence: 'Vence',\n  notas: 'Notas',\n}, JSON.parse(val('TICKETS_PROPS', '{}')));\n\nconst CFG = {\n  databaseId: val('NOTION_TICKETS_DATABASE_ID', ''),\n  proyecto: val('TICKETS_PROYECTO', 'CRM Freelance'),\n  estados: lista('TICKETS_ESTADOS', 'BACKLOG,EN_CURSO,BLOQUEADO,HECHO'),\n  estadosCerrados: lista('TICKETS_ESTADOS_CERRADOS', 'HECHO'),\n  prioridades: lista('TICKETS_PRIORIDADES', 'BAJA,MEDIA,ALTA,CRITICA'),\n  origenes: lista('TICKETS_ORIGENES', 'MANUAL,API,CRM,DASHBOARD'),\n  // Días sin movimiento que tolera cada prioridad antes de subir un escalón.\n  // Es el corazón del \"que no quede en el olvido\".\n  diasEscalada: mapa('TICKETS_DIAS_ESCALADA', 'BAJA:10,MEDIA:7,ALTA:4'),\n  pesoPrioridad: mapa('TICKETS_PESO_PRIORIDAD', 'BAJA:10,MEDIA:25,ALTA:50,CRITICA:80'),\n  puntosPorDia: Number(val('TICKETS_PUNTOS_POR_DIA', '2')),\n  scoreMax: Number(val('TICKETS_SCORE_MAX', '100')),\n  filtrarPorProyecto: bool('TICKETS_FILTRAR_POR_PROYECTO', true),\n  apiKey: val('TICKETS_API_KEY', ''),\n  props: PROPS,\n};\nCFG.prioridadDefault = (function () {\n  const p = val('TICKETS_PRIORIDAD_DEFAULT', 'MEDIA').toUpperCase();\n  return CFG.prioridades.includes(p) ? p : CFG.prioridades[0];\n})();\nCFG.estadoInicial = (function () {\n  const e = val('TICKETS_ESTADO_INICIAL', '').toUpperCase();\n  return CFG.estados.includes(e) ? e : CFG.estados[0];\n})();\n\n// score = peso de la prioridad + puntos por cada día abierto (topeado).\n// Así un ticket viejo de prioridad baja termina pesando más que uno nuevo.\nconst calcularScore = (prioridad, diasAbierto) => {\n  const base = Number(CFG.pesoPrioridad[String(prioridad).toUpperCase()] || 0);\n  const suma = CFG.puntosPorDia * Math.max(0, Number(diasAbierto) || 0);\n  return Math.max(0, Math.min(CFG.scoreMax, Math.round(base + suma)));\n};\n\nconst HOY = new Date().toISOString().slice(0, 10);\nconst diasDesde = (iso) => {\n  if (!iso) return 0;\n  const t = Date.parse(String(iso).length <= 10 ? String(iso) + 'T00:00:00Z' : iso);\n  if (!Number.isFinite(t)) return 0;\n  return Math.max(0, Math.floor((Date.parse(HOY + 'T00:00:00Z') - t) / 86400000));\n};\n\n// Si TICKETS_API_KEY está vacía el módulo queda abierto (útil en local).\nconst autorizado = (headers) => {\n  if (!CFG.apiKey) return true;\n  const h = headers || {};\n  return String(h['x-api-key'] || h['X-API-Key'] || '') === CFG.apiKey;\n};\n\nconst enLista = (v, opciones, def) => {\n  const u = String(v == null ? '' : v).trim().toUpperCase();\n  return opciones.includes(u) ? u : def;\n};\n\n// Lee una propiedad de una página de Notion sin importar su tipo.\nconst leerProp = (page, nombre) => {\n  const p = (page && page.properties) ? page.properties[nombre] : null;\n  if (!p) return null;\n  if (p.type === 'title') return (p.title[0] || {}).plain_text || '';\n  if (p.type === 'rich_text') return (p.rich_text[0] || {}).plain_text || '';\n  if (p.type === 'select') return p.select ? p.select.name : null;\n  if (p.type === 'multi_select') return p.multi_select.map((t) => t.name);\n  if (p.type === 'number') return p.number;\n  if (p.type === 'date') return p.date ? p.date.start : null;\n  return null;\n};\n\n// Arma el filtro de Notion para \"tickets abiertos de este proyecto\".\nconst filtroAbiertos = (proyecto) => {\n  const f = [];\n  if (CFG.filtrarPorProyecto && proyecto) {\n    f.push({ property: CFG.props.proyecto, select: { equals: String(proyecto) } });\n  }\n  for (const e of CFG.estadosCerrados) {\n    f.push({ property: CFG.props.estado, select: { does_not_equal: e } });\n  }\n  return f;\n};\n// ─── FIN CONFIG ─────────────────────────────────────────────────────────────\n\n// Respuesta del cambio de estado/prioridad.\nconst page = $input.first().json || {};\nconst prev = $('Code - Preparar Patch Ticket').first().json || {};\n\nreturn [{\n  json: {\n    ok: true,\n    ticket_id: page.id || prev.ticket_id || null,\n    url: page.url || null,\n    titulo: prev.titulo || '',\n    estado: prev.estado || '',\n    prioridad: prev.prioridad || '',\n    cerrado: !!prev.cerrado,\n  },\n}];"
+      },
+      "id": "tk-code-0014",
+      "name": "Code - Salida Ticket Actualizado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1620,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "tk-resp-0015",
+      "name": "Respond - Ticket Actualizado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1860,
+        620
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, error: $json.error }) }}",
+        "options": {
+          "responseCode": "={{ $json.http_code || 400 }}"
+        }
+      },
+      "id": "tk-resp-0016",
+      "name": "Respond - Cambio Rechazado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        900,
+        820
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "ticket/listar",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "={{ $env.TICKETS_CORS_ORIGINS || '*' }}"
+        }
+      },
+      "id": "tk-wh-0017",
+      "name": "📋 Webhook - Tickets Listar",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        180,
+        1300
+      ],
+      "webhookId": "tickets-ticket-listar"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ─── CONFIG DEL MÓDULO ──────────────────────────────────────────────────────\n// Todo sale de variables de entorno. Los defaults dejan el módulo andando sin\n// configurar nada salvo NOTION_TICKETS_DATABASE_ID. Requiere en n8n:\n// N8N_BLOCK_ENV_ACCESS_IN_NODE=false (leer $env dentro de nodos Code).\nconst ENV = (typeof $env !== 'undefined' && $env) ? $env : {};\nconst val = (k, def) => {\n  let v;\n  try { v = ENV[k]; } catch (e) { v = undefined; }\n  return (v === undefined || v === null || v === '') ? def : String(v);\n};\nconst lista = (k, def) => val(k, def).split(',').map((s) => s.trim()).filter(Boolean);\nconst mapa = (k, def) => {\n  const out = {};\n  for (const par of lista(k, def)) {\n    const i = par.indexOf(':');\n    if (i < 0) continue;\n    out[par.slice(0, i).trim().toUpperCase()] = Number(par.slice(i + 1).trim());\n  }\n  return out;\n};\nconst bool = (k, def) => val(k, def ? 'true' : 'false').toLowerCase() === 'true';\n\n// Nombres de las propiedades en Notion. Se pueden remapear enteros con\n// TICKETS_PROPS (JSON) para engancharse a una base que ya existe.\nconst PROPS = Object.assign({\n  titulo: 'Name',\n  estado: 'Estado',\n  prioridad: 'Prioridad',\n  prioridadInicial: 'Prioridad inicial',\n  score: 'Score',\n  etiquetas: 'Etiquetas',\n  proyecto: 'Proyecto',\n  origen: 'Origen',\n  ref: 'Ref',\n  creado: 'Creado',\n  movimiento: 'Ultimo movimiento',\n  escaladas: 'Escaladas',\n  vence: 'Vence',\n  notas: 'Notas',\n}, JSON.parse(val('TICKETS_PROPS', '{}')));\n\nconst CFG = {\n  databaseId: val('NOTION_TICKETS_DATABASE_ID', ''),\n  proyecto: val('TICKETS_PROYECTO', 'CRM Freelance'),\n  estados: lista('TICKETS_ESTADOS', 'BACKLOG,EN_CURSO,BLOQUEADO,HECHO'),\n  estadosCerrados: lista('TICKETS_ESTADOS_CERRADOS', 'HECHO'),\n  prioridades: lista('TICKETS_PRIORIDADES', 'BAJA,MEDIA,ALTA,CRITICA'),\n  origenes: lista('TICKETS_ORIGENES', 'MANUAL,API,CRM,DASHBOARD'),\n  // Días sin movimiento que tolera cada prioridad antes de subir un escalón.\n  // Es el corazón del \"que no quede en el olvido\".\n  diasEscalada: mapa('TICKETS_DIAS_ESCALADA', 'BAJA:10,MEDIA:7,ALTA:4'),\n  pesoPrioridad: mapa('TICKETS_PESO_PRIORIDAD', 'BAJA:10,MEDIA:25,ALTA:50,CRITICA:80'),\n  puntosPorDia: Number(val('TICKETS_PUNTOS_POR_DIA', '2')),\n  scoreMax: Number(val('TICKETS_SCORE_MAX', '100')),\n  filtrarPorProyecto: bool('TICKETS_FILTRAR_POR_PROYECTO', true),\n  apiKey: val('TICKETS_API_KEY', ''),\n  props: PROPS,\n};\nCFG.prioridadDefault = (function () {\n  const p = val('TICKETS_PRIORIDAD_DEFAULT', 'MEDIA').toUpperCase();\n  return CFG.prioridades.includes(p) ? p : CFG.prioridades[0];\n})();\nCFG.estadoInicial = (function () {\n  const e = val('TICKETS_ESTADO_INICIAL', '').toUpperCase();\n  return CFG.estados.includes(e) ? e : CFG.estados[0];\n})();\n\n// score = peso de la prioridad + puntos por cada día abierto (topeado).\n// Así un ticket viejo de prioridad baja termina pesando más que uno nuevo.\nconst calcularScore = (prioridad, diasAbierto) => {\n  const base = Number(CFG.pesoPrioridad[String(prioridad).toUpperCase()] || 0);\n  const suma = CFG.puntosPorDia * Math.max(0, Number(diasAbierto) || 0);\n  return Math.max(0, Math.min(CFG.scoreMax, Math.round(base + suma)));\n};\n\nconst HOY = new Date().toISOString().slice(0, 10);\nconst diasDesde = (iso) => {\n  if (!iso) return 0;\n  const t = Date.parse(String(iso).length <= 10 ? String(iso) + 'T00:00:00Z' : iso);\n  if (!Number.isFinite(t)) return 0;\n  return Math.max(0, Math.floor((Date.parse(HOY + 'T00:00:00Z') - t) / 86400000));\n};\n\n// Si TICKETS_API_KEY está vacía el módulo queda abierto (útil en local).\nconst autorizado = (headers) => {\n  if (!CFG.apiKey) return true;\n  const h = headers || {};\n  return String(h['x-api-key'] || h['X-API-Key'] || '') === CFG.apiKey;\n};\n\nconst enLista = (v, opciones, def) => {\n  const u = String(v == null ? '' : v).trim().toUpperCase();\n  return opciones.includes(u) ? u : def;\n};\n\n// Lee una propiedad de una página de Notion sin importar su tipo.\nconst leerProp = (page, nombre) => {\n  const p = (page && page.properties) ? page.properties[nombre] : null;\n  if (!p) return null;\n  if (p.type === 'title') return (p.title[0] || {}).plain_text || '';\n  if (p.type === 'rich_text') return (p.rich_text[0] || {}).plain_text || '';\n  if (p.type === 'select') return p.select ? p.select.name : null;\n  if (p.type === 'multi_select') return p.multi_select.map((t) => t.name);\n  if (p.type === 'number') return p.number;\n  if (p.type === 'date') return p.date ? p.date.start : null;\n  return null;\n};\n\n// Arma el filtro de Notion para \"tickets abiertos de este proyecto\".\nconst filtroAbiertos = (proyecto) => {\n  const f = [];\n  if (CFG.filtrarPorProyecto && proyecto) {\n    f.push({ property: CFG.props.proyecto, select: { equals: String(proyecto) } });\n  }\n  for (const e of CFG.estadosCerrados) {\n    f.push({ property: CFG.props.estado, select: { does_not_equal: e } });\n  }\n  return f;\n};\n// ─── FIN CONFIG ─────────────────────────────────────────────────────────────\n\n// Arma la consulta a Notion para GET /webhook/ticket/listar.\n// Query params: ?estado=EN_CURSO&prioridad=ALTA&proyecto=X&abiertos=false&limite=50\nconst req = $input.first().json || {};\nconst q = req.query || {};\nconst headers = req.headers || {};\n\nif (!autorizado(headers)) {\n  return [{ json: { ok: false, http_code: 401, error: 'No autorizado (falta o no coincide x-api-key).', notion_query: null } }];\n}\nif (!CFG.databaseId) {\n  return [{ json: { ok: false, http_code: 500, error: 'Falta la variable de entorno NOTION_TICKETS_DATABASE_ID.', notion_query: null } }];\n}\n\nconst P = CFG.props;\nconst proyecto = String(q.proyecto || CFG.proyecto).trim();\nconst soloAbiertos = String(q.abiertos == null ? 'true' : q.abiertos).toLowerCase() !== 'false';\n\nconst filtros = [];\nif (CFG.filtrarPorProyecto && proyecto) {\n  filtros.push({ property: P.proyecto, select: { equals: proyecto } });\n}\nif (q.estado) {\n  filtros.push({ property: P.estado, select: { equals: String(q.estado).trim().toUpperCase() } });\n} else if (soloAbiertos) {\n  for (const e of CFG.estadosCerrados) {\n    filtros.push({ property: P.estado, select: { does_not_equal: e } });\n  }\n}\nif (q.prioridad) {\n  filtros.push({ property: P.prioridad, select: { equals: String(q.prioridad).trim().toUpperCase() } });\n}\n\nconst limite = Math.max(1, Math.min(100, Number(q.limite) || 100));\nconst notionQuery = {\n  page_size: limite,\n  sorts: [{ property: P.score, direction: 'descending' }],\n};\nif (filtros.length === 1) notionQuery.filter = filtros[0];\nif (filtros.length > 1) notionQuery.filter = { and: filtros };\n\nreturn [{ json: { ok: true, database_id: CFG.databaseId, proyecto, notion_query: notionQuery } }];"
+      },
+      "id": "tk-code-0018",
+      "name": "Code - Query Tickets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        1300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "tk-if-0019",
+      "name": "IF - Query Valida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        660,
+        1300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.notion.com/v1/databases/{{ $json.database_id }}/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.notion_query) }}",
+        "options": {}
+      },
+      "id": "tk-http-0020",
+      "name": "HTTP - Notion Listar Tickets",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        900,
+        1220
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ─── CONFIG DEL MÓDULO ──────────────────────────────────────────────────────\n// Todo sale de variables de entorno. Los defaults dejan el módulo andando sin\n// configurar nada salvo NOTION_TICKETS_DATABASE_ID. Requiere en n8n:\n// N8N_BLOCK_ENV_ACCESS_IN_NODE=false (leer $env dentro de nodos Code).\nconst ENV = (typeof $env !== 'undefined' && $env) ? $env : {};\nconst val = (k, def) => {\n  let v;\n  try { v = ENV[k]; } catch (e) { v = undefined; }\n  return (v === undefined || v === null || v === '') ? def : String(v);\n};\nconst lista = (k, def) => val(k, def).split(',').map((s) => s.trim()).filter(Boolean);\nconst mapa = (k, def) => {\n  const out = {};\n  for (const par of lista(k, def)) {\n    const i = par.indexOf(':');\n    if (i < 0) continue;\n    out[par.slice(0, i).trim().toUpperCase()] = Number(par.slice(i + 1).trim());\n  }\n  return out;\n};\nconst bool = (k, def) => val(k, def ? 'true' : 'false').toLowerCase() === 'true';\n\n// Nombres de las propiedades en Notion. Se pueden remapear enteros con\n// TICKETS_PROPS (JSON) para engancharse a una base que ya existe.\nconst PROPS = Object.assign({\n  titulo: 'Name',\n  estado: 'Estado',\n  prioridad: 'Prioridad',\n  prioridadInicial: 'Prioridad inicial',\n  score: 'Score',\n  etiquetas: 'Etiquetas',\n  proyecto: 'Proyecto',\n  origen: 'Origen',\n  ref: 'Ref',\n  creado: 'Creado',\n  movimiento: 'Ultimo movimiento',\n  escaladas: 'Escaladas',\n  vence: 'Vence',\n  notas: 'Notas',\n}, JSON.parse(val('TICKETS_PROPS', '{}')));\n\nconst CFG = {\n  databaseId: val('NOTION_TICKETS_DATABASE_ID', ''),\n  proyecto: val('TICKETS_PROYECTO', 'CRM Freelance'),\n  estados: lista('TICKETS_ESTADOS', 'BACKLOG,EN_CURSO,BLOQUEADO,HECHO'),\n  estadosCerrados: lista('TICKETS_ESTADOS_CERRADOS', 'HECHO'),\n  prioridades: lista('TICKETS_PRIORIDADES', 'BAJA,MEDIA,ALTA,CRITICA'),\n  origenes: lista('TICKETS_ORIGENES', 'MANUAL,API,CRM,DASHBOARD'),\n  // Días sin movimiento que tolera cada prioridad antes de subir un escalón.\n  // Es el corazón del \"que no quede en el olvido\".\n  diasEscalada: mapa('TICKETS_DIAS_ESCALADA', 'BAJA:10,MEDIA:7,ALTA:4'),\n  pesoPrioridad: mapa('TICKETS_PESO_PRIORIDAD', 'BAJA:10,MEDIA:25,ALTA:50,CRITICA:80'),\n  puntosPorDia: Number(val('TICKETS_PUNTOS_POR_DIA', '2')),\n  scoreMax: Number(val('TICKETS_SCORE_MAX', '100')),\n  filtrarPorProyecto: bool('TICKETS_FILTRAR_POR_PROYECTO', true),\n  apiKey: val('TICKETS_API_KEY', ''),\n  props: PROPS,\n};\nCFG.prioridadDefault = (function () {\n  const p = val('TICKETS_PRIORIDAD_DEFAULT', 'MEDIA').toUpperCase();\n  return CFG.prioridades.includes(p) ? p : CFG.prioridades[0];\n})();\nCFG.estadoInicial = (function () {\n  const e = val('TICKETS_ESTADO_INICIAL', '').toUpperCase();\n  return CFG.estados.includes(e) ? e : CFG.estados[0];\n})();\n\n// score = peso de la prioridad + puntos por cada día abierto (topeado).\n// Así un ticket viejo de prioridad baja termina pesando más que uno nuevo.\nconst calcularScore = (prioridad, diasAbierto) => {\n  const base = Number(CFG.pesoPrioridad[String(prioridad).toUpperCase()] || 0);\n  const suma = CFG.puntosPorDia * Math.max(0, Number(diasAbierto) || 0);\n  return Math.max(0, Math.min(CFG.scoreMax, Math.round(base + suma)));\n};\n\nconst HOY = new Date().toISOString().slice(0, 10);\nconst diasDesde = (iso) => {\n  if (!iso) return 0;\n  const t = Date.parse(String(iso).length <= 10 ? String(iso) + 'T00:00:00Z' : iso);\n  if (!Number.isFinite(t)) return 0;\n  return Math.max(0, Math.floor((Date.parse(HOY + 'T00:00:00Z') - t) / 86400000));\n};\n\n// Si TICKETS_API_KEY está vacía el módulo queda abierto (útil en local).\nconst autorizado = (headers) => {\n  if (!CFG.apiKey) return true;\n  const h = headers || {};\n  return String(h['x-api-key'] || h['X-API-Key'] || '') === CFG.apiKey;\n};\n\nconst enLista = (v, opciones, def) => {\n  const u = String(v == null ? '' : v).trim().toUpperCase();\n  return opciones.includes(u) ? u : def;\n};\n\n// Lee una propiedad de una página de Notion sin importar su tipo.\nconst leerProp = (page, nombre) => {\n  const p = (page && page.properties) ? page.properties[nombre] : null;\n  if (!p) return null;\n  if (p.type === 'title') return (p.title[0] || {}).plain_text || '';\n  if (p.type === 'rich_text') return (p.rich_text[0] || {}).plain_text || '';\n  if (p.type === 'select') return p.select ? p.select.name : null;\n  if (p.type === 'multi_select') return p.multi_select.map((t) => t.name);\n  if (p.type === 'number') return p.number;\n  if (p.type === 'date') return p.date ? p.date.start : null;\n  return null;\n};\n\n// Arma el filtro de Notion para \"tickets abiertos de este proyecto\".\nconst filtroAbiertos = (proyecto) => {\n  const f = [];\n  if (CFG.filtrarPorProyecto && proyecto) {\n    f.push({ property: CFG.props.proyecto, select: { equals: String(proyecto) } });\n  }\n  for (const e of CFG.estadosCerrados) {\n    f.push({ property: CFG.props.estado, select: { does_not_equal: e } });\n  }\n  return f;\n};\n// ─── FIN CONFIG ─────────────────────────────────────────────────────────────\n\n// Aplana las páginas de Notion a un JSON plano para el dashboard.\n// El front nunca ve el token de Notion ni el formato de la API.\nconst res = $input.first().json || {};\nconst P = CFG.props;\nconst paginas = Array.isArray(res.results) ? res.results : [];\n\nconst tickets = paginas.map((page) => {\n  const creado = leerProp(page, P.creado) || page.created_time;\n  const movimiento = leerProp(page, P.movimiento) || creado;\n  const prioridad = leerProp(page, P.prioridad) || CFG.prioridadDefault;\n  const diasQuieto = diasDesde(movimiento);\n  const umbral = CFG.diasEscalada[String(prioridad).toUpperCase()];\n  const idx = CFG.prioridades.indexOf(prioridad);\n  const tope = idx < 0 || idx >= CFG.prioridades.length - 1;\n\n  return {\n    ticket_id: page.id,\n    url: page.url || null,\n    titulo: leerProp(page, P.titulo) || '(sin título)',\n    estado: leerProp(page, P.estado) || CFG.estadoInicial,\n    prioridad,\n    prioridad_inicial: leerProp(page, P.prioridadInicial) || prioridad,\n    score: Number(leerProp(page, P.score) || 0),\n    etiquetas: leerProp(page, P.etiquetas) || [],\n    proyecto: leerProp(page, P.proyecto) || '',\n    origen: leerProp(page, P.origen) || '',\n    ref: leerProp(page, P.ref) || '',\n    notas: leerProp(page, P.notas) || '',\n    vence: leerProp(page, P.vence) || null,\n    creado,\n    ultimo_movimiento: movimiento,\n    escaladas: Number(leerProp(page, P.escaladas) || 0),\n    dias_abierto: diasDesde(creado),\n    dias_quieto: diasQuieto,\n    // Cuántos días le quedan antes de que el cron le suba la prioridad.\n    dias_para_escalar: (tope || !Number.isFinite(umbral)) ? null : Math.max(0, umbral - diasQuieto),\n  };\n});\n\nreturn [{\n  json: {\n    ok: true,\n    total: tickets.length,\n    truncado: paginas.length >= 100,\n    estados: CFG.estados,\n    prioridades: CFG.prioridades,\n    tickets,\n  },\n}];"
+      },
+      "id": "tk-code-0021",
+      "name": "Code - Mapear Tickets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        1220
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "tk-resp-0022",
+      "name": "Respond - Tickets",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1380,
+        1220
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: false, error: $json.error }) }}",
+        "options": {
+          "responseCode": "={{ $json.http_code || 400 }}"
+        }
+      },
+      "id": "tk-resp-0023",
+      "name": "Respond - Query Rechazada",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        900,
+        1420
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "tk-cron-0024",
+      "name": "⏰ Cron - Envejecer Tickets 8AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        180,
+        1900
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ─── CONFIG DEL MÓDULO ──────────────────────────────────────────────────────\n// Todo sale de variables de entorno. Los defaults dejan el módulo andando sin\n// configurar nada salvo NOTION_TICKETS_DATABASE_ID. Requiere en n8n:\n// N8N_BLOCK_ENV_ACCESS_IN_NODE=false (leer $env dentro de nodos Code).\nconst ENV = (typeof $env !== 'undefined' && $env) ? $env : {};\nconst val = (k, def) => {\n  let v;\n  try { v = ENV[k]; } catch (e) { v = undefined; }\n  return (v === undefined || v === null || v === '') ? def : String(v);\n};\nconst lista = (k, def) => val(k, def).split(',').map((s) => s.trim()).filter(Boolean);\nconst mapa = (k, def) => {\n  const out = {};\n  for (const par of lista(k, def)) {\n    const i = par.indexOf(':');\n    if (i < 0) continue;\n    out[par.slice(0, i).trim().toUpperCase()] = Number(par.slice(i + 1).trim());\n  }\n  return out;\n};\nconst bool = (k, def) => val(k, def ? 'true' : 'false').toLowerCase() === 'true';\n\n// Nombres de las propiedades en Notion. Se pueden remapear enteros con\n// TICKETS_PROPS (JSON) para engancharse a una base que ya existe.\nconst PROPS = Object.assign({\n  titulo: 'Name',\n  estado: 'Estado',\n  prioridad: 'Prioridad',\n  prioridadInicial: 'Prioridad inicial',\n  score: 'Score',\n  etiquetas: 'Etiquetas',\n  proyecto: 'Proyecto',\n  origen: 'Origen',\n  ref: 'Ref',\n  creado: 'Creado',\n  movimiento: 'Ultimo movimiento',\n  escaladas: 'Escaladas',\n  vence: 'Vence',\n  notas: 'Notas',\n}, JSON.parse(val('TICKETS_PROPS', '{}')));\n\nconst CFG = {\n  databaseId: val('NOTION_TICKETS_DATABASE_ID', ''),\n  proyecto: val('TICKETS_PROYECTO', 'CRM Freelance'),\n  estados: lista('TICKETS_ESTADOS', 'BACKLOG,EN_CURSO,BLOQUEADO,HECHO'),\n  estadosCerrados: lista('TICKETS_ESTADOS_CERRADOS', 'HECHO'),\n  prioridades: lista('TICKETS_PRIORIDADES', 'BAJA,MEDIA,ALTA,CRITICA'),\n  origenes: lista('TICKETS_ORIGENES', 'MANUAL,API,CRM,DASHBOARD'),\n  // Días sin movimiento que tolera cada prioridad antes de subir un escalón.\n  // Es el corazón del \"que no quede en el olvido\".\n  diasEscalada: mapa('TICKETS_DIAS_ESCALADA', 'BAJA:10,MEDIA:7,ALTA:4'),\n  pesoPrioridad: mapa('TICKETS_PESO_PRIORIDAD', 'BAJA:10,MEDIA:25,ALTA:50,CRITICA:80'),\n  puntosPorDia: Number(val('TICKETS_PUNTOS_POR_DIA', '2')),\n  scoreMax: Number(val('TICKETS_SCORE_MAX', '100')),\n  filtrarPorProyecto: bool('TICKETS_FILTRAR_POR_PROYECTO', true),\n  apiKey: val('TICKETS_API_KEY', ''),\n  props: PROPS,\n};\nCFG.prioridadDefault = (function () {\n  const p = val('TICKETS_PRIORIDAD_DEFAULT', 'MEDIA').toUpperCase();\n  return CFG.prioridades.includes(p) ? p : CFG.prioridades[0];\n})();\nCFG.estadoInicial = (function () {\n  const e = val('TICKETS_ESTADO_INICIAL', '').toUpperCase();\n  return CFG.estados.includes(e) ? e : CFG.estados[0];\n})();\n\n// score = peso de la prioridad + puntos por cada día abierto (topeado).\n// Así un ticket viejo de prioridad baja termina pesando más que uno nuevo.\nconst calcularScore = (prioridad, diasAbierto) => {\n  const base = Number(CFG.pesoPrioridad[String(prioridad).toUpperCase()] || 0);\n  const suma = CFG.puntosPorDia * Math.max(0, Number(diasAbierto) || 0);\n  return Math.max(0, Math.min(CFG.scoreMax, Math.round(base + suma)));\n};\n\nconst HOY = new Date().toISOString().slice(0, 10);\nconst diasDesde = (iso) => {\n  if (!iso) return 0;\n  const t = Date.parse(String(iso).length <= 10 ? String(iso) + 'T00:00:00Z' : iso);\n  if (!Number.isFinite(t)) return 0;\n  return Math.max(0, Math.floor((Date.parse(HOY + 'T00:00:00Z') - t) / 86400000));\n};\n\n// Si TICKETS_API_KEY está vacía el módulo queda abierto (útil en local).\nconst autorizado = (headers) => {\n  if (!CFG.apiKey) return true;\n  const h = headers || {};\n  return String(h['x-api-key'] || h['X-API-Key'] || '') === CFG.apiKey;\n};\n\nconst enLista = (v, opciones, def) => {\n  const u = String(v == null ? '' : v).trim().toUpperCase();\n  return opciones.includes(u) ? u : def;\n};\n\n// Lee una propiedad de una página de Notion sin importar su tipo.\nconst leerProp = (page, nombre) => {\n  const p = (page && page.properties) ? page.properties[nombre] : null;\n  if (!p) return null;\n  if (p.type === 'title') return (p.title[0] || {}).plain_text || '';\n  if (p.type === 'rich_text') return (p.rich_text[0] || {}).plain_text || '';\n  if (p.type === 'select') return p.select ? p.select.name : null;\n  if (p.type === 'multi_select') return p.multi_select.map((t) => t.name);\n  if (p.type === 'number') return p.number;\n  if (p.type === 'date') return p.date ? p.date.start : null;\n  return null;\n};\n\n// Arma el filtro de Notion para \"tickets abiertos de este proyecto\".\nconst filtroAbiertos = (proyecto) => {\n  const f = [];\n  if (CFG.filtrarPorProyecto && proyecto) {\n    f.push({ property: CFG.props.proyecto, select: { equals: String(proyecto) } });\n  }\n  for (const e of CFG.estadosCerrados) {\n    f.push({ property: CFG.props.estado, select: { does_not_equal: e } });\n  }\n  return f;\n};\n// ─── FIN CONFIG ─────────────────────────────────────────────────────────────\n\n// Consulta del cron: todos los tickets abiertos del proyecto, ordenados por\n// antigüedad de movimiento (los más olvidados primero).\nif (!CFG.databaseId) {\n  throw new Error('Falta la variable de entorno NOTION_TICKETS_DATABASE_ID.');\n}\n\nconst filtros = filtroAbiertos(CFG.proyecto);\nconst notionQuery = {\n  page_size: 100,\n  sorts: [{ property: CFG.props.movimiento, direction: 'ascending' }],\n};\nif (filtros.length === 1) notionQuery.filter = filtros[0];\nif (filtros.length > 1) notionQuery.filter = { and: filtros };\n\nreturn [{ json: { database_id: CFG.databaseId, proyecto: CFG.proyecto, notion_query: notionQuery } }];"
+      },
+      "id": "tk-code-0025",
+      "name": "Code - Query Tickets Abiertos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        420,
+        1900
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.notion.com/v1/databases/{{ $json.database_id }}/query",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.notion_query) }}",
+        "options": {}
+      },
+      "id": "tk-http-0026",
+      "name": "HTTP - Notion Tickets Abiertos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        660,
+        1900
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Notion account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ─── CONFIG DEL MÓDULO ──────────────────────────────────────────────────────\n// Todo sale de variables de entorno. Los defaults dejan el módulo andando sin\n// configurar nada salvo NOTION_TICKETS_DATABASE_ID. Requiere en n8n:\n// N8N_BLOCK_ENV_ACCESS_IN_NODE=false (leer $env dentro de nodos Code).\nconst ENV = (typeof $env !== 'undefined' && $env) ? $env : {};\nconst val = (k, def) => {\n  let v;\n  try { v = ENV[k]; } catch (e) { v = undefined; }\n  return (v === undefined || v === null || v === '') ? def : String(v);\n};\nconst lista = (k, def) => val(k, def).split(',').map((s) => s.trim()).filter(Boolean);\nconst mapa = (k, def) => {\n  const out = {};\n  for (const par of lista(k, def)) {\n    const i = par.indexOf(':');\n    if (i < 0) continue;\n    out[par.slice(0, i).trim().toUpperCase()] = Number(par.slice(i + 1).trim());\n  }\n  return out;\n};\nconst bool = (k, def) => val(k, def ? 'true' : 'false').toLowerCase() === 'true';\n\n// Nombres de las propiedades en Notion. Se pueden remapear enteros con\n// TICKETS_PROPS (JSON) para engancharse a una base que ya existe.\nconst PROPS = Object.assign({\n  titulo: 'Name',\n  estado: 'Estado',\n  prioridad: 'Prioridad',\n  prioridadInicial: 'Prioridad inicial',\n  score: 'Score',\n  etiquetas: 'Etiquetas',\n  proyecto: 'Proyecto',\n  origen: 'Origen',\n  ref: 'Ref',\n  creado: 'Creado',\n  movimiento: 'Ultimo movimiento',\n  escaladas: 'Escaladas',\n  vence: 'Vence',\n  notas: 'Notas',\n}, JSON.parse(val('TICKETS_PROPS', '{}')));\n\nconst CFG = {\n  databaseId: val('NOTION_TICKETS_DATABASE_ID', ''),\n  proyecto: val('TICKETS_PROYECTO', 'CRM Freelance'),\n  estados: lista('TICKETS_ESTADOS', 'BACKLOG,EN_CURSO,BLOQUEADO,HECHO'),\n  estadosCerrados: lista('TICKETS_ESTADOS_CERRADOS', 'HECHO'),\n  prioridades: lista('TICKETS_PRIORIDADES', 'BAJA,MEDIA,ALTA,CRITICA'),\n  origenes: lista('TICKETS_ORIGENES', 'MANUAL,API,CRM,DASHBOARD'),\n  // Días sin movimiento que tolera cada prioridad antes de subir un escalón.\n  // Es el corazón del \"que no quede en el olvido\".\n  diasEscalada: mapa('TICKETS_DIAS_ESCALADA', 'BAJA:10,MEDIA:7,ALTA:4'),\n  pesoPrioridad: mapa('TICKETS_PESO_PRIORIDAD', 'BAJA:10,MEDIA:25,ALTA:50,CRITICA:80'),\n  puntosPorDia: Number(val('TICKETS_PUNTOS_POR_DIA', '2')),\n  scoreMax: Number(val('TICKETS_SCORE_MAX', '100')),\n  filtrarPorProyecto: bool('TICKETS_FILTRAR_POR_PROYECTO', true),\n  apiKey: val('TICKETS_API_KEY', ''),\n  props: PROPS,\n};\nCFG.prioridadDefault = (function () {\n  const p = val('TICKETS_PRIORIDAD_DEFAULT', 'MEDIA').toUpperCase();\n  return CFG.prioridades.includes(p) ? p : CFG.prioridades[0];\n})();\nCFG.estadoInicial = (function () {\n  const e = val('TICKETS_ESTADO_INICIAL', '').toUpperCase();\n  return CFG.estados.includes(e) ? e : CFG.estados[0];\n})();\n\n// score = peso de la prioridad + puntos por cada día abierto (topeado).\n// Así un ticket viejo de prioridad baja termina pesando más que uno nuevo.\nconst calcularScore = (prioridad, diasAbierto) => {\n  const base = Number(CFG.pesoPrioridad[String(prioridad).toUpperCase()] || 0);\n  const suma = CFG.puntosPorDia * Math.max(0, Number(diasAbierto) || 0);\n  return Math.max(0, Math.min(CFG.scoreMax, Math.round(base + suma)));\n};\n\nconst HOY = new Date().toISOString().slice(0, 10);\nconst diasDesde = (iso) => {\n  if (!iso) return 0;\n  const t = Date.parse(String(iso).length <= 10 ? String(iso) + 'T00:00:00Z' : iso);\n  if (!Number.isFinite(t)) return 0;\n  return Math.max(0, Math.floor((Date.parse(HOY + 'T00:00:00Z') - t) / 86400000));\n};\n\n// Si TICKETS_API_KEY está vacía el módulo queda abierto (útil en local).\nconst autorizado = (headers) => {\n  if (!CFG.apiKey) return true;\n  const h = headers || {};\n  return String(h['x-api-key'] || h['X-API-Key'] || '') === CFG.apiKey;\n};\n\nconst enLista = (v, opciones, def) => {\n  const u = String(v == null ? '' : v).trim().toUpperCase();\n  return opciones.includes(u) ? u : def;\n};\n\n// Lee una propiedad de una página de Notion sin importar su tipo.\nconst leerProp = (page, nombre) => {\n  const p = (page && page.properties) ? page.properties[nombre] : null;\n  if (!p) return null;\n  if (p.type === 'title') return (p.title[0] || {}).plain_text || '';\n  if (p.type === 'rich_text') return (p.rich_text[0] || {}).plain_text || '';\n  if (p.type === 'select') return p.select ? p.select.name : null;\n  if (p.type === 'multi_select') return p.multi_select.map((t) => t.name);\n  if (p.type === 'number') return p.number;\n  if (p.type === 'date') return p.date ? p.date.start : null;\n  return null;\n};\n\n// Arma el filtro de Notion para \"tickets abiertos de este proyecto\".\nconst filtroAbiertos = (proyecto) => {\n  const f = [];\n  if (CFG.filtrarPorProyecto && proyecto) {\n    f.push({ property: CFG.props.proyecto, select: { equals: String(proyecto) } });\n  }\n  for (const e of CFG.estadosCerrados) {\n    f.push({ property: CFG.props.estado, select: { does_not_equal: e } });\n  }\n  return f;\n};\n// ─── FIN CONFIG ─────────────────────────────────────────────────────────────\n\n// ─── ENVEJECIMIENTO ─────────────────────────────────────────────────────────\n// Regla: un ticket que lleva más de TICKETS_DIAS_ESCALADA[prioridad] días sin\n// movimiento sube un escalón de prioridad. Aunque haya entrado como BAJA, si\n// nadie lo toca termina en CRITICA — eso es lo que evita que quede en el olvido.\n// El score además crece solo con los días abiertos, así el orden del tablero\n// se reacomoda sin intervención.\nconst evaluarTickets = (paginas) => {\n  const P = CFG.props;\n  const cambios = [];\n\n  for (const page of (paginas || [])) {\n    const prioridad = String(leerProp(page, P.prioridad) || CFG.prioridadDefault).toUpperCase();\n    const creado = leerProp(page, P.creado) || page.created_time;\n    const movimiento = leerProp(page, P.movimiento) || creado;\n    const diasAbierto = diasDesde(creado);\n    const diasQuieto = diasDesde(movimiento);\n\n    const idx = CFG.prioridades.indexOf(prioridad);\n    const umbral = CFG.diasEscalada[prioridad];\n    const puedeSubir = idx >= 0 && idx < CFG.prioridades.length - 1 && Number.isFinite(umbral);\n    const sube = puedeSubir && diasQuieto >= umbral;\n    const nuevaPrioridad = sube ? CFG.prioridades[idx + 1] : prioridad;\n    const nuevoScore = calcularScore(nuevaPrioridad, diasAbierto);\n    const scoreActual = Number(leerProp(page, P.score));\n\n    // Si no sube y el score ya está bien, no gastamos una llamada a la API.\n    if (!sube && Number.isFinite(scoreActual) && scoreActual === nuevoScore) continue;\n\n    const properties = {};\n    properties[P.score] = { number: nuevoScore };\n    if (sube) {\n      properties[P.prioridad] = { select: { name: nuevaPrioridad } };\n      properties[P.escaladas] = { number: Number(leerProp(page, P.escaladas) || 0) + 1 };\n      properties[P.movimiento] = { date: { start: HOY } };\n    }\n\n    cambios.push({\n      ticket_id: page.id,\n      url: page.url || null,\n      titulo: leerProp(page, P.titulo) || '(sin título)',\n      estado: leerProp(page, P.estado) || CFG.estadoInicial,\n      sube,\n      prioridad_previa: prioridad,\n      prioridad: nuevaPrioridad,\n      score_previo: Number.isFinite(scoreActual) ? scoreActual : null,\n      score: nuevoScore,\n      dias_abierto: diasAbierto,\n      dias_quieto: diasQuieto,\n      notion_patch: { properties },\n    });\n  }\n\n  return cambios;\n};\n// ─── FIN ENVEJECIMIENTO ─────────────────────────────────────────────────────\n\n// Devuelve UN item por ticket que necesita PATCH en Notion (0 si no hay nada\n// que tocar: en ese caso la rama se corta sola y no se llama a la API).\nconst res = $input.first().json || {};\nconst cambios = evaluarTickets(res.results);\n\nreturn cambios.map((c) => ({ json: c }));"
+      },
+      "id": "tk-code-0027",
+      "name": "Code - Calcular Escaladas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        1780
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://api.notion.com/v1/pages/{{ $json.ticket_id }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "notionApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Notion-Version",
+              "value": "2022-06-28"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.notion_patch) }}",
+        "options": {}
+      },
+      "id": "tk-http-0028",
+      "name": "HTTP - Notion Escalar Ticket",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1140,
+        1780
+      ],
+      "credentials": {
+        "notionApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Notion account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// ─── CONFIG DEL MÓDULO ──────────────────────────────────────────────────────\n// Todo sale de variables de entorno. Los defaults dejan el módulo andando sin\n// configurar nada salvo NOTION_TICKETS_DATABASE_ID. Requiere en n8n:\n// N8N_BLOCK_ENV_ACCESS_IN_NODE=false (leer $env dentro de nodos Code).\nconst ENV = (typeof $env !== 'undefined' && $env) ? $env : {};\nconst val = (k, def) => {\n  let v;\n  try { v = ENV[k]; } catch (e) { v = undefined; }\n  return (v === undefined || v === null || v === '') ? def : String(v);\n};\nconst lista = (k, def) => val(k, def).split(',').map((s) => s.trim()).filter(Boolean);\nconst mapa = (k, def) => {\n  const out = {};\n  for (const par of lista(k, def)) {\n    const i = par.indexOf(':');\n    if (i < 0) continue;\n    out[par.slice(0, i).trim().toUpperCase()] = Number(par.slice(i + 1).trim());\n  }\n  return out;\n};\nconst bool = (k, def) => val(k, def ? 'true' : 'false').toLowerCase() === 'true';\n\n// Nombres de las propiedades en Notion. Se pueden remapear enteros con\n// TICKETS_PROPS (JSON) para engancharse a una base que ya existe.\nconst PROPS = Object.assign({\n  titulo: 'Name',\n  estado: 'Estado',\n  prioridad: 'Prioridad',\n  prioridadInicial: 'Prioridad inicial',\n  score: 'Score',\n  etiquetas: 'Etiquetas',\n  proyecto: 'Proyecto',\n  origen: 'Origen',\n  ref: 'Ref',\n  creado: 'Creado',\n  movimiento: 'Ultimo movimiento',\n  escaladas: 'Escaladas',\n  vence: 'Vence',\n  notas: 'Notas',\n}, JSON.parse(val('TICKETS_PROPS', '{}')));\n\nconst CFG = {\n  databaseId: val('NOTION_TICKETS_DATABASE_ID', ''),\n  proyecto: val('TICKETS_PROYECTO', 'CRM Freelance'),\n  estados: lista('TICKETS_ESTADOS', 'BACKLOG,EN_CURSO,BLOQUEADO,HECHO'),\n  estadosCerrados: lista('TICKETS_ESTADOS_CERRADOS', 'HECHO'),\n  prioridades: lista('TICKETS_PRIORIDADES', 'BAJA,MEDIA,ALTA,CRITICA'),\n  origenes: lista('TICKETS_ORIGENES', 'MANUAL,API,CRM,DASHBOARD'),\n  // Días sin movimiento que tolera cada prioridad antes de subir un escalón.\n  // Es el corazón del \"que no quede en el olvido\".\n  diasEscalada: mapa('TICKETS_DIAS_ESCALADA', 'BAJA:10,MEDIA:7,ALTA:4'),\n  pesoPrioridad: mapa('TICKETS_PESO_PRIORIDAD', 'BAJA:10,MEDIA:25,ALTA:50,CRITICA:80'),\n  puntosPorDia: Number(val('TICKETS_PUNTOS_POR_DIA', '2')),\n  scoreMax: Number(val('TICKETS_SCORE_MAX', '100')),\n  filtrarPorProyecto: bool('TICKETS_FILTRAR_POR_PROYECTO', true),\n  apiKey: val('TICKETS_API_KEY', ''),\n  props: PROPS,\n};\nCFG.prioridadDefault = (function () {\n  const p = val('TICKETS_PRIORIDAD_DEFAULT', 'MEDIA').toUpperCase();\n  return CFG.prioridades.includes(p) ? p : CFG.prioridades[0];\n})();\nCFG.estadoInicial = (function () {\n  const e = val('TICKETS_ESTADO_INICIAL', '').toUpperCase();\n  return CFG.estados.includes(e) ? e : CFG.estados[0];\n})();\n\n// score = peso de la prioridad + puntos por cada día abierto (topeado).\n// Así un ticket viejo de prioridad baja termina pesando más que uno nuevo.\nconst calcularScore = (prioridad, diasAbierto) => {\n  const base = Number(CFG.pesoPrioridad[String(prioridad).toUpperCase()] || 0);\n  const suma = CFG.puntosPorDia * Math.max(0, Number(diasAbierto) || 0);\n  return Math.max(0, Math.min(CFG.scoreMax, Math.round(base + suma)));\n};\n\nconst HOY = new Date().toISOString().slice(0, 10);\nconst diasDesde = (iso) => {\n  if (!iso) return 0;\n  const t = Date.parse(String(iso).length <= 10 ? String(iso) + 'T00:00:00Z' : iso);\n  if (!Number.isFinite(t)) return 0;\n  return Math.max(0, Math.floor((Date.parse(HOY + 'T00:00:00Z') - t) / 86400000));\n};\n\n// Si TICKETS_API_KEY está vacía el módulo queda abierto (útil en local).\nconst autorizado = (headers) => {\n  if (!CFG.apiKey) return true;\n  const h = headers || {};\n  return String(h['x-api-key'] || h['X-API-Key'] || '') === CFG.apiKey;\n};\n\nconst enLista = (v, opciones, def) => {\n  const u = String(v == null ? '' : v).trim().toUpperCase();\n  return opciones.includes(u) ? u : def;\n};\n\n// Lee una propiedad de una página de Notion sin importar su tipo.\nconst leerProp = (page, nombre) => {\n  const p = (page && page.properties) ? page.properties[nombre] : null;\n  if (!p) return null;\n  if (p.type === 'title') return (p.title[0] || {}).plain_text || '';\n  if (p.type === 'rich_text') return (p.rich_text[0] || {}).plain_text || '';\n  if (p.type === 'select') return p.select ? p.select.name : null;\n  if (p.type === 'multi_select') return p.multi_select.map((t) => t.name);\n  if (p.type === 'number') return p.number;\n  if (p.type === 'date') return p.date ? p.date.start : null;\n  return null;\n};\n\n// Arma el filtro de Notion para \"tickets abiertos de este proyecto\".\nconst filtroAbiertos = (proyecto) => {\n  const f = [];\n  if (CFG.filtrarPorProyecto && proyecto) {\n    f.push({ property: CFG.props.proyecto, select: { equals: String(proyecto) } });\n  }\n  for (const e of CFG.estadosCerrados) {\n    f.push({ property: CFG.props.estado, select: { does_not_equal: e } });\n  }\n  return f;\n};\n// ─── FIN CONFIG ─────────────────────────────────────────────────────────────\n\n// ─── ENVEJECIMIENTO ─────────────────────────────────────────────────────────\n// Regla: un ticket que lleva más de TICKETS_DIAS_ESCALADA[prioridad] días sin\n// movimiento sube un escalón de prioridad. Aunque haya entrado como BAJA, si\n// nadie lo toca termina en CRITICA — eso es lo que evita que quede en el olvido.\n// El score además crece solo con los días abiertos, así el orden del tablero\n// se reacomoda sin intervención.\nconst evaluarTickets = (paginas) => {\n  const P = CFG.props;\n  const cambios = [];\n\n  for (const page of (paginas || [])) {\n    const prioridad = String(leerProp(page, P.prioridad) || CFG.prioridadDefault).toUpperCase();\n    const creado = leerProp(page, P.creado) || page.created_time;\n    const movimiento = leerProp(page, P.movimiento) || creado;\n    const diasAbierto = diasDesde(creado);\n    const diasQuieto = diasDesde(movimiento);\n\n    const idx = CFG.prioridades.indexOf(prioridad);\n    const umbral = CFG.diasEscalada[prioridad];\n    const puedeSubir = idx >= 0 && idx < CFG.prioridades.length - 1 && Number.isFinite(umbral);\n    const sube = puedeSubir && diasQuieto >= umbral;\n    const nuevaPrioridad = sube ? CFG.prioridades[idx + 1] : prioridad;\n    const nuevoScore = calcularScore(nuevaPrioridad, diasAbierto);\n    const scoreActual = Number(leerProp(page, P.score));\n\n    // Si no sube y el score ya está bien, no gastamos una llamada a la API.\n    if (!sube && Number.isFinite(scoreActual) && scoreActual === nuevoScore) continue;\n\n    const properties = {};\n    properties[P.score] = { number: nuevoScore };\n    if (sube) {\n      properties[P.prioridad] = { select: { name: nuevaPrioridad } };\n      properties[P.escaladas] = { number: Number(leerProp(page, P.escaladas) || 0) + 1 };\n      properties[P.movimiento] = { date: { start: HOY } };\n    }\n\n    cambios.push({\n      ticket_id: page.id,\n      url: page.url || null,\n      titulo: leerProp(page, P.titulo) || '(sin título)',\n      estado: leerProp(page, P.estado) || CFG.estadoInicial,\n      sube,\n      prioridad_previa: prioridad,\n      prioridad: nuevaPrioridad,\n      score_previo: Number.isFinite(scoreActual) ? scoreActual : null,\n      score: nuevoScore,\n      dias_abierto: diasAbierto,\n      dias_quieto: diasQuieto,\n      notion_patch: { properties },\n    });\n  }\n\n  return cambios;\n};\n// ─── FIN ENVEJECIMIENTO ─────────────────────────────────────────────────────\n\n// Arma el aviso diario por Telegram. Corre en paralelo a los PATCH: calcula\n// las mismas escaladas sobre los mismos datos, así el mensaje refleja lo que\n// el cron acaba de aplicar.\nconst res = $input.first().json || {};\nconst paginas = Array.isArray(res.results) ? res.results : [];\nconst P = CFG.props;\nconst cambios = evaluarTickets(paginas);\nconst escalados = cambios.filter((c) => c.sube);\n\nconst esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst topePrioridad = CFG.prioridades[CFG.prioridades.length - 1];\n\n// Los que ya llegaron al tope de la escala y siguen sin resolverse.\nconst criticos = paginas\n  .filter((p) => String(leerProp(p, P.prioridad) || '').toUpperCase() === topePrioridad)\n  .map((p) => ({\n    titulo: leerProp(p, P.titulo) || '(sin título)',\n    dias: diasDesde(leerProp(p, P.movimiento) || leerProp(p, P.creado) || p.created_time),\n  }))\n  .sort((a, b) => b.dias - a.dias)\n  .slice(0, 5);\n\nconst lineas = [];\nlineas.push('🎫 <b>Tickets — ' + esc(CFG.proyecto) + '</b>');\nlineas.push('Abiertos: <b>' + paginas.length + '</b>');\n\nif (escalados.length) {\n  lineas.push('');\n  lineas.push('⬆️ <b>Subieron de prioridad (' + escalados.length + ')</b>');\n  for (const t of escalados.slice(0, 10)) {\n    lineas.push('• ' + esc(t.titulo) + ' — ' + t.prioridad_previa + ' → <b>' + t.prioridad + '</b> (' + t.dias_quieto + 'd sin mover)');\n  }\n  if (escalados.length > 10) lineas.push('… y ' + (escalados.length - 10) + ' más.');\n}\n\nif (criticos.length) {\n  lineas.push('');\n  lineas.push('🔥 <b>En ' + topePrioridad + ' sin resolver</b>');\n  for (const t of criticos) {\n    lineas.push('• ' + esc(t.titulo) + ' (' + t.dias + 'd)');\n  }\n}\n\nif (!escalados.length && !criticos.length && paginas.length) {\n  lineas.push('');\n  lineas.push('✅ Nada escaló hoy, el tablero está al día.');\n}\n\nreturn [{\n  json: {\n    // Sin tickets abiertos no molestamos; tampoco si no hay nada nuevo que decir.\n    hay_aviso: paginas.length > 0 && (escalados.length > 0 || criticos.length > 0),\n    abiertos: paginas.length,\n    escalados: escalados.length,\n    criticos: criticos.length,\n    texto: lineas.join('\\n'),\n  },\n}];"
+      },
+      "id": "tk-code-0029",
+      "name": "Code - Resumen Envejecimiento",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        2020
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.hay_aviso }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "tk-if-0030",
+      "name": "IF - Hay Que Avisar?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        2020
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TICKETS_TELEGRAM_CHAT_ID || $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.texto }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "tk-tg-0031",
+      "name": "Telegram - Tickets Pendientes",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1380,
+        2020
+      ],
+      "webhookId": "tk-telegram-tickets-pendientes",
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "tk-err-0032",
+      "name": "⚠️ Error Trigger - Tickets",
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        180,
+        2500
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TICKETS_TELEGRAM_CHAT_ID || $env.TELEGRAM_CHAT_ID }}",
+        "text": "=🚨 <b>Módulo de tickets</b>\nWorkflow: {{ $json.workflow.name }}\nNodo: {{ $json.execution.lastNodeExecuted }}\nError: {{ $json.execution.error.message }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "tk-tg-0033",
+      "name": "Telegram - Error Tickets",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        420,
+        2500
+      ],
+      "webhookId": "tk-telegram-error-tickets",
+      "credentials": {
+        "telegramApi": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "## ⚙️ Módulo de tickets — configuración\nTablero tipo Trello en Notion. **Todo sale de variables de entorno**, así el mismo archivo sirve para cualquier proyecto:\nsólo cambian el `.env` y el `DATABASE_ID`.\n\n| Variable | Default | Qué hace |\n|---|---|---|\n| `NOTION_TICKETS_DATABASE_ID` | *(requerida)* | Base de Notion del tablero |\n| `TICKETS_PROYECTO` | `CRM Freelance` | Nombre estampado en cada card (permite compartir tablero) |\n| `TICKETS_ESTADOS` | `BACKLOG,EN_CURSO,BLOQUEADO,HECHO` | Columnas del tablero |\n| `TICKETS_ESTADOS_CERRADOS` | `HECHO` | Estados que dejan de envejecer |\n| `TICKETS_PRIORIDADES` | `BAJA,MEDIA,ALTA,CRITICA` | Escala ordenada de menor a mayor |\n| `TICKETS_DIAS_ESCALADA` | `BAJA:10,MEDIA:7,ALTA:4` | Días sin movimiento antes de subir un escalón |\n| `TICKETS_PESO_PRIORIDAD` | `BAJA:10,MEDIA:25,ALTA:50,CRITICA:80` | Base del score |\n| `TICKETS_PUNTOS_POR_DIA` | `2` | Cuánto suma al score cada día abierto |\n| `TICKETS_PROPS` | `{}` | JSON para remapear los nombres de las propiedades de Notion |\n| `TICKETS_API_KEY` | *(vacía)* | Si se setea, exige el header `x-api-key` |\n\n⚠️ n8n necesita `N8N_BLOCK_ENV_ACCESS_IN_NODE=false` para que los nodos Code lean `$env`.",
+        "height": 560,
+        "width": 1700,
+        "color": 7
+      },
+      "id": "tk-nota-0034",
+      "name": "Nota — ⚙️ Configuración",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        120,
+        -700
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🎫 RAMA 1 · Crear ticket\n`POST /webhook/ticket/nuevo` → valida, normaliza prioridad/estado/etiquetas contra la config y crea la card en Notion.\nBody: `{ titulo, prioridad?, estado?, etiquetas?, proyecto?, ref?, notas?, vence?, origen? }`.\nNace con `Score = peso(prioridad)` y con el reloj de envejecimiento arrancando hoy.",
+        "height": 440,
+        "width": 1700,
+        "color": 4
+      },
+      "id": "tk-nota-0035",
+      "name": "Nota — 🎫 RAMA 1 · Crear ticket",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        120,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🔄 RAMA 2 · Mover ticket (estado / prioridad)\n`POST /webhook/ticket/estado` con `{ ticket_id, estado?, prioridad?, notas? }`.\nLee la página primero para saber desde cuándo está abierta y **recalcular el score sin perder el envejecimiento**.\nTocar un ticket reinicia su reloj: si lo estás atendiendo, el cron deja de escalarlo. Si pasa a un estado cerrado, `Score = 0`.",
+        "height": 440,
+        "width": 2100,
+        "color": 5
+      },
+      "id": "tk-nota-0036",
+      "name": "Nota — 🔄 RAMA 2 · Mover ticket",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        120,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 📋 RAMA 3 · Listar tickets\n`GET /webhook/ticket/listar?estado=&prioridad=&proyecto=&abiertos=&limite=` → JSON plano ordenado por `Score` desc.\nEs lo que consume el dashboard: **el front nunca ve el token de Notion** ni el formato de su API.\nDevuelve también `dias_para_escalar` de cada ticket. Tope de 100 por consulta (page_size de Notion).",
+        "height": 440,
+        "width": 1700,
+        "color": 3
+      },
+      "id": "tk-nota-0037",
+      "name": "Nota — 📋 RAMA 3 · Listar tickets",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        120,
+        1140
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ⏰ RAMA 4 · Envejecimiento diario (8:00)\nEl corazón del módulo: **que ningún ticket quede en el olvido**.\n1. Trae los abiertos del proyecto ordenados por antigüedad de movimiento.\n2. El que superó los días tolerados para su prioridad **sube un escalón** (BAJA→MEDIA→ALTA→CRITICA) y reinicia el reloj.\n3. El `Score` crece solo con los días abiertos, así el tablero se reordena sin que nadie lo toque.\n4. Avisa por Telegram lo que escaló y lo que ya está en el tope sin resolver.\n\nLas dos ramas salen del mismo query: los PATCH corren por item (0 items = no se llama a la API).",
+        "height": 500,
+        "width": 1700,
+        "color": 6
+      },
+      "id": "tk-nota-0038",
+      "name": "Nota — ⏰ RAMA 4 · Envejecimiento",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        120,
+        1700
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ⚠️ RAMA 5 · Errores\nError workflow del módulo: cualquier fallo no manejado avisa por Telegram.\nConfigurarlo en Settings → Error Workflow.",
+        "height": 260,
+        "width": 700,
+        "color": 2
+      },
+      "id": "tk-nota-0039",
+      "name": "Nota — ⚠️ RAMA 5 · Errores",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        120,
+        2420
+      ]
+    }
+  ],
+  "connections": {
+    "🎫 Webhook - Ticket Nuevo": {
+      "main": [
+        [
+          {
+            "node": "Code - Validar Ticket Nuevo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Validar Ticket Nuevo": {
+      "main": [
+        [
+          {
+            "node": "IF - Ticket Valido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Ticket Valido?": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Notion Crear Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Ticket Rechazado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Notion Crear Ticket": {
+      "main": [
+        [
+          {
+            "node": "Code - Salida Ticket Creado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Salida Ticket Creado": {
+      "main": [
+        [
+          {
+            "node": "Respond - Ticket Creado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔄 Webhook - Ticket Estado": {
+      "main": [
+        [
+          {
+            "node": "Code - Validar Cambio Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Validar Cambio Ticket": {
+      "main": [
+        [
+          {
+            "node": "IF - Cambio Valido?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Cambio Valido?": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Notion Leer Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Cambio Rechazado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Notion Leer Ticket": {
+      "main": [
+        [
+          {
+            "node": "Code - Preparar Patch Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Preparar Patch Ticket": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Notion Actualizar Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Notion Actualizar Ticket": {
+      "main": [
+        [
+          {
+            "node": "Code - Salida Ticket Actualizado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Salida Ticket Actualizado": {
+      "main": [
+        [
+          {
+            "node": "Respond - Ticket Actualizado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📋 Webhook - Tickets Listar": {
+      "main": [
+        [
+          {
+            "node": "Code - Query Tickets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Query Tickets": {
+      "main": [
+        [
+          {
+            "node": "IF - Query Valida?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Query Valida?": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Notion Listar Tickets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Query Rechazada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Notion Listar Tickets": {
+      "main": [
+        [
+          {
+            "node": "Code - Mapear Tickets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Mapear Tickets": {
+      "main": [
+        [
+          {
+            "node": "Respond - Tickets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⏰ Cron - Envejecer Tickets 8AM": {
+      "main": [
+        [
+          {
+            "node": "Code - Query Tickets Abiertos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Query Tickets Abiertos": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Notion Tickets Abiertos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Notion Tickets Abiertos": {
+      "main": [
+        [
+          {
+            "node": "Code - Calcular Escaladas",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code - Resumen Envejecimiento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Calcular Escaladas": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Notion Escalar Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Resumen Envejecimiento": {
+      "main": [
+        [
+          {
+            "node": "IF - Hay Que Avisar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Hay Que Avisar?": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Tickets Pendientes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "⚠️ Error Trigger - Tickets": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Error Tickets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}

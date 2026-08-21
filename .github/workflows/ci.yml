@@ -1,0 +1,66 @@
+name: CI
+
+# Valida el artefacto en cada push y pull request. Todo lo que corre acá es
+# offline: no necesita n8n, ni credenciales, ni la instancia de Supabase.
+# La validación funcional de punta a punta (tests/escenarios.mjs) se ejecuta a
+# mano contra el entorno controlado, porque requiere el sistema levantado.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  workflows:
+    name: Workflows n8n y esquema
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Nodos Code de los dos workflows, scoring (regresión contra la Tabla 4),
+      # envejecimiento de tickets y afirmaciones de la tesis.
+      - name: Pruebas del artefacto
+        run: npm test
+
+      # Compila las consultas SQL de los workflows contra el esquema real: una
+      # columna mal escrita en un nodo Postgres se detecta acá y no en producción.
+      - name: Consultas SQL de los workflows
+        run: npm run test:sql
+
+      # Levanta un PostgreSQL real, aplica db/schema.sql y ejecuta las políticas
+      # RLS rol por rol. Es la evidencia de que la RLS no vive sólo en el script.
+      - name: Verificación de RLS
+        run: npm run test:rls
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: FormularioLeads
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: FormularioLeads/package-lock.json
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint -- --max-warnings 0
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # El build no necesita credenciales: los clientes de Supabase devuelven
+      # null cuando faltan las variables, en vez de romper.
+      - name: Build
+        run: npm run build

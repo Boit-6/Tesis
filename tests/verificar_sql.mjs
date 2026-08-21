@@ -1,0 +1,105 @@
+#!/usr/bin/env node
+// Verifica que TODAS las consultas SQL de los workflows compilen contra el
+// esquema real de `db/schema.sql`.
+//
+// Los nodos Postgres de n8n llevan el SQL escrito a mano dentro del JSON: un
+// nombre de columna mal escrito, un tipo que no castea o una tabla renombrada
+// no se detectan hasta que la rama se ejecuta en producción. Este verificador
+// levanta un PostgreSQL desechable, aplica el esquema y hace `PREPARE` de cada
+// consulta: PostgreSQL la parsea y valida nombres y tipos, pero no la ejecuta,
+// así que no toca ningún dato.
+//
+// Uso: node tests/verificar_sql.mjs
+import {execFileSync, execSync} from 'node:child_process';
+import {readFileSync} from 'node:fs';
+import {fileURLToPath} from 'node:url';
+import {readdirSync} from 'node:fs';
+import path from 'node:path';
+
+const aqui = path.dirname(fileURLToPath(import.meta.url));
+const raiz = path.join(aqui, '..');
+const CONTENEDOR = 'crm-sql-test';
+const IMAGEN = 'postgres:16-alpine';
+
+const sh = (cmd) => execSync(cmd, {encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']});
+const limpiar = () => {
+  try { sh(`docker rm -f ${CONTENEDOR}`); } catch { /* no existía */ }
+};
+
+// Las consultas de n8n pueden ser expresiones (prefijo `=`) con interpolaciones
+// `{{ ... }}`. Para validar la sintaxis se reemplazan por un literal.
+const aSqlPlano = (query) => query.replace(/^=/, '').replace(/\{\{[^}]*\}\}/g, '14').trim().replace(/;$/, '');
+
+function consultasDeWorkflows() {
+  const dir = path.join(raiz, 'workflow');
+  const salida = [];
+
+  for (const archivo of readdirSync(dir).filter((f) => f.endsWith('.json'))) {
+    const wf = JSON.parse(readFileSync(path.join(dir, archivo), 'utf8'));
+
+    for (const nodo of wf.nodes) {
+      if (nodo.type !== 'n8n-nodes-base.postgres') continue;
+      if (!nodo.parameters?.query) continue;
+      salida.push({archivo, nodo: nodo.nombre ?? nodo.name, sql: aSqlPlano(nodo.parameters.query)});
+    }
+  }
+
+  return salida;
+}
+
+const consultas = consultasDeWorkflows();
+
+if (!consultas.length) {
+  console.log('No hay consultas SQL en los workflows.');
+  process.exit(0);
+}
+
+let codigoSalida = 0;
+
+try {
+  console.log(`· Levantando ${IMAGEN} …`);
+  limpiar();
+  sh(`docker run -d --name ${CONTENEDOR} -e POSTGRES_PASSWORD=postgres ${IMAGEN}`);
+  sh(`docker exec ${CONTENEDOR} sh -c "for i in $(seq 1 60); do pg_isready -q -U postgres && exit 0; sleep 0.5; done; exit 1"`);
+
+  const psql = (entrada) =>
+    execFileSync(
+      'docker',
+      ['exec', '-i', CONTENEDOR, 'psql', '-U', 'postgres', '-d', 'postgres', '-v', 'ON_ERROR_STOP=1', '-f', '-'],
+      {encoding: 'utf8', input: 'SET client_min_messages TO WARNING;\n' + entrada},
+    );
+
+  console.log('· Aplicando el esquema …');
+  psql(readFileSync(path.join(aqui, 'rls', 'bootstrap.sql'), 'utf8'));
+  psql(readFileSync(path.join(raiz, 'db', 'schema.sql'), 'utf8'));
+
+  console.log(`· Compilando ${consultas.length} consultas …\n`);
+
+  let fallas = 0;
+
+  for (const [i, c] of consultas.entries()) {
+    try {
+      // PREPARE valida sintaxis, tablas, columnas y tipos sin ejecutar nada.
+      psql(`PREPARE consulta_${i} AS ${c.sql};`);
+      console.log(`OK    ${c.nodo}`);
+    } catch (err) {
+      fallas++;
+      const detalle = [err.stdout, err.stderr].filter(Boolean).join('\n').trim();
+
+      console.log(`FALLA ${c.nodo}`);
+      console.log(`      ${c.sql.slice(0, 160)}`);
+      console.log(`      ${detalle.split('\n').filter((l) => l.includes('ERROR')).join(' ')}`);
+    }
+  }
+
+  console.log(`\nResultado: ${consultas.length - fallas} OK, ${fallas} con error`);
+  if (fallas) codigoSalida = 1;
+} catch (err) {
+  codigoSalida = 1;
+  console.error([err.stdout, err.stderr].filter(Boolean).join('\n').trim() || err.message);
+  console.error('\n✗ No se pudo completar la verificación.');
+} finally {
+  limpiar();
+}
+
+process.exit(codigoSalida);

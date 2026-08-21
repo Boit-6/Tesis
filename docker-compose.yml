@@ -10,7 +10,7 @@
 
 services:
   n8n:
-    image: n8nio/n8n:latest
+    image: n8nio/n8n:2.34.6
     container_name: n8n
     restart: unless-stopped
     ports:
@@ -36,6 +36,69 @@ services:
       - NOTION_DATABASE_ID=${NOTION_DATABASE_ID:-}
       # Permite leer $env dentro de los nodos Code (necesario para NOTION_DATABASE_ID)
       - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
+      # ── URLs del CRM ──────────────────────────────────────────────────────
+      # Ya no hay ninguna URL escrita a mano dentro de los nodos.
+      # N8N_PUBLIC_URL cumple doble función: se anuncia como WEBHOOK_URL (arriba)
+      # y es la base del enlace de pago que viaja en la factura.
+      - N8N_PUBLIC_URL=${N8N_PUBLIC_URL:-http://localhost:5678/}
+      - FRONTEND_URL=${FRONTEND_URL:-https://formulario-leads-psi.vercel.app}
+      - RESENAS_FORM_URL=${RESENAS_FORM_URL:-https://forms.gle/TU-FORMULARIO}
+      - GOTENBERG_URL=${GOTENBERG_URL:-http://gotenberg:3000/forms/chromium/convert/html}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,https://formulario-leads-psi.vercel.app}
+      # ── Seguridad ─────────────────────────────────────────────────────────
+      # Días que vale el enlace de aceptación desde que se envía la propuesta.
+      - TOKEN_VIGENCIA_DIAS=${TOKEN_VIGENCIA_DIAS:-14}
+      # Permite `require('crypto')` dentro de los nodos Code (valida la firma
+      # de las notificaciones de MercadoPago). Sin esto, el Code node no
+      # puede acceder al módulo aunque MP_WEBHOOK_SECRET esté configurado.
+      - NODE_FUNCTION_ALLOW_BUILTIN=crypto
+      # ── Cobro con MercadoPago (RAMA 8) ─────────────────────────────────────
+      - MP_ACCESS_TOKEN=${MP_ACCESS_TOKEN:-}
+      - MP_CURRENCY=${MP_CURRENCY:-ARS}
+      - MP_COMISION_PORCENTAJE=${MP_COMISION_PORCENTAJE:-1}
+      - MP_WEBHOOK_SECRET=${MP_WEBHOOK_SECRET:-}
+      # ── Calificación de leads (Tabla 4) ───────────────────────────────────
+      # Los defaults reproducen exactamente la tabla documentada en la tesis;
+      # están acá para poder recalibrar el criterio sin tocar el workflow.
+      - SCORING_UMBRAL_HOT=${SCORING_UMBRAL_HOT:-70}
+      - SCORING_UMBRAL_WARM=${SCORING_UMBRAL_WARM:-40}
+      - SCORING_PRESUPUESTO=${SCORING_PRESUPUESTO:-5000:40,2000:30,1000:20,300:10}
+      - SCORING_URGENCIA=${SCORING_URGENCIA:-alta:30,media:15,baja:5}
+      - SCORING_SERVICIO=${SCORING_SERVICIO:-desarrollo_web:20,ecommerce:20,app_movil:18,automatizacion:18,marketing:15,seo:15,diseno_ui:15,consultoria:12,soporte:5}
+      - SCORING_BONUS_TELEFONO=${SCORING_BONUS_TELEFONO:-5}
+      - SCORING_BONUS_DESCRIPCION=${SCORING_BONUS_DESCRIPCION:-5}
+      # ── Módulo de tickets (workflow/tickets_notion.json) ──────────────────
+      # Es un workflow aparte y reusable: para llevarlo a otro proyecto sólo
+      # cambian estas variables. La única obligatoria es el DATABASE_ID, que
+      # sale de `node scripts/setup-notion-tickets.mjs`. El resto tiene
+      # defaults razonables y está documentado en docs/modulo-tickets.md.
+      - NOTION_TICKETS_DATABASE_ID=${NOTION_TICKETS_DATABASE_ID:-}
+      - TICKETS_PROYECTO=${TICKETS_PROYECTO:-CRM Freelance}
+      - TICKETS_ESTADOS=${TICKETS_ESTADOS:-BACKLOG,EN_CURSO,BLOQUEADO,HECHO}
+      - TICKETS_ESTADOS_CERRADOS=${TICKETS_ESTADOS_CERRADOS:-HECHO}
+      - TICKETS_ESTADO_INICIAL=${TICKETS_ESTADO_INICIAL:-}
+      - TICKETS_PRIORIDADES=${TICKETS_PRIORIDADES:-BAJA,MEDIA,ALTA,CRITICA}
+      - TICKETS_PRIORIDAD_DEFAULT=${TICKETS_PRIORIDAD_DEFAULT:-MEDIA}
+      - TICKETS_ORIGENES=${TICKETS_ORIGENES:-MANUAL,API,CRM,DASHBOARD}
+      # Días sin movimiento que tolera cada prioridad antes de subir un escalón.
+      - TICKETS_DIAS_ESCALADA=${TICKETS_DIAS_ESCALADA:-BAJA:10,MEDIA:7,ALTA:4}
+      - TICKETS_PESO_PRIORIDAD=${TICKETS_PESO_PRIORIDAD:-BAJA:10,MEDIA:25,ALTA:50,CRITICA:80}
+      - TICKETS_PUNTOS_POR_DIA=${TICKETS_PUNTOS_POR_DIA:-2}
+      - TICKETS_SCORE_MAX=${TICKETS_SCORE_MAX:-100}
+      - TICKETS_FILTRAR_POR_PROYECTO=${TICKETS_FILTRAR_POR_PROYECTO:-true}
+      # Remapeo de los nombres de las propiedades de Notion (JSON), para
+      # engancharse a una base que ya existe con otros nombres.
+      - TICKETS_PROPS=${TICKETS_PROPS:-{}}
+      # Si se setea, los webhooks de tickets exigen el header x-api-key.
+      - TICKETS_API_KEY=${TICKETS_API_KEY:-}
+      - TICKETS_CORS_ORIGINS=${TICKETS_CORS_ORIGINS:-*}
+      # Chat de Telegram del módulo; si está vacío usa TELEGRAM_CHAT_ID.
+      - TICKETS_TELEGRAM_CHAT_ID=${TICKETS_TELEGRAM_CHAT_ID:-}
+      # Enganche del CRM con el módulo: al aceptarse una propuesta se siembran
+      # estos tickets. Filas "Titulo|PRIORIDAD|dias_hasta_vencer" separadas por ";".
+      # {cliente} y {servicio} se reemplazan con los datos del lead.
+      - TICKETS_WEBHOOK_BASE=${TICKETS_WEBHOOK_BASE:-http://localhost:5678}
+      - TICKETS_PLANTILLA_PROYECTO=${TICKETS_PLANTILLA_PROYECTO:-Kickoff con {cliente}|ALTA|2;Primera entrega de {servicio}|MEDIA|7;Revision y ajustes|MEDIA|14;Cobrar la factura de {cliente}|ALTA|10}
     volumes:
       - n8n_data:/home/node/.n8n
     networks:

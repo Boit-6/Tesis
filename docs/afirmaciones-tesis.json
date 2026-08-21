@@ -1,0 +1,95 @@
+{
+  "_comentario": [
+    "Afirmaciones cuantitativas que hace el documento de la tesis sobre el artefacto.",
+    "`tests/verificar_afirmaciones.js` las recalcula contra el repositorio y avisa si dejaron",
+    "de ser ciertas. Es la red de contención para que el documento y el código no se separen.",
+    "",
+    "`valor_tesis` es lo que dice el .docx. `delta_documentado` son los cambios POSTERIORES",
+    "al corte que están explicados en la documentación: el verificador los da por buenos y",
+    "muestra la nota, en vez de marcar una falla."
+  ],
+  "corte_documental": "2026-07-02",
+  "referencia": "docs/dictamen-tesisv4.md (verificación contra el código)",
+  "afirmaciones": [
+    {
+      "id": "crm-nodos-totales",
+      "descripcion": "Nodos totales del workflow del CRM (§4.1, Anexo B)",
+      "medida": "crm.total",
+      "valor_tesis": 144,
+      "delta_documentado": 13,
+      "nota": "El enganche con el módulo de tickets sumó 2 nodos (Code + HTTP). El cobro real con MercadoPago (RAMA 8) sumó 11 más: 3 en la aceptación (generar la preferencia y resolver el link de pago) y 8 en la notificación de pago (leer, verificar contra la API de MP y marcar cobrado). Ver docs/modulo-tickets.md §6 y docs/modulo-pagos.md."
+    },
+    {
+      "id": "crm-nodos-funcionales",
+      "descripcion": "Nodos funcionales del CRM, sin contar las notas (§4.1, §4.3)",
+      "medida": "crm.funcionales",
+      "valor_tesis": 128,
+      "delta_documentado": 13,
+      "nota": "Idem: los 13 nodos nuevos (2 de tickets + 11 de MercadoPago) son todos funcionales; no se agregó ninguna nota nueva al canvas."
+    },
+    {
+      "id": "crm-notas",
+      "descripcion": "Notas de documentación en el canvas del CRM",
+      "medida": "crm.notas",
+      "valor_tesis": 16,
+      "delta_documentado": 0
+    },
+    {
+      "id": "crm-webhooks",
+      "descripcion": "Webhooks del CRM (Tabla 8)",
+      "medida": "crm.webhooks",
+      "valor_tesis": 11,
+      "delta_documentado": 1,
+      "nota": "Nuevo webhook POST /mp/notificacion (RAMA 8): recibe la notificación de pago real de MercadoPago. El webhook GET /pago-confirmado original se conserva sin cambios como modo de desarrollo sin credenciales."
+    },
+    {
+      "id": "crm-crons",
+      "descripcion": "Procesos programados del CRM (§4.3)",
+      "medida": "crm.crons",
+      "valor_tesis": 3,
+      "delta_documentado": 0
+    },
+    {
+      "id": "db-tablas",
+      "descripcion": "Tablas del esquema (§4.1, §4.4, Anexo C)",
+      "medida": "db.tablas",
+      "valor_tesis": 5,
+      "delta_documentado": 0
+    },
+    {
+      "id": "db-vistas",
+      "descripcion": "Vistas con security_invoker (§4.4, §4.6)",
+      "medida": "db.vistas",
+      "valor_tesis": 2,
+      "delta_documentado": 0
+    },
+    {
+      "id": "db-enums",
+      "descripcion": "Tipos enumerados del esquema",
+      "medida": "db.enums",
+      "valor_tesis": 7,
+      "delta_documentado": 0
+    },
+    {
+      "id": "db-servicios",
+      "descripcion": "Valores del enum servicio_tipo, alineados con el formulario y la Tabla 4 (§4.3.1)",
+      "medida": "db.servicios",
+      "valor_tesis": 9,
+      "delta_documentado": 0
+    },
+    {
+      "id": "scoring-umbral-hot",
+      "descripcion": "Umbral de tier HOT (Tabla 4, §6)",
+      "medida": "scoring.umbralHot",
+      "valor_tesis": 70,
+      "delta_documentado": 0
+    },
+    {
+      "id": "scoring-umbral-warm",
+      "descripcion": "Umbral de tier WARM (Tabla 4, §6)",
+      "medida": "scoring.umbralWarm",
+      "valor_tesis": 40,
+      "delta_documentado": 0
+    }
+  ]
+}
