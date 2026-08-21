@@ -1,15 +1,22 @@
 "use client";
 
-import {type KeyboardEvent, useState} from "react";
+import {useState} from "react";
 
 const N8N_BASE = process.env.NEXT_PUBLIC_N8N_BASE;
 const WEBHOOK_URL = `${N8N_BASE}/webhook/lead/nuevo`;
 
+// TODO: reemplazar por el correo de contacto real antes de publicar (no hay uno definido
+// todavía en ningún otro punto del frontend).
+const CONTACTO_PRIVACIDAD = "privacidad@tudominio.com";
+
 const SERVICIOS = [
   "Desarrollo Web",
+  "E-commerce",
+  "App Móvil",
   "Diseño UX/UI",
   "Marketing Digital",
   "SEO / Posicionamiento",
+  "Automatización de Procesos",
   "Consultoría",
   "Otro",
 ];
@@ -28,6 +35,7 @@ interface FormData {
   presupuesto: number;
   descripcion: string;
   urgencia: string;
+  aceptaPrivacidad: boolean;
 }
 
 const INITIAL_FORM: FormData = {
@@ -38,6 +46,7 @@ const INITIAL_FORM: FormData = {
   presupuesto: 1000,
   descripcion: "",
   urgencia: "",
+  aceptaPrivacidad: false,
 };
 
 const PRESUPUESTO_MIN = 100;
@@ -45,28 +54,29 @@ const PRESUPUESTO_MAX = 5000;
 const PRESUPUESTO_STEP = 100;
 
 function validate(data: FormData): string | null {
-  if (data.nombre.trim().length < 2)
-    return "El nombre debe tener al menos 2 caracteres.";
+  if (data.nombre.trim().length < 2) return "El nombre debe tener al menos 2 caracteres.";
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(data.email.trim()))
-    return "El email no tiene un formato válido.";
+
+  if (!emailRegex.test(data.email.trim())) return "El email no tiene un formato válido.";
   if (!data.servicio) return "Debés seleccionar un servicio.";
   if (data.descripcion.trim().length < 20)
     return "La descripción debe tener al menos 20 caracteres.";
+  if (!data.aceptaPrivacidad)
+    return "Tenés que aceptar el tratamiento de tus datos para continuar.";
+
   return null;
 }
 
 const inputClass =
   "w-full bg-transparent border-b border-neutral-600 pb-3 pt-1 text-[15px] text-neutral-100 placeholder-neutral-600 outline-none transition duration-200 ease focus:border-amber-400 focus:placeholder-neutral-500";
 
-const labelClass =
-  "block font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-500 mb-2";
+const labelClass = "block font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-500 mb-2";
 
 function SectionHeader({num, title}: {num: string; title: string}) {
   return (
     <div className="mb-8 flex items-center gap-4">
       <span className="font-mono text-[11px] text-neutral-500">{num}</span>
-      <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-400">
+      <span className="font-mono text-[11px] tracking-[0.2em] text-neutral-400 uppercase">
         {title}
       </span>
       <div className="h-px flex-1 bg-neutral-700" />
@@ -78,7 +88,7 @@ function SelectWrapper({children}: {children: React.ReactNode}) {
   return (
     <div className="relative">
       {children}
-      <div className="pointer-events-none absolute right-0 top-1 text-neutral-700">
+      <div className="pointer-events-none absolute top-1 right-0 text-neutral-700">
         <svg
           fill="none"
           height={14}
@@ -103,32 +113,37 @@ export default function LeadForm() {
   const [success, setSuccess] = useState(false);
 
   const sliderPercent =
-    ((formData.presupuesto - PRESUPUESTO_MIN) /
-      (PRESUPUESTO_MAX - PRESUPUESTO_MIN)) *
-    100;
+    ((formData.presupuesto - PRESUPUESTO_MIN) / (PRESUPUESTO_MAX - PRESUPUESTO_MIN)) * 100;
 
   function handleChange(
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
-    >,
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   ) {
     const {name, value, type} = e.target;
+
     setFormData((prev) => ({
       ...prev,
-      [name]: type === "range" ? Number(value) : value,
+      [name]:
+        type === "checkbox"
+          ? (e.target as HTMLInputElement).checked
+          : type === "range"
+            ? Number(value)
+            : value,
     }));
   }
 
   async function handleSubmit() {
     setError(null);
     const validationError = validate(formData);
+
     if (validationError) {
       setError(validationError);
+
       return;
     }
 
     if (!N8N_BASE) {
       setError("Falta la variable NEXT_PUBLIC_N8N_BASE.");
+
       return;
     }
 
@@ -147,8 +162,7 @@ export default function LeadForm() {
         }),
       });
 
-      if (!response.ok)
-        throw new Error(`Error del servidor: ${response.status}`);
+      if (!response.ok) throw new Error(`Error del servidor: ${response.status}`);
 
       setSuccess(true);
     } catch (err) {
@@ -162,25 +176,19 @@ export default function LeadForm() {
     }
   }
 
-  function handleKeyDown(e: KeyboardEvent<HTMLFormElement>) {
-    if (e.key !== "Enter") return;
-    const target = e.target as HTMLElement;
-    if (target.tagName === "TEXTAREA") return;
-    e.preventDefault();
-    handleSubmit();
-  }
+  // No hace falta un onKeyDown en el <form>: con un botón type="submit" el
+  // navegador ya dispara onSubmit al presionar Enter en un input de una línea,
+  // y respeta el salto de línea dentro del textarea. El listener manual además
+  // violaba jsx-a11y/no-noninteractive-element-interactions.
 
   if (success) {
     return (
       <div className="flex flex-col items-start gap-6 py-16">
         <span className="font-mono text-4xl font-black text-amber-400">✓</span>
         <div>
-          <h2 className="text-3xl font-black tracking-tight text-neutral-100">
-            ¡Gracias!
-          </h2>
+          <h2 className="text-3xl font-black tracking-tight text-neutral-100">¡Gracias!</h2>
           <p className="mt-3 max-w-xs text-sm leading-relaxed text-neutral-500">
-            Hemos recibido tus datos correctamente. Nos contactaremos muy
-            pronto.
+            Hemos recibido tus datos correctamente. Nos contactaremos muy pronto.
           </p>
         </div>
       </div>
@@ -190,17 +198,16 @@ export default function LeadForm() {
   return (
     <form
       noValidate
-      onKeyDown={handleKeyDown}
+      className="flex flex-col gap-12"
       onSubmit={(e) => {
         e.preventDefault();
         handleSubmit();
       }}
-      className="flex flex-col gap-12"
     >
       {error && (
         <div
-          role="alert"
           className="border-l-2 border-red-500 pl-4 font-mono text-[12px] text-red-400"
+          role="alert"
         >
           {error}
         </div>
@@ -211,50 +218,50 @@ export default function LeadForm() {
         <SectionHeader num="01" title="Contacto" />
         <div className="grid gap-8 sm:grid-cols-2">
           <div>
-            <label htmlFor="nombre" className={labelClass}>
+            <label className={labelClass} htmlFor="nombre">
               Nombre <span className="text-amber-600">*</span>
             </label>
             <input
+              autoComplete="name"
+              className={inputClass}
               id="nombre"
               name="nombre"
-              type="text"
-              autoComplete="name"
               placeholder="María González"
+              type="text"
               value={formData.nombre}
               onChange={handleChange}
-              className={inputClass}
             />
           </div>
 
           <div>
-            <label htmlFor="email" className={labelClass}>
+            <label className={labelClass} htmlFor="email">
               Email <span className="text-amber-600">*</span>
             </label>
             <input
+              autoComplete="email"
+              className={inputClass}
               id="email"
               name="email"
-              type="email"
-              autoComplete="email"
               placeholder="tu@email.com"
+              type="email"
               value={formData.email}
               onChange={handleChange}
-              className={inputClass}
             />
           </div>
 
           <div className="sm:col-span-2 sm:max-w-xs">
-            <label htmlFor="telefono" className={labelClass}>
+            <label className={labelClass} htmlFor="telefono">
               Teléfono
             </label>
             <input
+              autoComplete="tel"
+              className={inputClass}
               id="telefono"
               name="telefono"
-              type="tel"
-              autoComplete="tel"
               placeholder="+54 11 1234-5678"
+              type="tel"
               value={formData.telefono}
               onChange={handleChange}
-              className={inputClass}
             />
           </div>
         </div>
@@ -265,22 +272,22 @@ export default function LeadForm() {
         <SectionHeader num="02" title="Proyecto" />
         <div className="grid gap-8 sm:grid-cols-2">
           <div>
-            <label htmlFor="servicio" className={labelClass}>
+            <label className={labelClass} htmlFor="servicio">
               Servicio <span className="text-amber-600">*</span>
             </label>
             <SelectWrapper>
               <select
+                className={`${inputClass} cursor-pointer appearance-none pr-6`}
                 id="servicio"
                 name="servicio"
                 value={formData.servicio}
                 onChange={handleChange}
-                className={`${inputClass} cursor-pointer appearance-none pr-6`}
               >
-                <option value="" className="bg-[#0d0d0d]">
+                <option className="bg-[#0d0d0d]" value="">
                   Seleccioná…
                 </option>
                 {SERVICIOS.map((s) => (
-                  <option key={s} value={s} className="bg-[#0d0d0d]">
+                  <option key={s} className="bg-[#0d0d0d]" value={s}>
                     {s}
                   </option>
                 ))}
@@ -289,22 +296,22 @@ export default function LeadForm() {
           </div>
 
           <div>
-            <label htmlFor="urgencia" className={labelClass}>
+            <label className={labelClass} htmlFor="urgencia">
               Urgencia
             </label>
             <SelectWrapper>
               <select
+                className={`${inputClass} cursor-pointer appearance-none pr-6`}
                 id="urgencia"
                 name="urgencia"
                 value={formData.urgencia}
                 onChange={handleChange}
-                className={`${inputClass} cursor-pointer appearance-none pr-6`}
               >
-                <option value="" className="bg-[#0d0d0d]">
+                <option className="bg-[#0d0d0d]" value="">
                   Seleccioná…
                 </option>
                 {URGENCIAS.map((u) => (
-                  <option key={u.value} value={u.value} className="bg-[#0d0d0d]">
+                  <option key={u.value} className="bg-[#0d0d0d]" value={u.value}>
                     {u.label}
                   </option>
                 ))}
@@ -319,7 +326,7 @@ export default function LeadForm() {
         <SectionHeader num="03" title="Presupuesto" />
         <div className="flex flex-col gap-5">
           <div className="flex items-baseline justify-between">
-            <label htmlFor="presupuesto" className={labelClass}>
+            <label className={labelClass} htmlFor="presupuesto">
               Estimado en USD
             </label>
             <span className="font-mono text-xl font-bold text-amber-400">
@@ -327,18 +334,18 @@ export default function LeadForm() {
             </span>
           </div>
           <input
+            className="h-px w-full cursor-pointer appearance-none rounded-none outline-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-0 [&::-webkit-slider-thumb]:bg-amber-400 [&::-webkit-slider-thumb]:shadow-none [&::-webkit-slider-thumb]:transition [&::-webkit-slider-thumb]:duration-200 [&::-webkit-slider-thumb]:ease-[cubic-bezier(.25,.46,.45,.94)]"
             id="presupuesto"
-            name="presupuesto"
-            type="range"
-            min={PRESUPUESTO_MIN}
             max={PRESUPUESTO_MAX}
+            min={PRESUPUESTO_MIN}
+            name="presupuesto"
             step={PRESUPUESTO_STEP}
-            value={formData.presupuesto}
-            onChange={handleChange}
             style={{
               background: `linear-gradient(to right, #f59e0b ${sliderPercent}%, #404040 ${sliderPercent}%)`,
             }}
-            className="h-px w-full cursor-pointer appearance-none rounded-none outline-none [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:border-0 [&::-webkit-slider-thumb]:bg-amber-400 [&::-webkit-slider-thumb]:shadow-none [&::-webkit-slider-thumb]:transition [&::-webkit-slider-thumb]:duration-200 [&::-webkit-slider-thumb]:ease-[cubic-bezier(.25,.46,.45,.94)]"
+            type="range"
+            value={formData.presupuesto}
+            onChange={handleChange}
           />
           <div className="flex justify-between font-mono text-[11px] text-neutral-500">
             <span>${PRESUPUESTO_MIN.toLocaleString("es-AR")}</span>
@@ -351,17 +358,17 @@ export default function LeadForm() {
       <section>
         <SectionHeader num="04" title="Descripción" />
         <div>
-          <label htmlFor="descripcion" className={labelClass}>
+          <label className={labelClass} htmlFor="descripcion">
             Contanos tu proyecto <span className="text-amber-600">*</span>
           </label>
           <textarea
+            className="ease w-full resize-y border-b border-neutral-600 bg-transparent pt-1 pb-3 text-[15px] text-neutral-100 placeholder-neutral-600 transition duration-200 outline-none focus:border-amber-400"
             id="descripcion"
             name="descripcion"
-            rows={5}
             placeholder="Describí brevemente en qué consiste tu proyecto…"
+            rows={5}
             value={formData.descripcion}
             onChange={handleChange}
-            className="w-full resize-y bg-transparent border-b border-neutral-600 pb-3 pt-1 text-[15px] text-neutral-100 placeholder-neutral-600 outline-none transition duration-200 ease focus:border-amber-400"
           />
           <p className="mt-2 font-mono text-[11px] text-neutral-500">
             {formData.descripcion.trim().length} / 20 mín.
@@ -369,10 +376,43 @@ export default function LeadForm() {
         </div>
       </section>
 
+      {/* 05 — Privacidad */}
+      <section>
+        <p className="mb-4 text-[13px] leading-relaxed text-neutral-500">
+          Tus datos de contacto se usan exclusivamente para gestionar esta consulta y no se
+          comparten con terceros salvo los proveedores necesarios para el servicio (envío de correo
+          y notificaciones). Podés pedir la baja de tus datos en cualquier momento escribiendo a{" "}
+          <a
+            className="text-neutral-400 underline underline-offset-2"
+            href={`mailto:${CONTACTO_PRIVACIDAD}`}
+          >
+            {CONTACTO_PRIVACIDAD}
+          </a>
+          .
+        </p>
+        <label
+          className="flex cursor-pointer items-start gap-3 text-[13px] text-neutral-400"
+          htmlFor="aceptaPrivacidad"
+        >
+          <input
+            checked={formData.aceptaPrivacidad}
+            className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer accent-amber-400"
+            id="aceptaPrivacidad"
+            name="aceptaPrivacidad"
+            type="checkbox"
+            onChange={handleChange}
+          />
+          <span>
+            Acepto que mis datos sean tratados según lo descripto arriba.{" "}
+            <span className="text-amber-600">*</span>
+          </span>
+        </label>
+      </section>
+
       <button
-        type="submit"
+        className="ease w-full bg-amber-400 py-4 font-mono text-[13px] font-bold tracking-[0.2em] text-neutral-950 uppercase transition duration-200 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
         disabled={loading}
-        className="w-full bg-amber-400 py-4 font-mono text-[13px] uppercase tracking-[0.2em] font-bold text-neutral-950 transition duration-200 ease hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+        type="submit"
       >
         {loading ? "Enviando..." : "Enviar consulta →"}
       </button>

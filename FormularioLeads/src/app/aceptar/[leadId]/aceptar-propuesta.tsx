@@ -110,7 +110,7 @@ function StatusView({accent, symbol, title, message}: StatusContent) {
 function LoadingView() {
   return (
     <div className="flex flex-col items-start gap-6 py-16">
-      <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-neutral-500">
+      <span className="font-mono text-[11px] tracking-[0.2em] text-neutral-500 uppercase">
         Cargando propuesta…
       </span>
       <div className="h-px w-24 animate-pulse bg-amber-400" />
@@ -135,7 +135,7 @@ function ConfirmarView({
 
   return (
     <div className="flex flex-col items-start gap-6 py-16">
-      <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-amber-500">
+      <span className="font-mono text-[11px] tracking-[0.2em] text-amber-500 uppercase">
         Confirmá tu decisión
       </span>
       <div>
@@ -144,7 +144,7 @@ function ConfirmarView({
         </h2>
         <p className="mt-3 max-w-sm text-sm leading-relaxed text-neutral-500">
           Te enviamos la propuesta de{" "}
-          <span className="capitalize text-neutral-300">{servicio}</span>
+          <span className="text-neutral-300 capitalize">{servicio}</span>
           {lead?.presupuesto != null ? (
             <>
               {" "}
@@ -159,27 +159,27 @@ function ConfirmarView({
       </div>
       <div className="flex w-full max-w-sm flex-col gap-3">
         <button
+          className="ease bg-amber-400 px-8 py-4 font-mono text-[13px] font-bold tracking-[0.2em] text-neutral-950 uppercase transition duration-200 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+          disabled={enviando}
           type="button"
           onClick={onAceptar}
-          disabled={enviando}
-          className="bg-amber-400 px-8 py-4 font-mono text-[13px] font-bold uppercase tracking-[0.2em] text-neutral-950 transition duration-200 ease hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {enviando ? "Procesando…" : "Aceptar propuesta →"}
         </button>
         <div className="flex gap-3">
           <button
+            className="ease flex-1 border border-neutral-600 px-4 py-3 font-mono text-[12px] tracking-[0.15em] text-neutral-300 uppercase transition duration-200 hover:border-amber-400 hover:text-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={enviando}
             type="button"
             onClick={onPedirCambios}
-            disabled={enviando}
-            className="flex-1 border border-neutral-600 px-4 py-3 font-mono text-[12px] uppercase tracking-[0.15em] text-neutral-300 transition duration-200 ease hover:border-amber-400 hover:text-amber-400 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Pedir cambios
           </button>
           <button
+            className="ease flex-1 px-4 py-3 font-mono text-[12px] tracking-[0.15em] text-neutral-600 uppercase transition duration-200 hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={enviando}
             type="button"
             onClick={onRechazar}
-            disabled={enviando}
-            className="flex-1 px-4 py-3 font-mono text-[12px] uppercase tracking-[0.15em] text-neutral-600 transition duration-200 ease hover:text-red-400 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Rechazar
           </button>
@@ -204,7 +204,7 @@ function PedirCambiosView({
 }) {
   return (
     <div className="flex flex-col items-start gap-6 py-16">
-      <span className="font-mono text-[11px] uppercase tracking-[0.2em] text-amber-500">
+      <span className="font-mono text-[11px] tracking-[0.2em] text-amber-500 uppercase">
         Pedir cambios
       </span>
       <div className="w-full max-w-sm">
@@ -212,26 +212,26 @@ function PedirCambiosView({
           Contanos qué te gustaría ajustar y te contactamos para revisarlo.
         </p>
         <textarea
+          className="ease w-full resize-y border-b border-neutral-600 bg-transparent pt-1 pb-3 text-[15px] text-neutral-100 placeholder-neutral-600 transition duration-200 outline-none focus:border-amber-400"
+          placeholder="Ej: me gustaría ajustar el precio, sumar SEO y cambiar los colores…"
           rows={5}
           value={mensaje}
           onChange={(e) => setMensaje(e.target.value)}
-          placeholder="Ej: me gustaría ajustar el precio, sumar SEO y cambiar los colores…"
-          className="w-full resize-y border-b border-neutral-600 bg-transparent pb-3 pt-1 text-[15px] text-neutral-100 placeholder-neutral-600 outline-none transition duration-200 ease focus:border-amber-400"
         />
         <div className="mt-6 flex gap-3">
           <button
+            className="ease bg-amber-400 px-6 py-3 font-mono text-[12px] font-bold tracking-[0.2em] text-neutral-950 uppercase transition duration-200 hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={enviando || mensaje.trim().length < 5}
             type="button"
             onClick={onEnviar}
-            disabled={enviando || mensaje.trim().length < 5}
-            className="bg-amber-400 px-6 py-3 font-mono text-[12px] font-bold uppercase tracking-[0.2em] text-neutral-950 transition duration-200 ease hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-40"
           >
             {enviando ? "Enviando…" : "Enviar pedido →"}
           </button>
           <button
+            className="ease px-4 py-3 font-mono text-[12px] tracking-[0.15em] text-neutral-600 uppercase transition duration-200 hover:text-neutral-300 disabled:opacity-40"
+            disabled={enviando}
             type="button"
             onClick={onVolver}
-            disabled={enviando}
-            className="px-4 py-3 font-mono text-[12px] uppercase tracking-[0.15em] text-neutral-600 transition duration-200 ease hover:text-neutral-300 disabled:opacity-40"
           >
             Volver
           </button>
@@ -322,7 +322,9 @@ export default function AceptarPropuesta({leadId, token}: {leadId: string; token
   }
 
   function rechazar() {
-    if (!window.confirm("¿Seguro que querés rechazar la propuesta? Esta acción no se puede deshacer.")) {
+    if (
+      !window.confirm("¿Seguro que querés rechazar la propuesta? Esta acción no se puede deshacer.")
+    ) {
       return;
     }
     accionar("lead-rechaza", {}, "rechazado");

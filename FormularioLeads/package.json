@@ -6,7 +6,12 @@
     "dev": "next dev --turbopack",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint src",
+    "typecheck": "tsc --noEmit"
+  },
+  "comentarioOverrides": "eslint-plugin-react-hooks@7 importa 'zod-validation-error/v4', que sólo existe en la v4, pero declara aceptar ^3.5.0; eslint-plugin-react-compiler la fija en ^3.0.3 y npm resolvía a la 3.5.4, con lo que eslint no arrancaba (ERR_PACKAGE_PATH_NOT_EXPORTED).",
+  "overrides": {
+    "zod-validation-error": "^4.0.0"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

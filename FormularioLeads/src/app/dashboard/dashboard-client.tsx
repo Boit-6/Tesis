@@ -2,11 +2,9 @@
 
 import {useCallback, useEffect, useState} from "react";
 
-import {createClient} from "@/lib/supabase/client";
-
 import TrabajoEstadoSelect from "./trabajo-estado-select";
 
-const N8N_BASE = process.env.NEXT_PUBLIC_N8N_BASE;
+import {createClient} from "@/lib/supabase/client";
 
 type LeadEstado =
   | "NUEVO"
@@ -174,29 +172,35 @@ export default function DashboardClient() {
     try {
       setError(null);
 
-      const [resMetrics, resEstados, resLeads, resFacturas, resTrabajos, resPedidos] = await Promise.all([
-        supabase.from("metrics_mensuales").select("*").order("mes", {ascending: false}).limit(1),
-        supabase.from("leads").select("estado"),
-        supabase
-          .from("leads")
-          .select("lead_id,nombre,email,servicio,estado,tier,presupuesto,fecha_ingreso")
-          .order("fecha_ingreso", {ascending: false})
-          .limit(200),
-        supabase.from("facturas_pendientes").select("*").order("dias_al_vencimiento"),
-        supabase
-          .from("leads")
-          .select("lead_id,nombre,servicio,estado_trabajo")
-          .in("estado", ["ACEPTADO", "FACTURADO"])
-          .order("fecha_ingreso", {ascending: false}),
-        supabase
-          .from("leads")
-          .select("lead_id,nombre,servicio,notas")
-          .not("notas", "is", null)
-          .order("fecha_ingreso", {ascending: false}),
-      ]);
+      const [resMetrics, resEstados, resLeads, resFacturas, resTrabajos, resPedidos] =
+        await Promise.all([
+          supabase.from("metrics_mensuales").select("*").order("mes", {ascending: false}).limit(1),
+          supabase.from("leads").select("estado"),
+          supabase
+            .from("leads")
+            .select("lead_id,nombre,email,servicio,estado,tier,presupuesto,fecha_ingreso")
+            .order("fecha_ingreso", {ascending: false})
+            .limit(200),
+          supabase.from("facturas_pendientes").select("*").order("dias_al_vencimiento"),
+          supabase
+            .from("leads")
+            .select("lead_id,nombre,servicio,estado_trabajo")
+            .in("estado", ["ACEPTADO", "FACTURADO"])
+            .order("fecha_ingreso", {ascending: false}),
+          supabase
+            .from("leads")
+            .select("lead_id,nombre,servicio,notas")
+            .not("notas", "is", null)
+            .order("fecha_ingreso", {ascending: false}),
+        ]);
 
       const fallo =
-        resMetrics.error ?? resEstados.error ?? resLeads.error ?? resFacturas.error ?? resTrabajos.error ?? resPedidos.error;
+        resMetrics.error ??
+        resEstados.error ??
+        resLeads.error ??
+        resFacturas.error ??
+        resTrabajos.error ??
+        resPedidos.error;
 
       if (fallo) throw fallo;
 
@@ -239,54 +243,46 @@ export default function DashboardClient() {
     };
   }, [cargarDatos, supabase]);
 
-  async function cancelar(leadId: string) {
-    if (!N8N_BASE) return;
-    if (!window.confirm("¿Cancelar este pedido? Se marca como PERDIDO y se avisa al cliente.")) return;
-
+  // Las acciones del panel van por /api/crm/*, no directo a n8n: el route
+  // handler revalida el rol admin y agrega la credencial del lado del servidor.
+  async function accionPanel(accion: string, leadId: string, mensajeError: string) {
     try {
-      const res = await fetch(`${N8N_BASE}/webhook/lead-cancelar`, {
+      const res = await fetch(`/api/crm/${accion}`, {
         method: "POST",
-        headers: {"Content-Type": "application/json", "ngrok-skip-browser-warning": "true"},
+        headers: {"Content-Type": "application/json"},
         body: JSON.stringify({lead_id: leadId}),
       });
+      const json = await res.json().catch(() => ({}));
 
-      if (!res.ok) throw new Error(`Error ${res.status}`);
+      if (!res.ok || json.ok === false) throw new Error(json.error ?? `Error ${res.status}`);
 
       cargarDatos();
     } catch (err) {
       console.error(err);
-      setError("No se pudo cancelar el pedido.");
+      setError(err instanceof Error ? err.message : mensajeError);
     }
   }
 
-  async function accionCambio(pathWebhook: string, leadId: string) {
-    if (!N8N_BASE) return;
+  function cancelar(leadId: string) {
+    if (!window.confirm("¿Cancelar este pedido? Se marca como PERDIDO y se avisa al cliente."))
+      return;
 
-    try {
-      const res = await fetch(`${N8N_BASE}/webhook/${pathWebhook}`, {
-        method: "POST",
-        headers: {"Content-Type": "application/json", "ngrok-skip-browser-warning": "true"},
-        body: JSON.stringify({lead_id: leadId}),
-      });
-
-      if (!res.ok) throw new Error(`Error ${res.status}`);
-
-      cargarDatos();
-    } catch (err) {
-      console.error(err);
-      setError("No se pudo procesar el pedido de cambio.");
-    }
+    accionPanel("cancelar", leadId, "No se pudo cancelar el pedido.");
   }
 
   function aceptarCambio(leadId: string) {
     if (window.confirm("¿Aceptar los cambios y reenviar la propuesta al cliente?")) {
-      accionCambio("cambio-aceptar", leadId);
+      accionPanel("cambio-aceptar", leadId, "No se pudo procesar el pedido de cambio.");
     }
   }
 
   function rechazarCambio(leadId: string) {
-    if (window.confirm("¿Rechazar los cambios? Se mantiene la propuesta original y se le avisa al cliente.")) {
-      accionCambio("cambio-rechazar", leadId);
+    if (
+      window.confirm(
+        "¿Rechazar los cambios? Se mantiene la propuesta original y se le avisa al cliente.",
+      )
+    ) {
+      accionPanel("cambio-rechazar", leadId, "No se pudo procesar el pedido de cambio.");
     }
   }
 
@@ -357,13 +353,13 @@ export default function DashboardClient() {
       <section>
         <SectionHeader num="C" title="Leads recientes" />
         <input
+          className="mb-6 w-full max-w-sm border-b border-neutral-700 bg-transparent pb-2 font-mono text-[13px] text-neutral-100 placeholder-neutral-600 transition outline-none focus:border-amber-400"
+          placeholder="Buscar por nombre o ID…"
           value={busqueda}
           onChange={(e) => {
             setBusqueda(e.target.value);
             setPagina(0);
           }}
-          placeholder="Buscar por nombre o ID…"
-          className="mb-6 w-full max-w-sm border-b border-neutral-700 bg-transparent pb-2 font-mono text-[13px] text-neutral-100 placeholder-neutral-600 outline-none transition focus:border-amber-400"
         />
         {leadsFiltrados.length === 0 ? (
           <p className="font-mono text-[12px] text-neutral-500">
@@ -414,10 +410,10 @@ export default function DashboardClient() {
             {totalPaginas > 1 && (
               <div className="mt-6 flex items-center justify-between font-mono text-[11px] tracking-[0.15em] text-neutral-500 uppercase">
                 <button
+                  className="px-3 py-1 transition hover:text-amber-400 disabled:cursor-not-allowed disabled:opacity-30"
+                  disabled={pag === 0}
                   type="button"
                   onClick={() => setPagina((p) => Math.max(0, p - 1))}
-                  disabled={pag === 0}
-                  className="px-3 py-1 transition hover:text-amber-400 disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   ← Anterior
                 </button>
@@ -425,10 +421,10 @@ export default function DashboardClient() {
                   Página {pag + 1} de {totalPaginas} · {leadsFiltrados.length} leads
                 </span>
                 <button
+                  className="px-3 py-1 transition hover:text-amber-400 disabled:cursor-not-allowed disabled:opacity-30"
+                  disabled={pag >= totalPaginas - 1}
                   type="button"
                   onClick={() => setPagina((p) => Math.min(totalPaginas - 1, p + 1))}
-                  disabled={pag >= totalPaginas - 1}
-                  className="px-3 py-1 transition hover:text-amber-400 disabled:cursor-not-allowed disabled:opacity-30"
                 >
                   Siguiente →
                 </button>
@@ -513,7 +509,9 @@ export default function DashboardClient() {
               <tbody>
                 {trabajos.map((t) => (
                   <tr key={t.lead_id} className="border-b border-neutral-900 text-neutral-300">
-                    <td className="py-3 pr-4 font-mono text-[12px] text-neutral-500">{t.lead_id}</td>
+                    <td className="py-3 pr-4 font-mono text-[12px] text-neutral-500">
+                      {t.lead_id}
+                    </td>
                     <td className="py-3 pr-4 text-neutral-100">{t.nombre}</td>
                     <td className="py-3 pr-4">{t.servicio?.replace(/_/g, " ")}</td>
                     <td className="py-3 pr-4">
@@ -521,9 +519,9 @@ export default function DashboardClient() {
                     </td>
                     <td className="py-3">
                       <button
+                        className="border border-neutral-700 px-3 py-1 font-mono text-[10px] tracking-[0.1em] text-neutral-400 uppercase transition hover:border-red-500 hover:text-red-400"
                         type="button"
                         onClick={() => cancelar(t.lead_id)}
-                        className="border border-neutral-700 px-3 py-1 font-mono text-[10px] uppercase tracking-[0.1em] text-neutral-400 transition hover:border-red-500 hover:text-red-400"
                       >
                         Cancelar
                       </button>
@@ -553,16 +551,16 @@ export default function DashboardClient() {
                 <p className="text-sm leading-relaxed text-neutral-400">{p.notas}</p>
                 <div className="mt-3 flex gap-3">
                   <button
+                    className="bg-amber-400 px-4 py-2 font-mono text-[11px] font-bold tracking-[0.15em] text-neutral-950 uppercase transition hover:bg-amber-300"
                     type="button"
                     onClick={() => aceptarCambio(p.lead_id)}
-                    className="bg-amber-400 px-4 py-2 font-mono text-[11px] font-bold uppercase tracking-[0.15em] text-neutral-950 transition hover:bg-amber-300"
                   >
                     Aceptar y reenviar
                   </button>
                   <button
+                    className="border border-neutral-700 px-4 py-2 font-mono text-[11px] tracking-[0.15em] text-neutral-400 uppercase transition hover:border-red-500 hover:text-red-400"
                     type="button"
                     onClick={() => rechazarCambio(p.lead_id)}
-                    className="border border-neutral-700 px-4 py-2 font-mono text-[11px] uppercase tracking-[0.15em] text-neutral-400 transition hover:border-red-500 hover:text-red-400"
                   >
                     Rechazar
                   </button>

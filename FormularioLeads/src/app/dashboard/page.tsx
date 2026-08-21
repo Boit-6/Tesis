@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {redirect} from "next/navigation";
 
 import DashboardClient from "./dashboard-client";
@@ -32,6 +33,12 @@ export default async function DashboardPage() {
 
         <div className="flex flex-col items-end gap-3">
           <span className="font-mono text-[12px] text-neutral-500">{user.email}</span>
+          <Link
+            className="ease font-mono text-[11px] tracking-[0.2em] text-neutral-500 uppercase transition duration-200 hover:text-amber-400"
+            href="/dashboard/tickets"
+          >
+            Tickets →
+          </Link>
           <form action="/auth/signout" method="post">
             <button
               className="ease font-mono text-[11px] tracking-[0.2em] text-neutral-500 uppercase transition duration-200 hover:text-amber-400"
