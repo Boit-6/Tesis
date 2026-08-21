@@ -2,7 +2,14 @@
 
 > Respuestas preparadas a las seis cuestiones de la sección G de `docs/dictamen-tesisv3.md`.
 > Cada respuesta está anclada en el código verificado (`workflow/crm_postgres.json`, `db/schema.sql`,
-> `FormularioLeads/src/`). Fecha: 2/7/2026.
+> `FormularioLeads/src/`). Fecha original: 2/7/2026.
+>
+> **Actualización (agosto 2026):** las preguntas 1, 2, 3 y 5 tienen ahora evidencia ejecutable —no
+> solo prosa— documentada en [`docs/verificacion-y-seguridad.md`](verificacion-y-seguridad.md). Las
+> respuestas de abajo siguen sirviendo como guion para decirlas en voz alta, pero se actualizaron los
+> puntos que ese dictamen daba como pendientes y que ya se cerraron (vigencia del token, RLS
+> verificada contra Postgres real). Los números de nodos/webhooks se actualizaron al estado actual
+> del artefacto (MercadoPago + módulo de tickets).
 
 ---
 
@@ -41,9 +48,13 @@ redactó antes del commit `ea46b7a`; el dictamen v3 lo detectó y §4.3.2 ya fue
   (`REVOKE ALL … FROM anon`). Además, `dashboard/page.tsx` **re-verifica** `profile.role === 'admin'`
   en el servidor (defensa en profundidad).
 
-Es decir: aun con la anon key, una sesión sin fila `admin` en `profiles` **no lee nada**. *Salvedad
-honesta:* el `schema.sql` está verificado contra el modelo, pero **confirmar que la RLS está aplicada
-en la instancia Supabase de producción** es la tarea **M2**, aún pendiente.
+Es decir: aun con la anon key, una sesión sin fila `admin` en `profiles` **no lee nada**. *Actualización:*
+esto ya no es solo una afirmación sobre el script: `npm run test:rls` levanta un PostgreSQL real,
+aplica `db/schema.sql` **tal cual está en el repositorio** y ejecuta **24 casos** rol por rol
+(`anon` sin acceso, usuario sin rol `admin` con 0 filas, `logs` cerrada ni para el admin, sin
+escalada de privilegios, `service_role` con acceso completo). *Salvedad que sigue en pie:* que la
+instancia Supabase de **producción** concreta tenga ese esquema aplicado sigue siendo un paso del
+desplegador (tarea **M2**) — lo que ya no se puede decir es que la RLS «no esté probada».
 
 ## 3. Umbrales de scoring por «criterio experto»: ¿base y comportamiento en casos límite?
 
@@ -66,22 +77,27 @@ página emite un `GET /lead-propuesta` de **solo lectura** para consultar el est
 por lo que el token puede quedar en el **historial del navegador** y en los **logs de acceso** del
 servidor. La confirmación en sí (POST) envía el token en el **cuerpo**, no en la URL. El riesgo está
 **acotado** por el carácter de un solo uso: una vez `ACEPTADO`, un replay falla (0 filas — ver Q1).
-*Mitigaciones previstas (§4.3.2):* (i) **vigencia temporal** (TTL) del token, (ii) **no registrar la
-query string completa** en producción, (iii) opcionalmente mover la lectura a POST. *Por qué no se
-implementaron aún:* son endurecimientos posteriores al alcance del MVP; el riesgo residual es
-aceptable en el entorno controlado y se cierra antes del despliegue real.
+*Actualización:* la primera mitigación **ya se implementó**: `leads.token_expira_en` se estampa al
+enviar (o reenviar) la propuesta con `TOKEN_VIGENCIA_DIAS` días de validez (14 por defecto), y las
+**cuatro** consultas que aceptan el token (ver propuesta, aceptar, rechazar, pedir cambios) la
+revalidan. Los enlaces emitidos antes de la columna siguen funcionando (`IS NULL` los deja pasar).
+*Lo que sigue abierto:* no registrar la query string completa en producción, y mover la lectura a
+POST — quedan para después del MVP; el token sigue viajando en la URL del `GET`.
 
 ## 5. Validación autorreportada: reproducibilidad de E1–E10 y el caso de E10
 
-**Respuesta.** E1–E10 son **escenarios controlados** que ejercitan los caminos principal y
-alternativos de cada flujo; el resultado observado se contrasta con los criterios de aceptación del
-diseño (normalización, score/tier, transición de estados en BD, tiempo real). **Reproducibilidad:**
-cada escenario tiene entrada definida y salida esperada según las reglas de scoring (Tabla 4) y la
-máquina de estados (Tabla 7); además, los nodos `Code` están protegidos por la **prueba de humo
-automatizada** (`tests/smoke_code_nodes.js`), que ejecuta cada nodo con datos representativos. E1–E9
-tienen **figura adjunta** (Figuras 3, 5, 10–16). **E10** (cambio de `estado_trabajo` + sync a Notion)
-es la **única** celda sin captura: su comportamiento esperado está definido, pero falta tomar la
-evidencia visual (tarea **C2**). No es una falla de funcionamiento, sino de documentación probatoria.
+**Respuesta.** E1–E14 son **escenarios controlados** que ejercitan los caminos principal y
+alternativos de cada flujo (se sumaron E11–E14 al crecer el sistema: seguimiento, recordatorios,
+métricas y el pago real con MercadoPago); el resultado observado se contrasta con los criterios de
+aceptación del diseño (normalización, score/tier, transición de estados en BD, tiempo real).
+*Actualización — ya no es solo autorreporte:* `tests/escenarios.mjs` dispara los webhooks reales
+contra el sistema levantado y verifica el estado resultante en la base, incluida la aceptación
+concurrente (dos peticiones con `Promise.all`, sin esperar a que la primera termine). Cada corrida
+escribe `docs/evidencia-validacion.md` con la tabla de resultados, así que la reproducibilidad ya no
+depende de que alguien repita a mano lo que dice el documento. *Lo que falta:* varias celdas de la
+Tabla de escenarios en el `.docx` siguen en `[registrar]`/`Pendiente` porque esa corrida contra el
+sistema real todavía no se hizo — hay que ejecutarla antes de la defensa y volcar los números y
+capturas que salgan.
 
 ## 6. Credenciales compartidas e instancia local: plan de despliegue y rotación
 
@@ -100,5 +116,6 @@ en la instancia (**M2**).
 
 ### Chequeo rápido antes de la defensa
 - Tener a mano las tres consultas «atómicas»: `Marcar Aceptado`, `Marcar Cobrado` (`… AND estado_pago='PENDIENTE'`) y el `SELECT` de `Buscar Lead (token)` (`accept_token::uuid`).
-- Recordar el conteo real: **128 nodos funcionales (144 con notas), 11 webhooks, 3 procesos programados**.
-- Saber señalar en el repo `github.com/Boit-6/Tesis`: `workflow/crm_postgres.json`, `db/schema.sql`, `FormularioLeads/src/`, `tests/smoke_code_nodes.js`.
+- Recordar el conteo real: **141 nodos funcionales (157 con notas), 12 webhooks, 3 procesos programados** (CRM). El módulo de tickets es un workflow aparte: 39 nodos, 3 webhooks, 1 cron.
+- Saber señalar en el repo `github.com/Boit-6/Tesis`: `workflow/crm_postgres.json`, `db/schema.sql`, `FormularioLeads/src/`, y la suite de verificación (`npm test`, `npm run test:docker`).
+- Antes de grabar/defender: correr `npm run test:escenarios` contra el sistema levantado para completar los `[registrar]`/`Pendiente` que todavía quedan en la tabla de escenarios del `.docx` (ver Q5).

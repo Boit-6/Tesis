@@ -101,16 +101,16 @@ funcionales** ordenados según la norma **ISO/IEC 25010**.
 
 La arquitectura está **desacoplada en tres capas**. La capa de **presentación** es un frontend en
 **Next.js** sobre Vercel: el formulario de leads, la página de aceptación y el tablero interno. La
-capa de **orquestación** es **n8n**, que concentra toda la lógica de negocio: **11 webhooks** y **3
-procesos programados**, con **128 nodos** funcionales en total. Y la capa de **datos** es
+capa de **orquestación** es **n8n**, que concentra toda la lógica de negocio: **doce webhooks** y **3
+procesos programados**, con **141 nodos** funcionales en total. Y la capa de **datos** es
 **PostgreSQL sobre Supabase** como **única fuente de verdad**: cinco tablas, dos vistas calculadas y
 seguridad a nivel de fila por rol *admin*. El frontend nunca escribe la base directo: habla con n8n
 por HTTP, y n8n es el único que escribe. Así cada capa se cambia sin romper las otras."
 
 ## [5:40–6:30] Metodología — validación por escenarios · **MATEO**
 
-"Sobre esa arquitectura, la **validación** se hizo con **escenarios controlados**: definimos diez
-casos —del E1 al E10— que ejercitan tanto el camino principal como los alternativos de cada flujo.
+"Sobre esa arquitectura, la **validación** se hizo con **escenarios controlados**: definimos catorce
+casos —del E1 al E14— que ejercitan tanto el camino principal como los alternativos de cada flujo.
 Cada escenario tiene una **entrada definida** y una **salida esperada**, que contrastamos contra
 criterios objetivos: la normalización de los datos, el score y el *tier* asignados, las transiciones
 de estado en la base y la actualización en tiempo real.
@@ -121,10 +121,16 @@ primario con usuarios reales**; la validación es de la **construcción del arte
 
 ## [6:30–8:00] Resultados · **TOBÍAS**
 
-"Los resultados confirman que el ciclo completo funciona de extremo a extremo. De los diez escenarios,
-**E1 a E9 tienen evidencia visual adjunta** —capturas del formulario, del scoring, de la propuesta, de
-la aceptación, de la factura y del tablero— y en todos el comportamiento observado coincidió con el
-esperado.
+> ⚠️ **Pendiente antes de grabar:** este bloque describe los resultados como si ya estuvieran
+> confirmados. La Tabla 9/11 de la tesis (E1–E14) todavía tiene varias celdas en `[registrar]` /
+> `Pendiente` — faltan corridas reales de `npm run test:escenarios` contra el sistema levantado para
+> completarlas (ver `docs/verificacion-y-seguridad.md` §4). Revisar y reescribir este párrafo recién
+> después de esa corrida, con los números y capturas que efectivamente salgan.
+
+"Los resultados confirman que el ciclo completo funciona de extremo a extremo. De los catorce
+escenarios, **la mayoría tiene evidencia visual adjunta** —capturas del formulario, del scoring, de
+la propuesta, de la aceptación, de la factura y del tablero— y en todos el comportamiento observado
+coincidió con el esperado.
 
 Quiero destacar dos resultados técnicos. El primero es el **scoring**: cada lead se clasifica
 automáticamente como **HOT** —score mayor o igual a 70— o **WARM** —mayor o igual a 40—, ponderando
@@ -159,13 +165,14 @@ indicadores comerciales reales de un freelance —eso exigiría medir con usuari
 
 "Reconocemos con honestidad las **limitaciones**. Los umbrales del scoring se fijaron por **criterio
 experto**, no con datos históricos de conversión: son válidos **de diseño, no empíricamente**. El
-sistema corrió **auto-alojado en local**, sin URL pública. El **pago está simulado**, de forma
-idempotente. Y la autenticación en la instancia productiva quedó pendiente de verificar.
+sistema corrió **auto-alojado en local**, sin URL pública, y el cobro con **MercadoPago** —ya
+integrado— **no se validó todavía con una operación en producción**. Además documentamos, con la
+misma honestidad, **ocho deudas de seguridad** conocidas y no resueltas; la más urgente es que siete
+de los doce webhooks todavía no autentican el origen de quien los invoca.
 
-De ahí se desprende el **trabajo futuro**: **calibrar el scoring** con datos reales de conversión;
-**exponer n8n tras HTTPS** con una URL estable para que clientes externos alcancen los webhooks;
-**integrar una pasarela de pago real**; y **completar y verificar la seguridad** de la instancia en
-producción.
+De ahí se desprende el **trabajo futuro**: **cerrar esas deudas de seguridad**; **calibrar el
+scoring** con datos reales de conversión; **exponer n8n tras HTTPS** con una URL estable; y **medir**
+—no solo prometer— **cuánto reduce realmente la carga administrativa** del freelance.
 
 Para cerrar: demostramos que el ciclo comercial de un freelance puede automatizarse de punta a punta
 con herramientas de bajo código, un sistema propio y a bajo costo, sin resignar la propiedad de los
