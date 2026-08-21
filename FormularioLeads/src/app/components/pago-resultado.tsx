@@ -1,11 +1,15 @@
 type Variante = "exito" | "pendiente" | "fallido";
 
-const COPIA: Record<Variante, {eyebrow: string; titulo: string; cuerpo: string; icono: string}> = {
+const COPIA: Record<
+  Variante,
+  {eyebrow: string; titulo: string; cuerpo: string; icono: string; accent: string}
+> = {
   exito: {
     eyebrow: "Pago acreditado",
     titulo: "¡Listo, gracias!",
     cuerpo: "Registramos tu pago. Ya te avisamos al freelance para que arranque con tu proyecto.",
     icono: "✅",
+    accent: "text-ochre",
   },
   pendiente: {
     eyebrow: "Pago en revisión",
@@ -13,6 +17,7 @@ const COPIA: Record<Variante, {eyebrow: string; titulo: string; cuerpo: string; 
     cuerpo:
       "MercadoPago todavía está confirmando el pago (algunos medios tardan un poco). Te avisamos por email en cuanto se acredite.",
     icono: "⏳",
+    accent: "text-mist",
   },
   fallido: {
     eyebrow: "Pago no procesado",
@@ -20,6 +25,7 @@ const COPIA: Record<Variante, {eyebrow: string; titulo: string; cuerpo: string; 
     cuerpo:
       "El pago no se pudo completar. Podés volver a intentarlo desde el link de la factura que te llegó por email.",
     icono: "⚠️",
+    accent: "text-brick",
   },
 };
 
@@ -30,22 +36,18 @@ export default function PagoResultado({
   variante: Variante;
   facturaId?: string;
 }) {
-  const {eyebrow, titulo, cuerpo, icono} = COPIA[variante];
+  const {eyebrow, titulo, cuerpo, icono, accent} = COPIA[variante];
 
   return (
-    <div className="mb-14 border-b border-neutral-800 pb-12 text-center">
-      <p className="mb-5 font-mono text-[11px] tracking-[0.25em] text-amber-500 uppercase">
-        {eyebrow}
-      </p>
-      <div className="mb-6 text-5xl">{icono}</div>
-      <h1 className="text-[clamp(2.4rem,7vw,4rem)] leading-[0.9] font-black tracking-tight text-neutral-100">
+    <div className="border-rule-soft bg-card flex flex-col items-center gap-5 border px-8 py-16 text-center shadow-[0_1px_2px_rgba(25,23,19,0.04),0_12px_32px_-18px_rgba(25,23,19,0.18)] sm:px-11">
+      <p className={`text-[10px] tracking-[0.22em] uppercase ${accent}`}>{eyebrow}</p>
+      <div className="text-5xl">{icono}</div>
+      <h1 className="text-ink font-serif text-[clamp(2.4rem,6vw,3.2rem)] leading-none tracking-tight">
         {titulo}
       </h1>
-      <p className="mx-auto mt-6 max-w-sm text-sm leading-relaxed text-neutral-500">{cuerpo}</p>
+      <p className="text-muted mx-auto max-w-sm text-[14.5px] leading-relaxed">{cuerpo}</p>
       {facturaId ? (
-        <p className="mt-6 font-mono text-[11px] tracking-[0.2em] text-neutral-700 uppercase">
-          Factura {facturaId}
-        </p>
+        <p className="text-mist mt-2 text-[11px] tracking-[0.2em] uppercase">Factura {facturaId}</p>
       ) : null}
     </div>
   );

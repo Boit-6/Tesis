@@ -20,19 +20,17 @@ export default async function TicketsPage() {
   if (profile?.role !== "admin") redirect("/");
 
   return (
-    <main className="mx-auto w-full max-w-6xl px-6 pt-6 pb-20">
-      <div className="mb-14 flex items-end justify-between gap-6 border-b border-neutral-800 pb-12">
+    <main className="mx-auto w-full max-w-6xl px-6 pt-8 pb-20 sm:px-10">
+      <div className="border-rule mb-12 flex flex-wrap items-end justify-between gap-6 border-b pb-8">
         <div>
-          <p className="mb-5 font-mono text-[11px] tracking-[0.25em] text-amber-500 uppercase">
-            Panel interno
-          </p>
-          <h1 className="text-[clamp(2.4rem,7vw,4rem)] leading-[0.9] font-black tracking-tight text-neutral-100">
-            Tickets.
+          <p className="text-ochre mb-4 text-[10px] tracking-[0.22em] uppercase">Panel interno</p>
+          <h1 className="text-ink font-serif text-[clamp(2.6rem,6vw,3.25rem)] leading-none tracking-tight">
+            Tickets<span className="text-ochre">.</span>
           </h1>
         </div>
 
         <Link
-          className="ease font-mono text-[11px] tracking-[0.2em] text-neutral-500 uppercase transition duration-200 hover:text-amber-400"
+          className="ease text-muted hover:text-ochre text-[11px] tracking-[0.14em] uppercase transition duration-200"
           href="/dashboard"
         >
           ← Dashboard

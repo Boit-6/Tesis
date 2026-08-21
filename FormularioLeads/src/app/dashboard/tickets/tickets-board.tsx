@@ -15,10 +15,10 @@ const PRIORIDADES_FALLBACK = ["BAJA", "MEDIA", "ALTA", "CRITICA"];
 // La escala de prioridades es configurable, así que el color se asigna por
 // posición en la escala y no por nombre fijo.
 const ESCALA_COLOR = [
-  "text-neutral-400 border-neutral-700",
-  "text-sky-400 border-sky-800",
-  "text-amber-400 border-amber-700",
-  "text-red-400 border-red-800",
+  "text-mist border-rule",
+  "text-ochre border-ochre/40",
+  "text-ochre-deep border-ochre-deep/40",
+  "text-brick border-brick/40",
 ];
 
 function colorPrioridad(prioridad: string, prioridades: string[]) {
@@ -52,39 +52,39 @@ function TicketCard({
   return (
     <article
       draggable
-      className={`border-l-2 bg-neutral-950 p-3 transition ${
+      className={`ease bg-card border-l-2 p-3 shadow-[0_1px_2px_rgba(25,23,19,0.04)] transition duration-200 ${
         moviendo ? "opacity-40" : ""
       } ${colorPrioridad(ticket.prioridad, prioridades).split(" ")[1]}`}
       onDragStart={(e) => e.dataTransfer.setData("text/plain", ticket.ticket_id)}
     >
       <div className="mb-2 flex items-center justify-between gap-2">
         <span
-          className={`font-mono text-[10px] tracking-[0.15em] uppercase ${
+          className={`text-[10px] tracking-[0.15em] uppercase ${
             colorPrioridad(ticket.prioridad, prioridades).split(" ")[0]
           }`}
         >
           {ticket.prioridad}
         </span>
-        <span className="font-mono text-[10px] text-neutral-500">{ticket.score}</span>
+        <span className="text-faint text-[10px]">{ticket.score}</span>
       </div>
 
-      <p className="mb-2 text-[13px] leading-snug text-neutral-100">{ticket.titulo}</p>
+      <p className="text-ink mb-2 text-[13px] leading-snug">{ticket.titulo}</p>
 
       {ticket.etiquetas.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-2">
           {ticket.etiquetas.map((etiqueta) => (
-            <span key={etiqueta} className="font-mono text-[10px] text-neutral-500">
+            <span key={etiqueta} className="text-faint text-[10px]">
               #{etiqueta}
             </span>
           ))}
         </div>
       )}
 
-      <p className="mb-3 font-mono text-[10px] text-neutral-600">
+      <p className="text-mist mb-3 text-[10px]">
         {ticket.dias_abierto}d abierto
-        {ticket.escaladas > 0 && <span className="text-amber-500"> · ⬆ ×{ticket.escaladas}</span>}
+        {ticket.escaladas > 0 && <span className="text-ochre"> · ⬆ ×{ticket.escaladas}</span>}
         {ticket.dias_para_escalar != null && (
-          <span className={porEscalar ? "text-amber-400" : ""}>
+          <span className={porEscalar ? "text-brick" : ""}>
             {" "}
             · escala en {ticket.dias_para_escalar}d
           </span>
@@ -94,7 +94,7 @@ function TicketCard({
       <div className="flex items-center gap-3">
         <button
           aria-label={anterior ? `Mover a ${anterior}` : "Sin columna anterior"}
-          className="font-mono text-[11px] text-neutral-600 transition hover:text-amber-400 disabled:opacity-30 disabled:hover:text-neutral-600"
+          className="ease text-mist hover:text-ochre disabled:hover:text-mist text-[11px] transition duration-200 disabled:opacity-30"
           disabled={!anterior || moviendo}
           type="button"
           onClick={() => anterior && onMover(ticket.ticket_id, anterior)}
@@ -103,7 +103,7 @@ function TicketCard({
         </button>
         <button
           aria-label={siguiente ? `Mover a ${siguiente}` : "Sin columna siguiente"}
-          className="font-mono text-[11px] text-neutral-600 transition hover:text-amber-400 disabled:opacity-30 disabled:hover:text-neutral-600"
+          className="ease text-mist hover:text-ochre disabled:hover:text-mist text-[11px] transition duration-200 disabled:opacity-30"
           disabled={!siguiente || moviendo}
           type="button"
           onClick={() => siguiente && onMover(ticket.ticket_id, siguiente)}
@@ -112,7 +112,7 @@ function TicketCard({
         </button>
         {ticket.url && (
           <a
-            className="ml-auto font-mono text-[10px] text-neutral-600 transition hover:text-amber-400"
+            className="ease text-mist hover:text-ochre ml-auto text-[10px] transition duration-200"
             href={ticket.url}
             rel="noreferrer"
             target="_blank"
@@ -238,18 +238,14 @@ export default function TicketsBoard() {
   }
 
   if (cargando) {
-    return (
-      <p className="font-mono text-[11px] tracking-[0.2em] text-neutral-500 uppercase">
-        Cargando tickets…
-      </p>
-    );
+    return <p className="text-faint text-[11px] tracking-[0.2em] uppercase">Cargando tickets…</p>;
   }
 
   return (
     <div className="flex flex-col gap-12">
       {error && (
         <div
-          className="border-l-2 border-red-500 pl-4 font-mono text-[12px] text-red-400"
+          className="border-brick bg-brick/5 text-brick border-l-2 px-5 py-3.5 text-[13px]"
           role="alert"
         >
           {error}
@@ -259,12 +255,10 @@ export default function TicketsBoard() {
       {/* Alta rápida */}
       <form className="flex flex-wrap items-end gap-4" onSubmit={crear}>
         <label className="flex min-w-[16rem] flex-1 flex-col gap-2">
-          <span className="font-mono text-[10px] tracking-[0.2em] text-neutral-500 uppercase">
-            Nuevo ticket
-          </span>
+          <span className="text-faint text-[10px] tracking-[0.2em] uppercase">Nuevo ticket</span>
           <input
             required
-            className="w-full border-b border-neutral-700 bg-transparent pb-2 text-[13px] text-neutral-100 placeholder-neutral-600 transition outline-none focus:border-amber-400"
+            className="ease border-rule text-ink placeholder-mist hover:border-mist focus:border-ochre w-full border-b bg-transparent pb-2 text-[13px] transition duration-200 outline-none"
             placeholder="¿Qué hay pendiente?"
             value={titulo}
             onChange={(e) => setTitulo(e.target.value)}
@@ -272,16 +266,14 @@ export default function TicketsBoard() {
         </label>
 
         <label className="flex flex-col gap-2">
-          <span className="font-mono text-[10px] tracking-[0.2em] text-neutral-500 uppercase">
-            Prioridad
-          </span>
+          <span className="text-faint text-[10px] tracking-[0.2em] uppercase">Prioridad</span>
           <select
-            className="cursor-pointer border-b border-neutral-700 bg-transparent pb-2 font-mono text-[12px] text-neutral-100 transition outline-none focus:border-amber-400"
+            className="ease border-rule text-ink hover:border-mist focus:border-ochre cursor-pointer border-b bg-transparent pb-2 text-[12px] transition duration-200 outline-none"
             value={prioridad}
             onChange={(e) => setPrioridad(e.target.value)}
           >
             {prioridades.map((p) => (
-              <option key={p} className="bg-[#0d0d0d] text-neutral-200" value={p}>
+              <option key={p} className="bg-card text-ink" value={p}>
                 {p}
               </option>
             ))}
@@ -289,11 +281,9 @@ export default function TicketsBoard() {
         </label>
 
         <label className="flex flex-col gap-2">
-          <span className="font-mono text-[10px] tracking-[0.2em] text-neutral-500 uppercase">
-            Etiquetas
-          </span>
+          <span className="text-faint text-[10px] tracking-[0.2em] uppercase">Etiquetas</span>
           <input
-            className="border-b border-neutral-700 bg-transparent pb-2 text-[13px] text-neutral-100 placeholder-neutral-600 transition outline-none focus:border-amber-400"
+            className="ease border-rule text-ink placeholder-mist hover:border-mist focus:border-ochre border-b bg-transparent pb-2 text-[13px] transition duration-200 outline-none"
             placeholder="facturacion, bug"
             value={etiquetas}
             onChange={(e) => setEtiquetas(e.target.value)}
@@ -301,7 +291,7 @@ export default function TicketsBoard() {
         </label>
 
         <button
-          className="border border-amber-500 px-5 py-2 font-mono text-[11px] tracking-[0.2em] text-amber-400 uppercase transition hover:bg-amber-500 hover:text-neutral-950 disabled:opacity-40"
+          className="ease border-ochre text-ochre hover:bg-ochre hover:text-paper border px-5 py-2 text-[11px] tracking-[0.2em] uppercase transition duration-200 disabled:opacity-40"
           disabled={creando}
           type="submit"
         >
@@ -319,8 +309,8 @@ export default function TicketsBoard() {
           return (
             <section
               key={estado}
-              className={`flex min-h-[12rem] flex-col gap-3 border-t-2 pt-4 transition ${
-                columnaActiva === estado ? "border-amber-400" : "border-neutral-800"
+              className={`ease flex min-h-[12rem] flex-col gap-3 border-t-2 pt-4 transition duration-200 ${
+                columnaActiva === estado ? "border-ochre" : "border-rule"
               }`}
               onDragLeave={() => setColumnaActiva((c) => (c === estado ? null : c))}
               onDragOver={(e) => {
@@ -337,14 +327,14 @@ export default function TicketsBoard() {
               }}
             >
               <div className="flex items-center justify-between">
-                <h2 className="font-mono text-[11px] tracking-[0.2em] text-neutral-400 uppercase">
+                <h2 className="text-ink-soft text-[11px] tracking-[0.2em] uppercase">
                   {estado.replace(/_/g, " ")}
                 </h2>
-                <span className="font-mono text-[11px] text-neutral-600">{enColumna.length}</span>
+                <span className="text-mist text-[11px]">{enColumna.length}</span>
               </div>
 
               {enColumna.length === 0 ? (
-                <p className="font-mono text-[11px] text-neutral-700">Vacío</p>
+                <p className="text-mist text-[11px]">Vacío</p>
               ) : (
                 enColumna.map((ticket) => (
                   <TicketCard
@@ -362,7 +352,7 @@ export default function TicketsBoard() {
         })}
       </div>
 
-      <p className="font-mono text-[11px] text-neutral-600">
+      <p className="text-mist text-[11px]">
         {tickets.length} ticket{tickets.length === 1 ? "" : "s"}
         {datos?.truncado && " · mostrando los primeros 100"} · la prioridad sube sola cuando un
         ticket queda quieto (cron diario 8:00).
