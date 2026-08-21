@@ -1,6 +1,6 @@
 # Guion de defensa en video — Trabajo Final (10 min)
 
-> **Trabajo:** *Automatización de Sistema de Tickets para Freelancers con n8n — Diseño e
+> **Trabajo:** *Automatización del Ciclo de Vida del Cliente para Freelancers con n8n — Diseño e
 > implementación de una plataforma web para la gestión automatizada del ciclo de vida del cliente.*
 > **Autores:** Mateo Morgui y Tobías Rivas. **Director:** Alberto Cortez. **Institución:** Tecnicatura
 > Universitaria en Programación, UTN–FRM.
@@ -31,7 +31,7 @@
 ## [0:00–0:25] Apertura e identificación · **MATEO**
 
 "Buenos días. Mi nombre es **Mateo Morgui** y, junto a mi compañero Tobías Rivas, presento nuestro
-trabajo final titulado *«Automatización de un sistema de tickets para freelancers con n8n»*,
+trabajo final titulado *«Automatización del ciclo de vida del cliente para freelancers con n8n»*,
 desarrollado bajo la dirección de **Alberto Cortez** en la Tecnicatura Universitaria en Programación
 de la UTN."
 
