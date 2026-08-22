@@ -150,8 +150,16 @@ async function altaDeLead(sufijo, datos) {
 }
 
 const ESCENARIOS = [
-  escenario('lead-hot', null, 'Un lead de presupuesto alto se califica HOT y recibe propuesta', async (t) => {
-    const {lead} = await altaDeLead('hot', {presupuesto: 6000, urgencia: 'alta', servicio: 'ecommerce'});
+  escenario('lead-hot', 'E1', 'Un lead de presupuesto alto se califica HOT y recibe propuesta', async (t) => {
+    // Entrada EXACTA de la Tabla 12, escenario E1: desarrollo_web, USD 5000,
+    // urgencia alta, con teléfono de más de 6 caracteres y descripción de más
+    // de 50. Si acá se usa otra entrada, el resultado no sirve como evidencia
+    // de E1 aunque el score coincida.
+    const {lead} = await altaDeLead('hot', {
+      presupuesto: 5000,
+      urgencia: 'alta',
+      servicio: 'desarrollo_web',
+    });
 
     t.igual(lead.tier, 'HOT', 'tier');
     t.igual(lead.score, 100, 'score (40 presupuesto + 30 urgencia + 20 servicio + 5 teléfono + 5 descripción)');
@@ -173,11 +181,45 @@ const ESCENARIOS = [
     return conPropuesta;
   }),
 
-  escenario('lead-cold', null, 'Un lead de presupuesto bajo se califica COLD y NO recibe propuesta', async (t) => {
-    const {lead} = await altaDeLead('cold', {presupuesto: 150, urgencia: 'baja', servicio: 'soporte'});
+  escenario('lead-warm', 'E2', 'Un lead de valor medio se califica WARM y recibe propuesta', async (t) => {
+    // Entrada EXACTA de E2: consultoria, USD 1000, urgencia media, SIN teléfono
+    // y descripción de menos de 50 caracteres (por eso no suma los dos bonus).
+    const {lead} = await altaDeLead('warm', {
+      presupuesto: 1000,
+      urgencia: 'media',
+      servicio: 'consultoria',
+      telefono: '',
+      descripcion: 'Consultoría breve.',
+    });
+
+    t.igual(lead.tier, 'WARM', 'tier');
+    t.igual(lead.score, 47, 'score (20 presupuesto + 15 urgencia + 12 servicio + 0 + 0)');
+
+    const {valor: conPropuesta} = await esperarHasta(
+      'el lead WARM también pase a PROPUESTA_ENVIADA',
+      async () => {
+        const l = await leadPorEmail(emailDe('warm'));
+
+        return l && l.estado === 'PROPUESTA_ENVIADA' ? l : null;
+      },
+    );
+
+    t.igual(conPropuesta.estado, 'PROPUESTA_ENVIADA', 'estado');
+  }),
+
+  escenario('lead-cold', 'E3', 'Un lead de presupuesto bajo se califica COLD y NO recibe propuesta', async (t) => {
+    // Entrada EXACTA de E3: soporte, USD 300, urgencia baja, sin teléfono y
+    // descripción breve.
+    const {lead} = await altaDeLead('cold', {
+      presupuesto: 300,
+      urgencia: 'baja',
+      servicio: 'soporte',
+      telefono: '',
+      descripcion: 'Consulta breve.',
+    });
 
     t.igual(lead.tier, 'COLD', 'tier');
-    t.verdad(lead.score < 40, `score por debajo del umbral WARM (${lead.score})`);
+    t.igual(lead.score, 20, 'score (10 presupuesto + 5 urgencia + 5 servicio + 0 + 0)');
 
     // Se le da margen para confirmar que NO cambia de estado.
     await esperar(3000);
@@ -197,18 +239,19 @@ const ESCENARIOS = [
     t.verdad(!malo.texto.includes('accept_token'), 'con un token inválido no filtra datos del lead');
   }),
 
-  escenario('aceptacion-atomica', null, 'Dos aceptaciones simultáneas generan UNA sola factura', async (t, ctx) => {
+  escenario('aceptacion-atomica', 'E5/E6', 'Aceptación válida y reutilización del enlace: una sola factura', async (t, ctx) => {
     const lead = ctx['lead-hot'];
     const t0 = ahora();
 
-    // El corazón de §4.3.2 y la cuestión 1 de la defensa: se disparan las dos
-    // peticiones a la vez, sin esperar a que la primera termine.
+    // E6 declara CUATRO invocaciones: dos concurrentes y dos consecutivas.
+    // Primero las concurrentes, que son el corazón de §4.3.2 y de la cuestión 1
+    // de la defensa: se disparan a la vez, sin esperar a que la primera termine.
     const [a, b] = await Promise.all([
       webhook('lead-acepta', {cuerpo: {lead_id: lead.lead_id, token: lead.accept_token}}),
       webhook('lead-acepta', {cuerpo: {lead_id: lead.lead_id, token: lead.accept_token}}),
     ]);
 
-    t.verdad(a.status < 500 && b.status < 500, 'ninguna de las dos peticiones devolvió error de servidor');
+    t.verdad(a.status < 500 && b.status < 500, 'ninguna de las dos peticiones concurrentes devolvió error de servidor');
 
     const {ms} = await esperarHasta(
       'se emita la factura',
@@ -218,11 +261,25 @@ const ESCENARIOS = [
     medir('aceptación → factura emitida', ms, 'incluye la generación del PDF con Gotenberg y el envío por email');
     medir('respuesta al navegador', ahora() - t0, 'las dos peticiones de aceptación en paralelo');
 
+    // E5: la aceptación válida deja el comprobante con vencimiento a 15 días.
+    const primera = (await facturasDe(lead.lead_id))[0];
+    const dias = Math.round(
+      (new Date(primera.fecha_vencimiento) - new Date(primera.fecha_emision)) / 86400000,
+    );
+
+    t.igual(dias, 15, 'días entre emisión y vencimiento de la factura');
+
+    // Ahora las dos consecutivas, reusando el mismo enlace ya consumido.
+    const c = await webhook('lead-acepta', {cuerpo: {lead_id: lead.lead_id, token: lead.accept_token}});
+    const d = await webhook('lead-acepta', {cuerpo: {lead_id: lead.lead_id, token: lead.accept_token}});
+
+    t.verdad(c.status < 500 && d.status < 500, 'ninguna de las dos peticiones consecutivas devolvió error de servidor');
+
     // Margen por si una segunda factura llegara tarde.
     await esperar(4000);
     const facturas = await facturasDe(lead.lead_id);
 
-    t.igual(facturas.length, 1, 'cantidad de facturas tras dos aceptaciones concurrentes');
+    t.igual(facturas.length, 1, 'facturas tras cuatro aceptaciones (2 concurrentes + 2 consecutivas)');
 
     const despues = await leadPorEmail(emailDe('hot'));
 
