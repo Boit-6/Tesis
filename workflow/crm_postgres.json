@@ -363,7 +363,8 @@
           "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -1119,7 +1120,8 @@
           "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -1343,7 +1345,8 @@
           "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -1496,6 +1499,8 @@
     },
     {
       "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"ok\", \"mensaje\": \"En breve te llega la factura por email.\" }",
         "options": {
           "responseCode": 200
         }
@@ -1680,7 +1685,8 @@
           "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -1956,7 +1962,8 @@
           "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -2114,7 +2121,8 @@
           "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {},
@@ -2225,7 +2233,8 @@
           "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -2350,7 +2359,8 @@
           "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -2430,7 +2440,8 @@
           "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -2636,7 +2647,8 @@
           "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -2816,7 +2828,8 @@
           "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -3211,7 +3224,8 @@
           "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -3437,7 +3451,8 @@
           "id": "Zv2UC716Fxh6BCDs",
           "name": "Telegram account"
         }
-      }
+      },
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
