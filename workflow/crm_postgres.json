@@ -620,7 +620,7 @@
         "httpMethod": "POST",
         "path": "lead/nuevo",
         "options": {
-          "allowedOrigins": "={{ $env.CORS_ORIGINS || 'http://localhost:3000,https://formulario-leads-psi.vercel.app' }}"
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
         }
       },
       "id": "8a11afd6-695a-4ae7-bc8e-f4a7ab860dad",
@@ -1351,7 +1351,7 @@
         "path": "lead-acepta",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "={{ $env.CORS_ORIGINS || 'http://localhost:3000,https://formulario-leads-psi.vercel.app' }}"
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
         }
       },
       "id": "12ec8c4f-8e53-4bfb-87ce-395293462536",
@@ -2438,7 +2438,7 @@
         "path": "lead-propuesta",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "={{ $env.CORS_ORIGINS || 'http://localhost:3000,https://formulario-leads-psi.vercel.app' }}"
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
         }
       },
       "id": "e1a2b3c4-0001-4f01-8a01-aa0000000001",
@@ -2533,7 +2533,7 @@
         "path": "lead-rechaza",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "={{ $env.CORS_ORIGINS || 'http://localhost:3000,https://formulario-leads-psi.vercel.app' }}"
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
         }
       },
       "id": "f1a20001-0000-4001-8001-bb0000000001",
@@ -2678,7 +2678,7 @@
         "path": "lead-modifica",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "={{ $env.CORS_ORIGINS || 'http://localhost:3000,https://formulario-leads-psi.vercel.app' }}"
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
         }
       },
       "id": "f1a20011-0000-4011-8011-bb0000000011",
@@ -2858,7 +2858,7 @@
         "path": "trabajo-estado",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "={{ $env.CORS_ORIGINS || 'http://localhost:3000,https://formulario-leads-psi.vercel.app' }}"
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
         },
         "authentication": "headerAuth"
       },
@@ -3101,7 +3101,7 @@
         "path": "lead-cancelar",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "={{ $env.CORS_ORIGINS || 'http://localhost:3000,https://formulario-leads-psi.vercel.app' }}"
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
         },
         "authentication": "headerAuth"
       },
@@ -3289,7 +3289,7 @@
         "path": "cambio-aceptar",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "={{ $env.CORS_ORIGINS || 'http://localhost:3000,https://formulario-leads-psi.vercel.app' }}"
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
         },
         "authentication": "headerAuth"
       },
@@ -3479,7 +3479,7 @@
         "path": "cambio-rechazar",
         "responseMode": "responseNode",
         "options": {
-          "allowedOrigins": "={{ $env.CORS_ORIGINS || 'http://localhost:3000,https://formulario-leads-psi.vercel.app' }}"
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
         },
         "authentication": "headerAuth"
       },
