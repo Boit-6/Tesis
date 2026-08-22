@@ -228,6 +228,30 @@ const ESCENARIOS = [
     t.igual(despues.estado, 'NUEVO', 'sigue en NUEVO (no se le envió propuesta)');
   }),
 
+  escenario('lead-invalido', 'E4', 'Un lead inválido se rechaza sin persistirse y queda registrado', async (t) => {
+    // Entrada EXACTA de E4: las tres condiciones inválidas a la vez — nombre de
+    // un carácter, correo sin arroba y presupuesto cero.
+    const emailMalo = `crm.test.${ejecucion}.invalido.example.test`; // sin arroba a propósito
+    const logsAntes = (await rest('logs?select=id&nivel=eq.ERROR&order=id.desc&limit=1'))[0]?.id ?? 0;
+
+    const res = await webhook('lead/nuevo', {
+      cuerpo: {nombre: 'A', email: emailMalo, telefono: '', descripcion: 'x', presupuesto: 0},
+    });
+
+    t.verdad(res.status < 500, `el webhook respondió ${res.status} sin caerse`);
+
+    // Margen para que, si algo se hubiera persistido, alcance a aparecer.
+    await esperar(3000);
+
+    const persistido = await leadPorEmail(emailMalo);
+
+    t.igual(persistido, null, 'filas nuevas en leads para la entrada inválida');
+
+    const logsDespues = await rest(`logs?select=id,evento,error_msg&nivel=eq.ERROR&id=gt.${logsAntes}&order=id.desc&limit=5`);
+
+    t.verdad(logsDespues.length > 0, `quedó registrado en logs con nivel ERROR (${logsDespues.length} fila/s)`);
+  }),
+
   escenario('propuesta-lectura', null, 'La propuesta se lee sólo con el token correcto', async (t, ctx) => {
     const lead = ctx['lead-hot'];
     const ok = await webhook(`lead-propuesta?lead_id=${lead.lead_id}&token=${lead.accept_token}`, {metodo: 'GET'});
