@@ -34,7 +34,13 @@ function medirWorkflow(nombre) {
 
 function medirEsquema() {
   const sql = leer('db', 'schema.sql');
-  const contar = (re) => (sql.match(re) || []).length;
+  // Sólo cuenta sentencias reales: si el patrón aparece dentro de un comentario
+  // que explica el porqué de una decisión, no es un objeto más del esquema.
+  const sqlSinComentarios = sql
+    .split('\n')
+    .filter((l) => !l.trim().startsWith('--'))
+    .join('\n');
+  const contar = (re) => (sqlSinComentarios.match(re) || []).length;
   const servicioEnum = sql.match(/CREATE TYPE servicio_tipo AS ENUM\s*\(([^)]*)\)/);
   const servicioBase = servicioEnum ? servicioEnum[1].split(',').length : 0;
   // Los ALTER TYPE ... ADD VALUE de la sección de migraciones también cuentan.

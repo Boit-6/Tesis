@@ -145,6 +145,48 @@ CREATE TABLE IF NOT EXISTS profiles (
   creado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- =====================================================================
+-- Migraciones para bases YA creadas (idempotentes; no afectan a una base
+-- nueva, donde las definiciones de arriba ya incluyen estas columnas/valores)
+--
+-- Tienen que ir ACÁ, entre las tablas y los índices, y no al final del
+-- archivo: los índices y las vistas de más abajo referencian estas columnas.
+-- Sobre una base nueva da igual el orden, porque los CREATE TABLE ya las
+-- traen; sobre una base vieja, en cambio, el índice se crearía antes de que
+-- exista la columna y el script aborta.
+-- =====================================================================
+
+-- Columna de estado del trabajo (para bases creadas antes de agregarla).
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS estado_trabajo trabajo_estado NOT NULL DEFAULT 'PENDIENTE';
+
+-- Vigencia del enlace de aceptación (para bases ya creadas). Se deja NULL en
+-- las filas existentes: los enlaces ya emitidos siguen siendo válidos y las
+-- consultas los aceptan con `token_expira_en IS NULL`.
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS token_expira_en TIMESTAMPTZ;
+
+-- Servicios marketing/seo que ofrece el formulario (para bases ya creadas).
+ALTER TYPE servicio_tipo ADD VALUE IF NOT EXISTS 'marketing';
+ALTER TYPE servicio_tipo ADD VALUE IF NOT EXISTS 'seo';
+
+-- Coherencia de fechas de facturación. NOT VALID: se aplica a las filas nuevas
+-- sin exigir que las existentes la cumplan, para que el script siga siendo
+-- ejecutable sobre una base con datos.
+DO $$ BEGIN
+  ALTER TABLE facturas ADD CONSTRAINT chk_facturas_fechas
+    CHECK (fecha_vencimiento >= fecha_emision) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+-- Cobro real con MercadoPago (para bases ya creadas). Ver RAMA 8 del
+-- workflow y docs/modulo-pagos.md.
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS mp_preference_id TEXT;
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS mp_payment_id TEXT;
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS comision_plataforma NUMERIC(12,2) NOT NULL DEFAULT 0;
+DO $$ BEGIN
+  ALTER TABLE facturas ADD CONSTRAINT chk_facturas_comision
+    CHECK (comision_plataforma >= 0) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+
 -- ---------------------------------------------------------------------
 -- Índices
 -- ---------------------------------------------------------------------
@@ -227,6 +269,16 @@ ON CONFLICT (id) DO NOTHING;
 -- ---------------------------------------------------------------------
 -- Vistas (con security_invoker: respetan la RLS de las tablas base)
 -- ---------------------------------------------------------------------
+-- Se dropean antes de recrearlas porque `CREATE OR REPLACE VIEW` sólo admite
+-- agregar columnas AL FINAL: si cambia el nombre, el tipo o el orden de una
+-- columna existente, Postgres aborta con «cannot change name of view column».
+-- Eso es exactamente lo que pasa al actualizar una base creada antes de las
+-- columnas de MercadoPago, que es el caso de uso que este script promete
+-- soportar. Sin el DROP, re-ejecutarlo sobre una base vieja falla.
+-- Son vistas sin estado: dropearlas no toca ningún dato.
+DROP VIEW IF EXISTS metrics_mensuales;
+DROP VIEW IF EXISTS facturas_pendientes;
+
 CREATE OR REPLACE VIEW metrics_mensuales
   WITH (security_invoker = true) AS
 WITH lead_mes AS (
@@ -368,38 +420,3 @@ BEGIN
     END IF;
   END IF;
 END $$;
-
--- =====================================================================
--- Migraciones para bases YA creadas (idempotentes; no afectan a una base
--- nueva, donde las definiciones de arriba ya incluyen estas columnas/valores)
--- =====================================================================
-
--- Columna de estado del trabajo (para bases creadas antes de agregarla).
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS estado_trabajo trabajo_estado NOT NULL DEFAULT 'PENDIENTE';
-
--- Vigencia del enlace de aceptación (para bases ya creadas). Se deja NULL en
--- las filas existentes: los enlaces ya emitidos siguen siendo válidos y las
--- consultas los aceptan con `token_expira_en IS NULL`.
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS token_expira_en TIMESTAMPTZ;
-
--- Servicios marketing/seo que ofrece el formulario (para bases ya creadas).
-ALTER TYPE servicio_tipo ADD VALUE IF NOT EXISTS 'marketing';
-ALTER TYPE servicio_tipo ADD VALUE IF NOT EXISTS 'seo';
-
--- Coherencia de fechas de facturación. NOT VALID: se aplica a las filas nuevas
--- sin exigir que las existentes la cumplan, para que el script siga siendo
--- ejecutable sobre una base con datos.
-DO $$ BEGIN
-  ALTER TABLE facturas ADD CONSTRAINT chk_facturas_fechas
-    CHECK (fecha_vencimiento >= fecha_emision) NOT VALID;
-EXCEPTION WHEN duplicate_object THEN null; END $$;
-
--- Cobro real con MercadoPago (para bases ya creadas). Ver RAMA 8 del
--- workflow y docs/modulo-pagos.md.
-ALTER TABLE facturas ADD COLUMN IF NOT EXISTS mp_preference_id TEXT;
-ALTER TABLE facturas ADD COLUMN IF NOT EXISTS mp_payment_id TEXT;
-ALTER TABLE facturas ADD COLUMN IF NOT EXISTS comision_plataforma NUMERIC(12,2) NOT NULL DEFAULT 0;
-DO $$ BEGIN
-  ALTER TABLE facturas ADD CONSTRAINT chk_facturas_comision
-    CHECK (comision_plataforma >= 0) NOT VALID;
-EXCEPTION WHEN duplicate_object THEN null; END $$;
