@@ -7,6 +7,66 @@
 
 ---
 
+## Actualización 2 — segunda pasada, con el sistema corriendo (22-ago-2026)
+
+Esta pasada se hizo con algo que la anterior no tenía: **el sistema levantado y
+funcionando**. Eso cambió la naturaleza de la auditoría — se dejó de leer código para
+pasar a ejercitarlo, y aparecieron defectos que ninguna lectura estática ni ningún test
+existente había detectado.
+
+### Cinco defectos que sólo aparecen ejecutando
+
+| # | Defecto | Por qué no lo veía nadie | Estado |
+|---|---|---|---|
+| D1 | **CORS roto en los 9 webhooks del navegador.** `allowedOrigins` tenía una expresión `={{ $env.CORS_ORIGINS ... }}`, pero n8n no evalúa expresiones en ese campo: devolvía el texto crudo como header, cortado en la primera coma. Ningún origen coincidía, así que **el formulario público y la página de aceptación estaban rotos desde cualquier navegador real**. | `tests/escenarios.mjs` usa el `fetch` de Node, que no aplica CORS. Sólo se ve en un navegador. | Corregido |
+| D2 | **El cliente veía un error al aceptar.** `Respond - Pagina Exito` no declaraba cuerpo: el webhook cerraba con 200 y **cuerpo vacío**. El front hace `response.json()`, que lanza excepción, y mostraba «No pudimos procesar tu solicitud» aunque la factura se hubiera emitido y enviado. El estado «¡Propuesta aceptada!» de la Figura 18(a) era **inalcanzable**. | Los tests verificaban el estado en la base, no el cuerpo de la respuesta. | Corregido |
+| D3 | **Una notificación de Telegram tumbaba el flujo entero.** Los 13 nodos de Telegram no tenían `onError`; con `TELEGRAM_CHAT_ID` sin configurar, cada aceptación moría ahí. | Idem: el efecto en la base ya había ocurrido. | Corregido |
+| D4 | **`schema.sql` no era idempotente al actualizar** una base existente, por dos motivos: `CREATE OR REPLACE VIEW` no admite cambiar las columnas de una vista, y el bloque de migraciones estaba al final, después de los índices que dependen de esas columnas. Contradecía lo que afirma `docs/modulo-pagos.md`. | `verificar_rls.mjs` aplicaba el esquema dos veces sobre una base **recién creada**, donde nunca hay una vista vieja que reemplazar. | Corregido, con un test nuevo que degrada la base y la migra |
+| D5 | **La respuesta de `trabajo-estado` devolvía la expresión sin evaluar** (`"={{ $json.estado_trabajo }}"`), porque el `=` estaba dentro del JSON en vez de al principio del campo. | El front no lee ese campo. | Corregido |
+
+Los cinco eran defectos reales del artefacto, no del documento. D1 y D2 son de severidad alta:
+juntos dejaban inutilizables, desde un navegador, los dos flujos que ve el cliente.
+
+**Deuda de robustez que se decidió NO cambiar:** tres nodos de Gmail que le escriben al cliente
+(`Enviar Propuesta`, `Enviar Follow-up`, `Recordatorio Pago`) siguen sin `onError`, y al fallar
+cortan las escrituras que van detrás. Es deliberado: marcar como «enviado» un correo que falló
+sería peor que no marcarlo. La asimetría con Telegram —que sí es tolerante, porque es una
+notificación interna— queda documentada.
+
+### Lo que se cerró del lado documental
+
+- **Tabla 12:** de 68 celdas `[registrar]` a 15. E1–E6 y E8–E10 tienen ahora valores de una
+  corrida reproducible. Antes de llenarlas se detectó que **la suite probaba entradas distintas
+  a las declaradas** (E1 usaba `ecommerce`/6000 contra `desarrollo_web`/5000 del documento; ambas
+  dan 100 pero por aritmética distinta), así que se alineó la suite en vez de forzar el mapeo.
+- **Anexo E:** las tres matrices de trazabilidad (5 objetivos, 11 RF, 7 RNF) quedaron completas,
+  con lo no verificado identificado como tal.
+- **Capítulo 5:** se reescribieron cuatro párrafos que ya eran inexactos **en contra del propio
+  trabajo** — afirmaban que no había corrida documentada y que «el trabajo no dispone de pruebas
+  funcionales automatizadas», cuando existen `scoring.js` (9240 casos), `verificar_rls.mjs` (24),
+  `verificar_sql.mjs` y `verificar_afirmaciones.js`.
+- **Cinco figuras de UI rehechas** (5, 6, 7, 17, 18): el sync con el repo del compañero cambió el
+  frontend a un diseño claro y todas las capturas mostraban la versión anterior.
+
+### Qué sigue sin poder verificarse
+
+| Escenario | Por qué |
+|---|---|
+| **E7** (tablero en tiempo real, RNF6) | La tabla `leads` **no está en la publicación `supabase_realtime`** de la instancia. El script de medición no recibe ningún evento. Es configuración de la plataforma: hay que habilitar Realtime para esa tabla desde el panel de Supabase. **La funcionalidad de refresco en vivo del tablero hoy no funciona.** |
+| **E11–E13** (procesos programados) | Hay que disparar los tres cron y registrar su salida. |
+| **E14** (cobro real con MercadoPago) | Requiere credenciales de prueba de MercadoPago y una tarjeta de test. |
+| **Figura 14** (correo de factura en Gmail) | Requiere un envío real desde la cuenta de Gmail configurada. |
+| **S7** (incidente de credenciales) | Rotación de las claves de Supabase; requiere rol de administrador de ese proyecto. |
+
+### Nota sobre la resolución de las figuras (B1)
+
+Sigue vigente: **17 de 18 figuras están por debajo de los 300 ppi** que pide el protocolo para
+calidad de impresión. Las cinco nuevas se generaron al máximo que permite la captura del
+navegador y quedan en el mismo rango que las anteriores. Es un criterio formal de impresión, no
+de comprensión.
+
+---
+
 ## Actualización — plan de corrección ejecutado (21-ago-2026, mismo día)
 
 Tras entregar la primera versión de este informe, se pidió corregir todo lo posible sin depender del
@@ -62,11 +122,11 @@ Con H1, H2 y H4 resueltos, las dos notas de la sección 16 se recalcularon — v
 | Extensión | ≈25.400 palabras totales (≈14.900 en el cuerpo Cap. 1–8) · ≈92 páginas estimadas · 18 figuras declaradas (18 presentes tras esta revisión) · 21 tablas · **25** referencias |
 | Marco de evaluación aplicado | `prompt-maestro-reconstruido.md` (protocolo adversarial de 17 pasos, 16 secciones de salida) |
 | Fecha del informe | 21 de agosto de 2026 (con correcciones aplicadas el mismo día — ver "Actualización" arriba) |
-| Hallazgos por severidad (tras las correcciones) | 0 críticos · 2 altos · 3 medios · 4 bajos |
-| Puntaje global — **nota honesta** | **≈ 8,2 / 10** *(era 7,5 antes de las correcciones de esta sesión)* |
-| Puntaje global — **sin inspección de imágenes** | **≈ 8,3 / 10** *(era 7,9; la brecha casi desapareció porque las figuras ya no ocultan nada)* |
+| Hallazgos por severidad (tras la segunda pasada) | 0 críticos · 1 alto · 3 medios · 3 bajos |
+| Puntaje global — **nota honesta** | **≈ 8,8 / 10** *(7,5 → 8,2 → 8,8 a lo largo de las tres pasadas)* |
+| Puntaje global — **sin inspección de imágenes** | **≈ 8,8 / 10** *(la brecha desapareció: las figuras ya no ocultan nada)* |
 | Índice de calidad de escritura | 7,3 / 10 |
-| Dictamen | **Aprobada con observaciones mayores** |
+| Dictamen | **Aprobada con observaciones menores** *(sube desde «observaciones mayores»)* |
 
 ---
 
@@ -556,7 +616,40 @@ documento, no solo el capítulo donde se detectan).
   H2) y uno alto (H3) que un tribunal exigente señalaría de entrada, pero se resuelven con acciones
   puntuales y acotadas, no con una reescritura.
 
-### Cálculo de las dos notas pedidas (recalculado tras las correcciones de esta sesión)
+### Nota final tras la segunda pasada — 8,8 / 10
+
+El salto de 8,2 a 8,8 no viene de haber corregido texto, sino de que **el capítulo de resultados
+dejó de descansar en la palabra de los autores**. Antes decía, con honestidad, que los escenarios
+se habían corrido «de forma informal, sin registro documentado» y que no podía establecerse
+repetibilidad; eso era exactamente el hallazgo H3, el hueco más grande del trabajo. Hoy hay una
+corrida reproducible que cualquiera puede repetir con un comando, con las entradas declaradas y
+verificando el desglose del score, no sólo su total.
+
+Contra eso juegan tres cosas que impiden llegar más arriba:
+
+1. **Cinco escenarios siguen sin ejecutar** (E7, E11–E14), y uno de ellos —E7— no es una tarea
+   pendiente sino una funcionalidad que **hoy no anda**: el refresco en vivo del tablero, que el
+   RNF6 promete con un umbral de 3 s, no emite ningún evento.
+2. **El protocolo pide tres repeticiones** por escenario de camino principal y la suite corre una
+   por invocación. Es una diferencia real entre lo que la Tabla 4 exige y lo que hoy se acredita.
+3. **El incidente de credenciales (S7) sigue abierto.** El propio documento pide resolverlo antes
+   de la defensa.
+
+Con esos tres puntos cerrados, el trabajo llega sin esfuerzo a **9,3–9,5**. El techo de ~9,5, y no
+10, lo fija algo que ningún commit arregla: el scoring tiene validez de diseño y no empírica, y la
+reducción de carga administrativa —el efecto que motiva todo el trabajo— sigue sin medirse. El
+documento lo declara con precisión, que es lo correcto, pero declarar una limitación no la elimina.
+
+**Por qué ahora es «observaciones menores».** Ya no queda ningún hallazgo capaz por sí solo de
+comprometer un capítulo entero: el título corresponde al contenido, las figuras muestran el sistema
+que el texto describe, los resultados tienen evidencia reproducible y los defectos que quedaban en
+el artefacto —CORS, respuesta vacía al aceptar, idempotencia del esquema— están corregidos y
+verificados. Lo que resta son ejecuciones pendientes y una configuración de plataforma, no
+problemas de fondo.
+
+---
+
+### Cálculo de las dos notas de la primera pasada (histórico)
 
 **Nota honesta — 8,2/10** (era 7,5). Con H1 y H2 resueltos, ya no hace falta el ajuste global de
 −0,55 que la primera versión de este informe aplicaba por esos dos hallazgos transversales. El
