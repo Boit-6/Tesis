@@ -2918,7 +2918,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "{ \"status\": \"ok\", \"estado\": \"={{ $json.estado_trabajo }}\" }",
+        "responseBody": "={ \"status\": \"ok\", \"estado\": \"{{ $json.estado_trabajo }}\" }",
         "options": {
           "responseCode": 200
         }
