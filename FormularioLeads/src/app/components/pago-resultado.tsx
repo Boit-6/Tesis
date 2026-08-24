@@ -4,10 +4,17 @@ const COPIA: Record<
   Variante,
   {eyebrow: string; titulo: string; cuerpo: string; icono: string; accent: string}
 > = {
+  // Esta página es una `back_url`: la abre el navegador del cliente cuando
+  // MercadoPago lo devuelve, no el sistema al registrar el cobro. La factura se
+  // marca COBRADO recién cuando llega la notificación servidor a servidor y se
+  // verifica contra la API de MercadoPago (§4.3.3), que puede tardar o no
+  // llegar. Por eso el texto no afirma que el pago quedó registrado: decirlo
+  // acá sería afirmar algo que en ese momento todavía no se comprobó.
   exito: {
-    eyebrow: "Pago acreditado",
+    eyebrow: "Pago aprobado",
     titulo: "¡Listo, gracias!",
-    cuerpo: "Registramos tu pago. Ya te avisamos al freelance para que arranque con tu proyecto.",
+    cuerpo:
+      "MercadoPago nos informó que el pago se aprobó. Lo confirmamos con el comprobante y te avisamos por email en cuanto quede registrado.",
     icono: "✅",
     accent: "text-ochre",
   },

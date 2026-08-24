@@ -175,6 +175,10 @@ function Tag({children, className = ""}: {children: React.ReactNode; className?:
   );
 }
 
+// Cuántos leads trae la tabla. La búsqueda filtra sobre este conjunto, así que
+// el número también acota su alcance (ver `leadsTopeados`).
+const LEADS_LIMITE = 200;
+
 export default function DashboardClient() {
   const [supabase] = useState(() => createClient());
   const [loading, setLoading] = useState(true);
@@ -207,16 +211,24 @@ export default function DashboardClient() {
             .from("leads")
             .select("lead_id,nombre,email,servicio,estado,tier,presupuesto,fecha_ingreso")
             .order("fecha_ingreso", {ascending: false})
-            .limit(200),
+            .limit(LEADS_LIMITE),
           supabase.from("facturas_pendientes").select("*").order("dias_al_vencimiento"),
           supabase
             .from("leads")
             .select("lead_id,nombre,servicio,estado_trabajo")
             .in("estado", ["ACEPTADO", "FACTURADO"])
             .order("fecha_ingreso", {ascending: false}),
+          // Un pedido de cambios pendiente es un lead que está EN_SEGUIMIENTO y
+          // tiene el mensaje del cliente en `notas`. Filtrar sólo por `notas`
+          // no alcanza: nada la limpia al resolver el pedido, así que la
+          // bandeja se llenaba de leads ya facturados, cerrados o perdidos que
+          // alguna vez pidieron un cambio, con sus botones activos y sin forma
+          // de sacarlos de la lista. Al resolverse, el lead vuelve a
+          // PROPUESTA_ENVIADA y desaparece de acá, que es lo esperable.
           supabase
             .from("leads")
             .select("lead_id,nombre,servicio,notas")
+            .eq("estado", "EN_SEGUIMIENTO")
             .not("notas", "is", null)
             .order("fecha_ingreso", {ascending: false}),
         ]);
@@ -321,9 +333,20 @@ export default function DashboardClient() {
 
   const POR_PAGINA = 15;
   const q = busqueda.toLowerCase().trim();
+  // Se busca también por email: es el dato que el cliente da por teléfono, y
+  // antes buscarlo devolvía "sin resultados" aunque el lead estuviera cargado.
   const leadsFiltrados = q
-    ? leads.filter((l) => l.nombre.toLowerCase().includes(q) || l.lead_id.toLowerCase().includes(q))
+    ? leads.filter(
+        (l) =>
+          l.nombre.toLowerCase().includes(q) ||
+          l.lead_id.toLowerCase().includes(q) ||
+          l.email.toLowerCase().includes(q),
+      )
     : leads;
+  // La consulta trae los 200 leads más recientes. La búsqueda es en cliente, de
+  // modo que sólo alcanza a esos 200: hay que decirlo, porque un "sin
+  // resultados" sobre un lead que sí existe es peor que no tener buscador.
+  const leadsTopeados = leads.length >= LEADS_LIMITE;
   const totalPaginas = Math.max(1, Math.ceil(leadsFiltrados.length / POR_PAGINA));
   const pag = Math.min(pagina, totalPaginas - 1);
   const leadsPagina = leadsFiltrados.slice(pag * POR_PAGINA, (pag + 1) * POR_PAGINA);
@@ -393,7 +416,7 @@ export default function DashboardClient() {
           </svg>
           <input
             className="ease border-rule bg-card text-ink placeholder-mist focus:border-ochre w-full border py-2.5 pr-3 pl-9 text-[13.5px] transition duration-200 outline-none"
-            placeholder="Buscar por nombre o ID…"
+            placeholder="Buscar por nombre, email o ID…"
             value={busqueda}
             onChange={(e) => {
               setBusqueda(e.target.value);
@@ -401,6 +424,12 @@ export default function DashboardClient() {
             }}
           />
         </div>
+        {leadsTopeados && (
+          <p className="text-mist mb-4 text-[12px]">
+            La búsqueda alcanza a los {LEADS_LIMITE} leads más recientes, que son los que muestra
+            esta tabla. El embudo de arriba sí cuenta el histórico completo.
+          </p>
+        )}
         {leadsFiltrados.length === 0 ? (
           <p className="text-muted text-[13px]">
             {busqueda ? "Sin resultados para esa búsqueda." : "Sin leads para mostrar."}
