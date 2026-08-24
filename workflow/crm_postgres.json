@@ -274,7 +274,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const q = $input.first().json.query || {};\nif (!q.factura_id) throw new Error('Falta factura_id');\nreturn [{ json: { factura_id: q.factura_id, lead_id: q.lead_id || '' } }];"
+        "jsCode": "const q = $input.first().json.query || {};\nconst mpConfigurado = typeof $env !== 'undefined' && $env && $env.MP_ACCESS_TOKEN;\nif (mpConfigurado) throw new Error('Modo de desarrollo deshabilitado: hay credenciales de MercadoPago configuradas');\nif (!q.factura_id) throw new Error('Falta factura_id');\nreturn [{ json: { factura_id: q.factura_id, lead_id: q.lead_id || '' } }];"
       },
       "id": "1e6fe838-47b9-4438-bbd7-75489ee85449",
       "name": "Code - Validar Pago",
@@ -563,7 +563,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "=https://api.notion.com/v1/pages/{{ $('Code - Preparar Follow-up').item.json.card_id }}",
+        "url": "=https://api.notion.com/v1/pages/{{ $('Code - Preparar Follow-up').all()[$itemIndex].json.card_id }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "notionApi",
         "sendHeaders": true,
@@ -636,7 +636,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json.body || {};\nconst capitalizar = (s) => s.replace(/\\S+/gu, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());\nconst nombre = capitalizar((item.nombre || '').trim().replace(/\\s+/g, ' '));\nconst email = (item.email || '').toLowerCase().trim();\nconst presupuesto = parseInt(item.presupuesto) || 0;\nconst urg = ['alta', 'media', 'baja'];\nconst urgencia = urg.includes((item.urgencia || '').toLowerCase()) ? item.urgencia.toLowerCase() : 'media';\nconst svcMap = { 'desarrollo web':'desarrollo_web','e-commerce':'ecommerce','ecommerce':'ecommerce','app móvil':'app_movil','app movil':'app_movil','app_movil':'app_movil','diseño ux/ui':'diseno_ui','diseno ux/ui':'diseno_ui','marketing digital':'marketing','seo / posicionamiento':'seo','seo/posicionamiento':'seo','automatización de procesos':'automatizacion','automatizacion de procesos':'automatizacion','automatizacion':'automatizacion','consultoría':'consultoria','consultoria':'consultoria','otro':'soporte','soporte':'soporte','desarrollo_web':'desarrollo_web','diseno_ui':'diseno_ui','marketing':'marketing','seo':'seo' };\nconst servicio = svcMap[(item.servicio || '').toLowerCase().trim()] || 'desarrollo_web';\nconst errores = [];\nif (!email.includes('@')) errores.push('email invalido');\nif (nombre.length < 2) errores.push('nombre muy corto');\nif (presupuesto <= 0) errores.push('presupuesto invalido');\nif (errores.length) throw new Error('Validacion fallida: ' + errores.join(', '));\nconst ts = Date.now();\nconst rand = Math.random().toString(36).substring(2, 6).toUpperCase();\nreturn [{ json: { lead_id: 'LD-' + ts + '-' + rand, nombre, email, presupuesto, urgencia, servicio, telefono: (item.telefono || '').trim(), descripcion: (item.descripcion || '').trim().substring(0, 2000), fuente: item.fuente || 'webhook' } }];"
+        "jsCode": "const item = $input.first().json.body || {};\nconst capitalizar = (s) => s.replace(/\\S+/gu, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());\nconst nombre = capitalizar((item.nombre || '').trim().replace(/\\s+/g, ' '));\nconst email = (item.email || '').toLowerCase().trim();\nconst presupuesto = parseInt(item.presupuesto) || 0;\nconst urg = ['alta', 'media', 'baja'];\nconst urgencia = urg.includes((item.urgencia || '').toLowerCase()) ? item.urgencia.toLowerCase() : 'media';\nconst svcMap = { 'desarrollo web':'desarrollo_web','e-commerce':'ecommerce','ecommerce':'ecommerce','app móvil':'app_movil','app movil':'app_movil','app_movil':'app_movil','diseño ux/ui':'diseno_ui','diseno ux/ui':'diseno_ui','marketing digital':'marketing','seo / posicionamiento':'seo','seo/posicionamiento':'seo','automatización de procesos':'automatizacion','automatizacion de procesos':'automatizacion','automatizacion':'automatizacion','consultoría':'consultoria','consultoria':'consultoria','otro':'consultoria','soporte':'soporte','desarrollo_web':'desarrollo_web','diseno_ui':'diseno_ui','marketing':'marketing','seo':'seo' };\nconst servicio = svcMap[(item.servicio || '').toLowerCase().trim()] || 'desarrollo_web';\nconst errores = [];\nif (!email.includes('@')) errores.push('email invalido');\nif (nombre.length < 2) errores.push('nombre muy corto');\nif (presupuesto <= 0) errores.push('presupuesto invalido');\nif (errores.length) throw new Error('Validacion fallida: ' + errores.join(', '));\nconst ts = Date.now();\nconst rand = Math.random().toString(36).substring(2, 6).toUpperCase();\nreturn [{ json: { lead_id: 'LD-' + ts + '-' + rand, nombre, email, presupuesto, urgencia, servicio, telefono: (item.telefono || '').trim(), descripcion: (item.descripcion || '').trim().substring(0, 2000), fuente: item.fuente || 'webhook' } }];"
       },
       "id": "1a0698a2-bfce-4254-99e8-87cce4909c32",
       "name": "Code - Normalizar Lead",
@@ -1942,7 +1942,7 @@
     {
       "parameters": {
         "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=📉 <b>Lead PERDIDO</b>\nCliente: {{ $('Code - Preparar Follow-up').item.json.nombre }}\nScore: {{ $('Code - Preparar Follow-up').item.json.score }}\n3 seguimientos sin respuesta",
+        "text": "=📉 <b>Lead PERDIDO</b>\nCliente: {{ $('Code - Preparar Follow-up').all()[$itemIndex].json.nombre }}\nScore: {{ $('Code - Preparar Follow-up').all()[$itemIndex].json.score }}\n3 seguimientos sin respuesta",
         "additionalFields": {
           "appendAttribution": false,
           "parse_mode": "HTML"
