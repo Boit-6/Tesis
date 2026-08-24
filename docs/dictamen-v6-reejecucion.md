@@ -850,3 +850,73 @@ verificar contra el sistema real**:
    que el artefacto en ejecución tenga el respaldo de servicio y el guard de `$env` corregidos.
 2. Correr `npm run test:escenarios` y confirmar que E4 sigue en verde con las tres entradas
    separadas. La suite offline (`npm test`) sí quedó en verde: 38 + 10 + 16 OK, 0 divergentes.
+
+---
+
+## Quinta pasada — con el sistema levantado, 24-ago-2026
+
+Se levantó Docker (n8n 2.34.6 + Gotenberg 8) y se ejecutó todo lo que la pasada anterior había
+dejado sin verificar, más una segunda vuelta de auditoría de coherencia.
+
+### Verificaciones que faltaban
+
+- **Los dos fixes de la cuarta pasada están vivos en n8n.** El export del repo no trae `id`, así
+  que un `import:workflow` habría creado un duplicado con webhooks en conflicto. Se hizo el
+  round-trip por el CLI: `export:workflow --all --separate`, se parchearon los dos nodos Code sobre
+  el export vivo (conservando su id `kRyDrREl40a1if0K`), `import:workflow`, y como el import
+  **desactiva el workflow**, `update:workflow --active=true` más un `docker compose restart n8n`
+  para que los webhooks se re-registren. Verificado leyendo el workflow de vuelta: activo, respaldo
+  en `consultoria`, guard con try/catch.
+- **`npm run test:escenarios`: 11/11, tres corridas seguidas.** E4 ahora ejecuta el método que
+  declara el RNF3 —cuatro entradas inválidas por separado— y observa **4 filas de log ERROR**, por
+  encima del criterio de 3. El archivo de evidencia ya imprime `filas nuevas en leads: 0` en vez
+  de `null`.
+- **`npm run test:sql`: 23 consultas, 0 errores.** **`npm run test:rls`: 24/24.** Ninguna de las dos
+  se había podido correr sin Docker.
+
+### Deriva repo ↔ n8n, medida
+
+El `workflow/crm_postgres.json` del repositorio y lo que corre en n8n **no son idénticos**: 28 de
+157 nodos tienen parámetros distintos. Se clasificó cada diferencia y ninguna es funcional:
+
+- ids de nodo regenerados y orden de claves distinto;
+- normalización de n8n (`"version": 1` en las condiciones de los IF, `httpMethod: GET` omitido por
+  ser el valor por defecto del nodo Webhook);
+- espacios de más dentro de `{{  …  }}` en los nodos que se editaron a mano el 23-ago;
+- **el prefijo `=` de expresión ausente en el `query` de cuatro nodos Postgres** (`Estado Propuesta
+  Enviada`, `Reabrir Propuesta`, `Reabrir Original`, `Marcar Cobrado MP`). Parecía el mismo bug de
+  «expresión sin evaluar» que ya apareció dos veces, pero **no lo es**: el campo `query` del nodo
+  Postgres usa el editor SQL, que interpola `{{ }}` sin necesidad del prefijo. Queda comprobado por
+  E1, que sigue persistiendo `token_expira_en` a partir de
+  `make_interval(days => {{ $env.TOKEN_VIGENCIA_DIAS || 14 }})`. **Anotado para que nadie lo
+  «arregle» más adelante creyendo que está roto.**
+
+Las 127 aristas del grafo son idénticas en ambos lados.
+
+### Incoherencias nuevas del documento, cerradas
+
+- **`tests/verificar_sql.mjs` tenía el mismo bug de glob que el smoke**: recorría `workflow/*.json`
+  y compilaba también el SQL de las copias de respaldo — 68 «consultas» en vez de 23. El comentario
+  de `package.json` decía 22.
+- **§4.4 declaraba «seis índices»; el esquema tiene once** (tres compuestos o parciales:
+  `leads(accept_token, token_expira_en)`, `facturas(estado_pago, fecha_vencimiento)` y el parcial
+  `logs(nivel)` sobre WARN/ERROR). Las notas de las Tablas 6 y 7 sólo listaban seis. El propio
+  párrafo dice que el trabajo «perdía crédito por ingeniería efectivamente realizada».
+- **§4.7 volvía a decir «borde»**, la afirmación que §4.2.3 dedica un párrafo entero a corregir
+  (`proxy.ts` corre en Node.js, no en el borde). La corrección se había aplicado en §4.2 y no acá.
+- **El rótulo de la Tabla 7 omitía `profiles`**, que sí está en la tabla y en el índice de tablas.
+- **§4.2 listaba las rutas del frontend sin las cuatro que agregaron los módulos de pago y de
+  tickets**: `/dashboard/tickets` y las tres `back_urls` reales del checkout de MercadoPago
+  (`/pago-exitoso`, `/pago-pendiente`, `/pago-fallido`), que arma `Code - Generar ID Factura`.
+- **El Anexo B decía «un único flujo»** mientras el Capítulo 5 habla de «ambos flujos» y el
+  repositorio contiene `workflow/tickets_notion.json` (39 nodos, 3 webhooks, 1 cron) con su propia
+  página en el tablero. El módulo de tickets **no se mencionaba en ninguna parte del documento**.
+  Se lo declara ahora en el Anexo B como fuera del alcance de §1.7, para que quien abra el
+  repositorio sepa qué es y por qué no se lo describe, en vez de tener que deducirlo.
+- **La Tabla 3 dejaba abierta una recomendación** («levantar el sistema una vez con esta versión y
+  confirmar que el flujo se importa sin errores»). Se cumplió hoy: se cierra en el texto.
+
+### Lo que sigue sin poder verificarse
+
+Sin cambios: E7 (Realtime deshabilitado para `leads` en la instancia), S7 (claves de un proyecto
+ajeno), E14 y la Figura 14 (requieren credenciales y una cuenta reales).

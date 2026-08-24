@@ -18,7 +18,7 @@
   "comentarioScripts": {
     "test": "Suite offline: no necesita n8n, ni base, ni credenciales. Es la que corre en CI.",
     "test:rls": "Levanta un PostgreSQL desechable en Docker y ejecuta las políticas RLS de db/schema.sql.",
-    "test:sql": "Compila con PREPARE las 22 consultas SQL de los workflows contra el esquema real: detecta columnas mal escritas y tipos incompatibles sin ejecutar nada.",
+    "test:sql": "Compila con PREPARE las 23 consultas SQL de los workflows contra el esquema real: detecta columnas mal escritas y tipos incompatibles sin ejecutar nada.",
     "test:escenarios": "Validación funcional de punta a punta: necesita n8n publicado y la base configurada (ver .env.example)."
   },
   "engines": {

@@ -13,7 +13,6 @@
 import {execFileSync, execSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
-import {readdirSync} from 'node:fs';
 import path from 'node:path';
 
 const aqui = path.dirname(fileURLToPath(import.meta.url));
@@ -30,11 +29,17 @@ const limpiar = () => {
 // `{{ ... }}`. Para validar la sintaxis se reemplazan por un literal.
 const aSqlPlano = (query) => query.replace(/^=/, '').replace(/\{\{[^}]*\}\}/g, '14').trim().replace(/;$/, '');
 
+// Los dos flujos del artefacto, nombrados uno por uno. Con un `readdirSync` de
+// `*.json` esto barría también las copias de respaldo del directorio y compilaba
+// el SQL de versiones viejas, inflando el recuento y dando por buenas consultas
+// que ya no existen. Mismo criterio que en tests/smoke_code_nodes.js.
+const FLUJOS = ['crm_postgres.json', 'tickets_notion.json'];
+
 function consultasDeWorkflows() {
   const dir = path.join(raiz, 'workflow');
   const salida = [];
 
-  for (const archivo of readdirSync(dir).filter((f) => f.endsWith('.json'))) {
+  for (const archivo of FLUJOS) {
     const wf = JSON.parse(readFileSync(path.join(dir, archivo), 'utf8'));
 
     for (const nodo of wf.nodes) {

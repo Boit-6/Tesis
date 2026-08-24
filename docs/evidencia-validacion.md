@@ -6,23 +6,23 @@
 > en la base. Reemplaza el autorreporte de §5 por una corrida reproducible: cualquiera
 > con el entorno levantado obtiene esta misma tabla.
 
-**Ejecución:** 2026-08-24T01:50:45.977Z  ·  **n8n:** `http://localhost:5678`
+**Ejecución:** 2026-08-24T11:50:31.481Z  ·  **n8n:** `http://localhost:5678`
 
 ## Escenarios
 
 | # | Tabla 9 | Escenario | Resultado | Tiempo |
 |---|---|---|---|---|
-| 1 | E1 | Un lead de presupuesto alto se califica HOT y recibe propuesta | OK | 3151 ms |
-| 2 | E2 | Un lead de valor medio se califica WARM y recibe propuesta | OK | 1954 ms |
-| 3 | E3 | Un lead de presupuesto bajo se califica COLD y NO recibe propuesta | OK | 4273 ms |
-| 4 | E4 | Un lead inválido se rechaza sin persistirse y queda registrado | OK | 3913 ms |
-| 5 | — | La propuesta se lee sólo con el token correcto | OK | 648 ms |
-| 6 | E5/E6 | Aceptación válida y reutilización del enlace: una sola factura | OK | 13195 ms |
-| 7 | — | El pago simulado es idempotente | OK | 4621 ms |
-| 8 | E8 | El rechazo de la propuesta deja el lead en PERDIDO | OK | 4829 ms |
-| 9 | E9 | El pedido de cambios vuelve el lead a EN_SEGUIMIENTO y guarda el mensaje | OK | 4401 ms |
-| 10 | E10 | El estado del trabajo se actualiza desde el panel y se sincroniza | OK | 831 ms |
-| 11 | — | Un token vencido no permite aceptar la propuesta | OK | 6757 ms |
+| 1 | E1 | Un lead de presupuesto alto se califica HOT y recibe propuesta | OK | 3018 ms |
+| 2 | E2 | Un lead de valor medio se califica WARM y recibe propuesta | OK | 1825 ms |
+| 3 | E3 | Un lead de presupuesto bajo se califica COLD y NO recibe propuesta | OK | 4149 ms |
+| 4 | E4 | Un lead inválido se rechaza sin persistirse y queda registrado | OK | 4858 ms |
+| 5 | — | La propuesta se lee sólo con el token correcto | OK | 591 ms |
+| 6 | E5/E6 | Aceptación válida y reutilización del enlace: una sola factura | OK | 11165 ms |
+| 7 | — | El pago simulado es idempotente | OK | 4332 ms |
+| 8 | E8 | El rechazo de la propuesta deja el lead en PERDIDO | OK | 3042 ms |
+| 9 | E9 | El pedido de cambios vuelve el lead a EN_SEGUIMIENTO y guarda el mensaje | OK | 3737 ms |
+| 10 | E10 | El estado del trabajo se actualiza desde el panel y se sincroniza | OK | 667 ms |
+| 11 | — | Un token vencido no permite aceptar la propuesta | OK | 6015 ms |
 
 > La columna «Tabla 9» sólo se completa donde el mapeo con el documento es inequívoco.
 > Los `—` hay que cotejarlos contra la Tabla 9 antes de citarlos en la tesis.
@@ -51,9 +51,12 @@
 
 ### lead-invalido — Un lead inválido se rechaza sin persistirse y queda registrado
 
-- ✅ el webhook respondió 200 sin caerse
-- ✅ filas nuevas en leads para la entrada inválida: null
-- ✅ quedó registrado en logs con nivel ERROR (1 fila/s)
+- ✅ correo sin arroba: el webhook respondió 200 sin caerse
+- ✅ nombre de un carácter: el webhook respondió 200 sin caerse
+- ✅ presupuesto cero: el webhook respondió 200 sin caerse
+- ✅ las tres condiciones a la vez (entrada de la Tabla 12): el webhook respondió 200 sin caerse
+- ✅ filas nuevas en leads para las 4 entradas inválidas: 0
+- ✅ filas nuevas en logs con nivel ERROR: 4 (el RNF3 pide al menos 3)
 
 ### propuesta-lectura — La propuesta se lee sólo con el token correcto
 
@@ -70,7 +73,7 @@
 
 ### pago-idempotente — El pago simulado es idempotente
 
-- ✅ la fecha de cobro no cambió al reusar el enlace: "2026-08-24T01:49:02.720427+00:00"
+- ✅ la fecha de cobro no cambió al reusar el enlace: "2026-08-24T11:48:51.839269+00:00"
 
 ### rechazo — El rechazo de la propuesta deja el lead en PERDIDO
 
@@ -97,19 +100,19 @@
 
 | Escenario | Medición | Tiempo | Detalle |
 |---|---|---|---|
-| lead-hot | alta del lead en la base | 2076 ms | POST /lead/nuevo → fila en leads (hot) |
-| lead-hot | propuesta enviada | 917 ms | incluye el email de propuesta y la card de Notion |
-| lead-warm | alta del lead en la base | 944 ms | POST /lead/nuevo → fila en leads (warm) |
-| lead-cold | alta del lead en la base | 908 ms | POST /lead/nuevo → fila en leads (cold) |
-| aceptacion-atomica | aceptación → factura emitida | 310 ms | incluye la generación del PDF con Gotenberg y el envío por email |
-| aceptacion-atomica | respuesta al navegador | 7024 ms | las dos peticiones de aceptación en paralelo |
-| pago-idempotente | pago confirmado | 269 ms | marca la factura como COBRADO |
-| rechazo | alta del lead en la base | 1032 ms | POST /lead/nuevo → fila en leads (rechazo) |
-| rechazo | rechazo procesado | 262 ms |  |
-| pedido-cambios | alta del lead en la base | 1006 ms | POST /lead/nuevo → fila en leads (cambios) |
-| pedido-cambios | pedido de cambios procesado | 308 ms |  |
-| estado-trabajo | cambio de estado de trabajo | 267 ms | incluye la sincronización con Notion |
-| token-vencido | alta del lead en la base | 980 ms | POST /lead/nuevo → fila en leads (vencido) |
+| lead-hot | alta del lead en la base | 2113 ms | POST /lead/nuevo → fila en leads (hot) |
+| lead-hot | propuesta enviada | 847 ms | incluye el email de propuesta y la card de Notion |
+| lead-warm | alta del lead en la base | 876 ms | POST /lead/nuevo → fila en leads (warm) |
+| lead-cold | alta del lead en la base | 796 ms | POST /lead/nuevo → fila en leads (cold) |
+| aceptacion-atomica | aceptación → factura emitida | 270 ms | incluye la generación del PDF con Gotenberg y el envío por email |
+| aceptacion-atomica | respuesta al navegador | 5892 ms | las dos peticiones de aceptación en paralelo |
+| pago-idempotente | pago confirmado | 195 ms | marca la factura como COBRADO |
+| rechazo | alta del lead en la base | 802 ms | POST /lead/nuevo → fila en leads (rechazo) |
+| rechazo | rechazo procesado | 196 ms |  |
+| pedido-cambios | alta del lead en la base | 786 ms | POST /lead/nuevo → fila en leads (cambios) |
+| pedido-cambios | pedido de cambios procesado | 204 ms |  |
+| estado-trabajo | cambio de estado de trabajo | 197 ms | incluye la sincronización con Notion |
+| token-vencido | alta del lead en la base | 791 ms | POST /lead/nuevo → fila en leads (vencido) |
 
-**Generación de la factura en PDF (Gotenberg), extremo a extremo:** 310 ms.
+**Generación de la factura en PDF (Gotenberg), extremo a extremo:** 270 ms.
 
