@@ -6,23 +6,23 @@
 > en la base. Reemplaza el autorreporte de §5 por una corrida reproducible: cualquiera
 > con el entorno levantado obtiene esta misma tabla.
 
-**Ejecución:** 2026-08-22T02:21:19.623Z  ·  **n8n:** `http://localhost:5678`
+**Ejecución:** 2026-08-23T23:36:47.184Z  ·  **n8n:** `http://localhost:5678`
 
 ## Escenarios
 
 | # | Tabla 9 | Escenario | Resultado | Tiempo |
 |---|---|---|---|---|
-| 1 | E1 | Un lead de presupuesto alto se califica HOT y recibe propuesta | OK | 1744 ms |
-| 2 | E2 | Un lead de valor medio se califica WARM y recibe propuesta | OK | 1757 ms |
-| 3 | E3 | Un lead de presupuesto bajo se califica COLD y NO recibe propuesta | OK | 4142 ms |
-| 4 | E4 | Un lead inválido se rechaza sin persistirse y queda registrado | OK | 3898 ms |
-| 5 | — | La propuesta se lee sólo con el token correcto | OK | 615 ms |
-| 6 | E5/E6 | Aceptación válida y reutilización del enlace: una sola factura | OK | 11371 ms |
-| 7 | — | El pago simulado es idempotente | OK | 4529 ms |
-| 8 | E8 | El rechazo de la propuesta deja el lead en PERDIDO | OK | 3512 ms |
-| 9 | E9 | El pedido de cambios vuelve el lead a EN_SEGUIMIENTO y guarda el mensaje | OK | 5241 ms |
-| 10 | E10 | El estado del trabajo se actualiza desde el panel y se sincroniza | OK | 817 ms |
-| 11 | — | Un token vencido no permite aceptar la propuesta | OK | 6610 ms |
+| 1 | E1 | Un lead de presupuesto alto se califica HOT y recibe propuesta | OK | 3485 ms |
+| 2 | E2 | Un lead de valor medio se califica WARM y recibe propuesta | OK | 2061 ms |
+| 3 | E3 | Un lead de presupuesto bajo se califica COLD y NO recibe propuesta | OK | 4404 ms |
+| 4 | E4 | Un lead inválido se rechaza sin persistirse y queda registrado | OK | 4223 ms |
+| 5 | — | La propuesta se lee sólo con el token correcto | OK | 721 ms |
+| 6 | E5/E6 | Aceptación válida y reutilización del enlace: una sola factura | OK | 12222 ms |
+| 7 | — | El pago simulado es idempotente | OK | 4532 ms |
+| 8 | E8 | El rechazo de la propuesta deja el lead en PERDIDO | OK | 3492 ms |
+| 9 | E9 | El pedido de cambios vuelve el lead a EN_SEGUIMIENTO y guarda el mensaje | OK | 4087 ms |
+| 10 | E10 | El estado del trabajo se actualiza desde el panel y se sincroniza | OK | 1142 ms |
+| 11 | — | Un token vencido no permite aceptar la propuesta | OK | 6733 ms |
 
 > La columna «Tabla 9» sólo se completa donde el mapeo con el documento es inequívoco.
 > Los `—` hay que cotejarlos contra la Tabla 9 antes de citarlos en la tesis.
@@ -70,7 +70,7 @@
 
 ### pago-idempotente — El pago simulado es idempotente
 
-- ✅ la fecha de cobro no cambió al reusar el enlace: "2026-08-22T02:19:41.725525+00:00"
+- ✅ la fecha de cobro no cambió al reusar el enlace: "2026-08-23T23:35:05.692548+00:00"
 
 ### rechazo — El rechazo de la propuesta deja el lead en PERDIDO
 
@@ -97,19 +97,19 @@
 
 | Escenario | Medición | Tiempo | Detalle |
 |---|---|---|---|
-| lead-hot | alta del lead en la base | 809 ms | POST /lead/nuevo → fila en leads (hot) |
-| lead-hot | propuesta enviada | 851 ms | incluye el email de propuesta y la card de Notion |
-| lead-warm | alta del lead en la base | 817 ms | POST /lead/nuevo → fila en leads (warm) |
-| lead-cold | alta del lead en la base | 857 ms | POST /lead/nuevo → fila en leads (cold) |
-| aceptacion-atomica | aceptación → factura emitida | 280 ms | incluye la generación del PDF con Gotenberg y el envío por email |
-| aceptacion-atomica | respuesta al navegador | 5917 ms | las dos peticiones de aceptación en paralelo |
-| pago-idempotente | pago confirmado | 311 ms | marca la factura como COBRADO |
-| rechazo | alta del lead en la base | 980 ms | POST /lead/nuevo → fila en leads (rechazo) |
-| rechazo | rechazo procesado | 249 ms |  |
-| pedido-cambios | alta del lead en la base | 2199 ms | POST /lead/nuevo → fila en leads (cambios) |
-| pedido-cambios | pedido de cambios procesado | 269 ms |  |
-| estado-trabajo | cambio de estado de trabajo | 276 ms | incluye la sincronización con Notion |
-| token-vencido | alta del lead en la base | 1030 ms | POST /lead/nuevo → fila en leads (vencido) |
+| lead-hot | alta del lead en la base | 2350 ms | POST /lead/nuevo → fila en leads (hot) |
+| lead-hot | propuesta enviada | 1009 ms | incluye el email de propuesta y la card de Notion |
+| lead-warm | alta del lead en la base | 965 ms | POST /lead/nuevo → fila en leads (warm) |
+| lead-cold | alta del lead en la base | 992 ms | POST /lead/nuevo → fila en leads (cold) |
+| aceptacion-atomica | aceptación → factura emitida | 405 ms | incluye la generación del PDF con Gotenberg y el envío por email |
+| aceptacion-atomica | respuesta al navegador | 6665 ms | las dos peticiones de aceptación en paralelo |
+| pago-idempotente | pago confirmado | 258 ms | marca la factura como COBRADO |
+| rechazo | alta del lead en la base | 955 ms | POST /lead/nuevo → fila en leads (rechazo) |
+| rechazo | rechazo procesado | 347 ms |  |
+| pedido-cambios | alta del lead en la base | 989 ms | POST /lead/nuevo → fila en leads (cambios) |
+| pedido-cambios | pedido de cambios procesado | 299 ms |  |
+| estado-trabajo | cambio de estado de trabajo | 266 ms | incluye la sincronización con Notion |
+| token-vencido | alta del lead en la base | 971 ms | POST /lead/nuevo → fila en leads (vencido) |
 
-**Generación de la factura en PDF (Gotenberg), extremo a extremo:** 280 ms.
+**Generación de la factura en PDF (Gotenberg), extremo a extremo:** 405 ms.
 

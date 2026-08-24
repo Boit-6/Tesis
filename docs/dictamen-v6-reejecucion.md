@@ -678,3 +678,67 @@ Figura 10, plantilla del emisor sin configurar, y los dos errores de autoría en
 **Estimación de puntaje si se cierran esos tres puntos:** ≈ 9,0–9,2/10 — es exactamente el mismo
 techo que estimaba la versión anterior de este informe; lo que cambió es que ahora son los **únicos**
 tres puntos que faltan, no cinco.
+
+---
+
+## Actualización — tercera pasada (23-ago-2026): triple repetición y E11–E13
+
+Con el sistema ya levantado (n8n + Gotenberg vía `docker compose`, contra la misma base de Supabase),
+se cerraron dos de los tres puntos que esta sesión no había podido tocar antes por depender del
+entorno en vivo.
+
+**Triple repetición (punto 2 de la sección anterior) — resuelto.** `npm run test:escenarios` se
+corrió tres veces seguidas: 11 OK / 11 OK / 11 OK, sin ningún cambio de resultado entre corridas. La
+Tabla 4 exige tres repeticiones por escenario de camino principal; ya se acredita.
+
+**E11–E13 (procesos programados) — ejecutados manualmente contra n8n real,** disparando cada
+`scheduleTrigger` desde el selector "Execute workflow → from" del editor (no hay forma de esperar a
+las 9:00, 10:00 y 23:59 reales dentro de esta sesión, así que se dispararon fuera de horario; el
+efecto es idéntico a que corra el cron). Al ejercitarlos aparecieron **tres bugs reales más**, del
+mismo patrón exacto que ya había aparecido en la primera pasada (una expresión `.item` que deja de
+ser ambigua para n8n cuando, más arriba en la cadena, un nodo Postgres colapsa varios items en uno
+solo al hacer el `UPDATE`):
+
+| Nodo | Cron | Síntoma | Fix |
+|---|---|---|---|
+| `IF - Pago Urgente?` | Recordatorios Pago 10AM | "Multiple matches found" — el nodo no evaluaba nunca | `.item` → `.all()[$itemIndex]` |
+| `Telegram - Pago Urgente` | Recordatorios Pago 10AM | El mensaje salía con `error: Multiple matches found` en vez de los datos del cliente/factura/monto (3 expresiones distintas en el mismo texto) | Idem, en las 3 expresiones |
+| `IF - Es Ultimo Seguimiento?` | Follow-up 9AM L-V | Mismo "Multiple matches found" | Idem |
+
+Los tres se corrigieron en el editor de n8n, se publicaron (`Publish`) y se re-ejecutó cada cron para
+confirmar en vivo que ya no fallan; el mismo cambio se aplicó a `workflow/crm_postgres.json` para que
+el repositorio no quede desincronizado del n8n real. La suite offline (`npm test`, 8 sin cambios / 3
+con desvío documentado / 0 divergentes) se volvió a correr después del cambio y sigue en verde — el
+fix es puramente de expresión, no toca la forma del workflow.
+
+El tercer cron, `Cron - Metricas 23:` (RAMA 6), corrió sin errores pero la consulta
+(`SELECT * FROM metrics_mensuales WHERE mes = to_char(now(), 'YYYY-MM')`) devolvió 0 filas para
+agosto 2026, así que el nodo de Telegram nunca llegó a dispararse. No es un bug: los leads que
+`test:escenarios` crea para probar se borran al final de cada corrida (su propia limpieza), así que
+no queda actividad real de agosto en la base para que la vista agregue.
+
+**Hallazgo nuevo, sin cerrar — variable `TELEGRAM_CHAT_ID` vacía.** Al ejecutar `Telegram - Pago
+Urgente` ya con el fix de arriba, Telegram devolvió `Bad Request: chat_id is empty`. La causa es el
+`.env` local: la línea `TELEGRAM_CHAT_ID=` está presente pero sin valor. Los **13 nodos de Telegram
+del workflow del CRM** (uno por cada rama: lead frío, propuesta enviada, lead aceptado/rechazado,
+pago urgente, pago recibido, proyecto cerrado, error crítico, reporte diario, etc.) leen
+`{{ $env.TELEGRAM_CHAT_ID }}`, así que **las notificaciones de Telegram de todo el sistema están hoy
+rotas**, no solo la de este cron. Esto no lo había detectado ninguna corrida anterior porque
+`test:escenarios` verifica estado en la base, no si el mensaje de Telegram efectivamente salió.
+No se puede cerrar en esta sesión: hace falta el `chat_id` real del usuario (recuperable desde su
+propio bot de Telegram, p. ej. con `getUpdates`) y reiniciar el contenedor de n8n para que tome el
+valor nuevo (las variables de entorno de `docker-compose.yml` se fijan al arrancar el contenedor, no
+se releen en caliente).
+
+**Estado actualizado de los tres puntos que le faltan a la nota 8,8 → ~9,3-9,5 (sección 16):**
+
+| # | Punto | Estado al 23-ago-2026 |
+|---|---|---|
+| 1 | E7 (Realtime) | Sigue abierto — configuración del panel de Supabase, requiere al usuario |
+| 2 | Triple repetición | **Cerrado** — 3/3 corridas en verde |
+| 3 | S7 (rotación de credenciales) | Sigue abierto — proyecto de un tercero |
+| — | E11–E13 | **Cerrado** (con 3 bugs reales encontrados y corregidos en el camino) |
+| — | Nuevo: `TELEGRAM_CHAT_ID` vacío | Abierto — necesita el valor real del usuario + reinicio del contenedor |
+
+E14 (MercadoPago real) y la Figura 14 (envío real de Gmail) siguen exactamente como estaban: ninguno
+de los dos se puede simular sin las credenciales o la cuenta real del usuario.
