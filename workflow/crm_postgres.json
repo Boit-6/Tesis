@@ -1882,7 +1882,7 @@
           },
           "conditions": [
             {
-              "leftValue": "={{ $('Code - Preparar Follow-up').item.json.es_ultimo }}",
+              "leftValue": "={{ $('Code - Preparar Follow-up').all()[$itemIndex].json.es_ultimo }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -2077,7 +2077,7 @@
           },
           "conditions": [
             {
-              "leftValue": "={{ $('Code - Filtrar Vencimientos').item.json.nivel_urgencia }}",
+              "leftValue": "={{ $('Code - Filtrar Vencimientos').all()[$itemIndex].json.nivel_urgencia }}",
               "rightValue": "URGENTE",
               "operator": {
                 "type": "string",
@@ -2101,7 +2101,7 @@
     {
       "parameters": {
         "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=🔴 <b>PAGO URGENTE</b>\nCliente: {{ $('Code - Filtrar Vencimientos').item.json.cliente }}\nFactura: {{ $('Code - Filtrar Vencimientos').item.json.factura_id }}\nMonto: ${{ $('Code - Filtrar Vencimientos').item.json.monto }} USD",
+        "text": "=🔴 <b>PAGO URGENTE</b>\nCliente: {{ $('Code - Filtrar Vencimientos').all()[$itemIndex].json.cliente }}\nFactura: {{ $('Code - Filtrar Vencimientos').all()[$itemIndex].json.factura_id }}\nMonto: ${{ $('Code - Filtrar Vencimientos').all()[$itemIndex].json.monto }} USD",
         "additionalFields": {
           "appendAttribution": false,
           "parse_mode": "HTML"
