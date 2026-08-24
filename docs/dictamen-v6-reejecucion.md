@@ -742,3 +742,40 @@ se releen en caliente).
 
 E14 (MercadoPago real) y la Figura 14 (envío real de Gmail) siguen exactamente como estaban: ninguno
 de los dos se puede simular sin las credenciales o la cuenta real del usuario.
+
+---
+
+## Actualización — cuarta pasada (23-ago-2026): `TELEGRAM_CHAT_ID` cerrado, y 2 fixes más de logIca
+
+**`TELEGRAM_CHAT_ID` — cerrado.** El usuario consiguió el `chat_id` real (`8748280297`, su chat
+privado con el bot) vía `getUpdates`. Se escribió en `.env` y se recreó el contenedor de n8n
+(`docker compose up -d n8n` — un `restart` simple no alcanza: las env vars de Compose se fijan al
+crear el contenedor, no se releen con un restart). Al volver a probar `Telegram - Pago Urgente`
+apareció un **segundo problema, independiente del primero**: la credencial "Telegram account" de n8n
+tenía un token de bot vencido/revocado (`Unauthorized`) — no el mismo token que el usuario acababa de
+compartir. Se actualizó la credencial con el token vigente, n8n confirmó "Connection tested
+successfully", y la re-ejecución del cron devolvió `ok: true` con el `message_id` real de Telegram.
+Verificado de punta a punta, no solo por ausencia de error.
+
+**Dos fixes más, decididos junto al usuario tras el análisis lógico independiente del proyecto**
+(ver `docs/analisis-logico-proyecto.md`):
+
+- `Code - Normalizar Lead`: la opción "Otro" del formulario mapeaba a `soporte`, la ponderación
+  **mínima** de scoring (5/20) — penalizaba exactamente los leads que el sistema no supo clasificar.
+  No era un límite de validez empírica del scoring (que sigue siendo de diseño, sin datos históricos)
+  sino un error de lógica de negocio independiente de cualquier calibración. Ahora mapea a
+  `consultoria` (peso 12, más cercano a la mediana).
+- `Code - Validar Pago`: el endpoint de pago simulado (`GET /webhook/pago-confirmado`) no comprobaba
+  si `MP_ACCESS_TOKEN` ya estaba configurado. Se verificó que la vulnerabilidad que el propio
+  Capítulo 6 de la tesis señala como "la más grave, por su consecuencia de negocio" seguía siendo
+  reproducible en el código actual, no solo una descripción vieja. Ahora el nodo rechaza la petición
+  si MercadoPago real está activo. **Esto deja al `.docx` un paso atrás**: la Tabla 11 y el §6.2
+  siguen describiendo esa deuda como abierta en tiempo presente — falta decidir cómo reflejar el
+  cierre sin reescribir el argumento del capítulo de discusión.
+
+De paso, auditar el resto del workflow por el mismo patrón de bug (`.item` ambiguo tras un `Postgres
+UPDATE` que colapsa varios ítems en uno) encontró **2 casos más sin disparar todavía**:
+`Telegram - Lead Perdido` y `Notion - Estado Perdido`, en la misma rama de Follow-up, downstream del
+mismo `Postgres - Update Lead Seguimiento` que ya había roto `IF - Es Ultimo Seguimiento?`. Corregidos
+igual que los anteriores. No se había detectado antes porque ningún lead llegó a su tercer
+seguimiento sin respuesta durante las pruebas de hoy.
