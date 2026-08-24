@@ -16,16 +16,16 @@
       "descripcion": "Nodos totales del workflow del CRM (§4.1, Anexo B)",
       "medida": "crm.total",
       "valor_tesis": 144,
-      "delta_documentado": 13,
-      "nota": "El enganche con el módulo de tickets sumó 2 nodos (Code + HTTP). El cobro real con MercadoPago (RAMA 8) sumó 11 más: 3 en la aceptación (generar la preferencia y resolver el link de pago) y 8 en la notificación de pago (leer, verificar contra la API de MP y marcar cobrado). Ver docs/modulo-tickets.md §6 y docs/modulo-pagos.md."
+      "delta_documentado": 14,
+      "nota": "El enganche con el módulo de tickets sumó 2 nodos (Code + HTTP). El cobro real con MercadoPago (RAMA 8) sumó 11 más: 3 en la aceptación (generar la preferencia y resolver el link de pago) y 8 en la notificación de pago (leer, verificar contra la API de MP y marcar cobrado). Ver docs/modulo-tickets.md §6 y docs/modulo-pagos.md. Se sumó el nodo Gmail - Acuse Lead Frio (24-ago-2026): los leads COLD no recibían ningún correo —sólo se generaba un aviso interno por Telegram— mientras el formulario les prometía respuesta en menos de 24 horas. Cuelga en paralelo de la salida negativa de IF - Es HOT o WARM?, de modo que una falla del aviso interno no bloquea el correo al cliente."
     },
     {
       "id": "crm-nodos-funcionales",
       "descripcion": "Nodos funcionales del CRM, sin contar las notas (§4.1, §4.3)",
       "medida": "crm.funcionales",
       "valor_tesis": 128,
-      "delta_documentado": 13,
-      "nota": "Idem: los 13 nodos nuevos (2 de tickets + 11 de MercadoPago) son todos funcionales; no se agregó ninguna nota nueva al canvas."
+      "delta_documentado": 14,
+      "nota": "Idem: los 13 nodos nuevos (2 de tickets + 11 de MercadoPago) son todos funcionales; no se agregó ninguna nota nueva al canvas. Se sumó el nodo Gmail - Acuse Lead Frio (24-ago-2026): los leads COLD no recibían ningún correo —sólo se generaba un aviso interno por Telegram— mientras el formulario les prometía respuesta en menos de 24 horas. Cuelga en paralelo de la salida negativa de IF - Es HOT o WARM?, de modo que una falla del aviso interno no bloquea el correo al cliente."
     },
     {
       "id": "crm-notas",

@@ -15,7 +15,19 @@ const COLOR: Record<string, string> = {
 // manda a /api/crm/trabajo-estado (route handler que revalida el rol admin y
 // agrega la credencial antes de llamar a n8n, que actualiza Supabase + Notion).
 // Si falla, revierte.
-export default function TrabajoEstadoSelect({leadId, inicial}: {leadId: string; inicial: string}) {
+export default function TrabajoEstadoSelect({
+  leadId,
+  inicial,
+  onCambio,
+}: {
+  leadId: string;
+  inicial: string;
+  // El componente guarda su propio estado, así que el tablero no se enteraba del
+  // cambio hasta la siguiente recarga. Con Realtime deshabilitado para `leads`
+  // esa recarga no llega nunca, y las acciones que dependen del estado del
+  // trabajo —cerrar el proyecto— no aparecían hasta refrescar a mano.
+  onCambio?: (estado: string) => void;
+}) {
   const [estado, setEstado] = useState(inicial);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState(false);
@@ -26,6 +38,7 @@ export default function TrabajoEstadoSelect({leadId, inicial}: {leadId: string; 
     const previo = estado;
 
     setEstado(nuevo);
+    onCambio?.(nuevo);
     setGuardando(true);
     setError(false);
 
@@ -41,6 +54,7 @@ export default function TrabajoEstadoSelect({leadId, inicial}: {leadId: string; 
     } catch (err) {
       console.error(err);
       setEstado(previo); // revertir
+      onCambio?.(previo);
       setError(true);
     } finally {
       setGuardando(false);

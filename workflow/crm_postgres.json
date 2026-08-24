@@ -2139,7 +2139,10 @@
       "parameters": {
         "httpMethod": "POST",
         "path": "proyecto-cerrado",
-        "options": {}
+        "options": {
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
+        },
+        "authentication": "headerAuth"
       },
       "id": "2fd38e87-2c5b-49ec-bfa2-796cff874ae7",
       "name": "🔴 Webhook - Cierre Proyecto",
@@ -2149,7 +2152,13 @@
         150,
         10450
       ],
-      "webhookId": "p4-01"
+      "webhookId": "p4-01",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "CRM - Header Auth (panel)"
+        }
+      }
     },
     {
       "parameters": {
@@ -3949,6 +3958,30 @@
         3800,
         11780
       ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "=Recibimos tu consulta sobre {{ $json.servicio }} — Soderos S.A.",
+        "message": "=<p>Hola {{ $json.nombre }},</p>\n<p>Recibimos tu consulta sobre <b>{{ $json.servicio }}</b> y ya la estamos revisando.</p>\n<p>Si es algo en lo que podemos ayudarte, te escribimos con una propuesta. Si en 48 horas no tuviste novedades, respondé este correo y lo vemos.</p>\n<p>Gracias por escribirnos.</p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "id": "c01d4c05-0000-4a11-8a11-ac0000000001",
+      "name": "Gmail - Acuse Lead Frio",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        1900,
+        280
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "KN5umVWzd1RZZuYM",
+          "name": "Gmail account"
+        }
+      }
     }
   ],
   "connections": {
@@ -4113,6 +4146,11 @@
         [
           {
             "node": "Telegram - Lead Frio",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Gmail - Acuse Lead Frio",
             "type": "main",
             "index": 0
           }

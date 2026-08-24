@@ -210,6 +210,7 @@ const ESCENARIOS = [
   escenario('lead-cold', 'E3', 'Un lead de presupuesto bajo se califica COLD y NO recibe propuesta', async (t) => {
     // Entrada EXACTA de E3: soporte, USD 300, urgencia baja, sin teléfono y
     // descripción breve.
+    const logsAntes = (await rest('logs?select=id&nivel=eq.ERROR&order=id.desc&limit=1'))[0]?.id ?? 0;
     const {lead} = await altaDeLead('cold', {
       presupuesto: 300,
       urgencia: 'baja',
@@ -226,6 +227,22 @@ const ESCENARIOS = [
     const despues = await leadPorEmail(emailDe('cold'));
 
     t.igual(despues.estado, 'NUEVO', 'sigue en NUEVO (no se le envió propuesta)');
+
+    // La rama COLD no cambia de estado, así que verificar la base no dice nada
+    // sobre si el acuse al cliente salió: un fallo del nodo de correo dejaba el
+    // escenario en verde igual. Es el mismo punto ciego que ya había ocultado
+    // que las notificaciones de Telegram estaban rotas. La rama de manejo de
+    // errores registra toda falla en logs, así que la ausencia de un ERROR
+    // nuevo sí acredita que la rama entera terminó bien.
+    const errores = await rest(
+      `logs?select=evento,error_msg&nivel=eq.ERROR&id=gt.${logsAntes}&order=id.desc&limit=5`,
+    );
+
+    t.igual(
+      errores.length,
+      0,
+      `fallas registradas al procesar el lead COLD${errores.length ? ' — ' + JSON.stringify(errores[0]) : ''}`,
+    );
   }),
 
   escenario('lead-invalido', 'E4', 'Un lead inválido se rechaza sin persistirse y queda registrado', async (t) => {

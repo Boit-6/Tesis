@@ -179,6 +179,9 @@ function Tag({children, className = ""}: {children: React.ReactNode; className?:
 // el número también acota su alcance (ver `leadsTopeados`).
 const LEADS_LIMITE = 200;
 
+// Ventana para agrupar los eventos de tiempo real en una sola recarga.
+const RECARGA_AGRUPADA_MS = 400;
+
 export default function DashboardClient() {
   const [supabase] = useState(() => createClient());
   const [loading, setLoading] = useState(true);
@@ -270,14 +273,29 @@ export default function DashboardClient() {
     if (!supabase) return;
 
     const client = supabase;
+    let pendiente: ReturnType<typeof setTimeout> | null = null;
 
-    // Bonus: refresca en vivo cuando entra/cambia un lead.
+    // Refresca en vivo cuando entra o cambia un lead, agrupando la ráfaga.
+    //
+    // Cada evento de `postgres_changes` obliga a recargar el tablero entero, que
+    // son seis consultas. Sin agrupar, un proceso programado que actualiza N
+    // leads de una vez —el de seguimiento de las 9:00 lo hace— disparaba 6N
+    // consultas en ráfaga, más de las que costaría sondear. La espera es corta
+    // frente al umbral de 3 s del RNF6, así que no compromete la actualidad del
+    // dato: sólo evita repetir la misma recarga N veces.
     const channel = client
       .channel("leads-rt")
-      .on("postgres_changes", {event: "*", schema: "public", table: "leads"}, () => cargarDatos())
+      .on("postgres_changes", {event: "*", schema: "public", table: "leads"}, () => {
+        if (pendiente) clearTimeout(pendiente);
+        pendiente = setTimeout(() => {
+          pendiente = null;
+          cargarDatos();
+        }, RECARGA_AGRUPADA_MS);
+      })
       .subscribe();
 
     return () => {
+      if (pendiente) clearTimeout(pendiente);
       client.removeChannel(channel);
     };
   }, [cargarDatos, supabase]);
@@ -307,6 +325,21 @@ export default function DashboardClient() {
       return;
 
     accionPanel("cancelar", leadId, "No se pudo cancelar el pedido.");
+  }
+
+  // Único camino del sistema al estado CERRADO. Sin esta acción el lead se
+  // quedaba en FACTURADO para siempre y las dos métricas que se calculan sobre
+  // los leads cerrados —Conversión y Tiempo promedio de ciclo— no podían moverse
+  // de cero, porque el webhook sólo se podía disparar a mano.
+  function cerrarProyecto(leadId: string) {
+    if (
+      !window.confirm(
+        "¿Cerrar el proyecto? Se marca el lead como CERRADO, se concilia la factura y se le pide un testimonio al cliente.",
+      )
+    )
+      return;
+
+    accionPanel("cerrar", leadId, "No se pudo cerrar el proyecto.");
   }
 
   function aceptarCambio(leadId: string) {
@@ -585,16 +618,42 @@ export default function DashboardClient() {
                     <td className={`${tdClass} text-ink font-serif text-[18px]`}>{t.nombre}</td>
                     <td className={tdClass}>{t.servicio?.replace(/_/g, " ")}</td>
                     <td className={tdClass}>
-                      <TrabajoEstadoSelect inicial={t.estado_trabajo} leadId={t.lead_id} />
+                      <TrabajoEstadoSelect
+                        inicial={t.estado_trabajo}
+                        leadId={t.lead_id}
+                        onCambio={(estado) =>
+                          setTrabajos((prev) =>
+                            prev.map((x) =>
+                              x.lead_id === t.lead_id
+                                ? {...x, estado_trabajo: estado as Trabajo["estado_trabajo"]}
+                                : x,
+                            ),
+                          )
+                        }
+                      />
                     </td>
                     <td className={`${tdClass} pr-0`}>
-                      <button
-                        className={ghostButtonClass}
-                        type="button"
-                        onClick={() => cancelar(t.lead_id)}
-                      >
-                        Cancelar
-                      </button>
+                      <div className="flex justify-end gap-4">
+                        {/* El cierre se ofrece recién con el trabajo entregado:
+                            es el paso que faltaba para que el ciclo termine
+                            desde la interfaz y no con una petición a mano. */}
+                        {t.estado_trabajo === "ENTREGADO" && (
+                          <button
+                            className={ghostButtonClass}
+                            type="button"
+                            onClick={() => cerrarProyecto(t.lead_id)}
+                          >
+                            Cerrar proyecto
+                          </button>
+                        )}
+                        <button
+                          className={ghostButtonClass}
+                          type="button"
+                          onClick={() => cancelar(t.lead_id)}
+                        >
+                          Cancelar
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

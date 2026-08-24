@@ -920,3 +920,108 @@ Las 127 aristas del grafo son idénticas en ambos lados.
 
 Sin cambios: E7 (Realtime deshabilitado para `leads` en la instancia), S7 (claves de un proyecto
 ajeno), E14 y la Figura 14 (requieren credenciales y una cuenta reales).
+
+---
+
+## Sexta pasada — análisis de producto y cuatro mejoras, 24-ago-2026
+
+Lectura del sistema **como usuario**, no como documento: se levantó el frontend (`npm run dev`) y se
+recorrió la página con el CRM real detrás. Cuatro problemas de producto que ninguna lectura del
+`.docx` había revelado, los cuatro corregidos y verificados de punta a punta.
+
+### 1. El tablero no podía cerrar un proyecto, y eso congelaba dos de sus indicadores
+
+`/api/crm/[accion]` tenía una lista blanca de cuatro acciones y ninguna disparaba
+`/proyecto-cerrado`, el único camino al estado `CERRADO`. Pero la vista `metrics_mensuales` calcula
+`conversion_pct` y `tiempo_prom_dias` **filtrando por `estado = 'CERRADO'`**: sin una acción capaz de
+producir ese estado, los dos indicadores quedaban clavados en cero, el reporte diario los informaba
+así todas las noches y el correo de testimonio no se enviaba nunca. El selector de estado del trabajo
+llegaba hasta `ENTREGADO` —el momento exacto en que un humano cerraría— y ahí se acababa el camino.
+El documento tenía el botón faltante en el punto 10 del Capítulo 8, pero nunca conectó ambas cosas.
+
+Se agregó la acción «Cerrar proyecto» sobre los trabajos entregados, por la misma vía que el resto de
+las acciones internas, y **el webhook adoptó el Header Auth del panel**: exponer un botón contra un
+endpoint abierto habría sido peor que no tener el botón. S1 baja de siete webhooks sin autenticar a
+seis.
+
+De paso, `TrabajoEstadoSelect` guardaba su estado sin avisarle al tablero, así que el botón no
+aparecía hasta recargar — y con Realtime deshabilitado para `leads`, esa recarga no llega nunca. Se
+le agregó una devolución de llamada.
+
+### 2. Un lead COLD no recibía absolutamente nada, y la portada le prometía 24 horas
+
+La página anuncia dos veces «te respondemos en menos de 24 horas» y al enviar muestra «Nos
+contactaremos muy pronto». Pero sólo HOT y WARM recibían propuesta: los COLD generaban un aviso
+interno por Telegram y nada más. El sistema construido para evitar «una imagen poco profesional»
+(§1.1) producía el caso más antiprofesional posible, y le devolvía al profesional la obligación de
+acordarse a mano, que es la debilidad que §1.2 declara como problema a resolver.
+
+Se agregó `Gmail - Acuse Lead Frio`. **Y el primer intento salió mal, del modo que este proyecto ya
+conoce:** encadenado detrás de `Telegram - Lead Frio`, el nodo recibía la respuesta de la API de
+Telegram como item y `{{ $json.email }}` llegaba vacío (`Invalid email address`). Se lo reconectó en
+paralelo desde la salida negativa del IF, que además evita que una falla del aviso interno bloquee el
+correo al cliente.
+
+Lo importante del episodio: **E3 pasó en verde con la rama fallando.** Verifica estado en la base, y
+la rama COLD no cambia de estado. Es exactamente el punto ciego que ya había ocultado que las
+notificaciones de Telegram estaban rotas. Se reforzó E3 para que exija **cero registros de nivel
+ERROR** durante el escenario: la rama de manejo de errores los escribe, así que su ausencia sí
+acredita que la rama entera terminó bien. Con esa aserción, el bug se habría detectado solo.
+
+### 3. El tope de USD 5.000 del deslizante descartaba información
+
+El control iba de 100 a 5.000, y 5.000 es exactamente donde empieza el tramo más alto del puntaje.
+Un proyecto de 20.000 tenía que declararse como uno de 5.000 y ambos quedaban indistinguibles en la
+base, en el tablero y en la propuesta: el sistema perdía el dato justo en la franja que su propio
+criterio de priorización considera más valiosa. Se subió el tope a 20.000. **No toca la Tabla 5** —de
+5.000 en adelante se siguen sumando los mismos 40 puntos y el máximo del modelo sigue siendo 100—,
+así que ni el test de 9240 casos ni las entradas declaradas de E1–E3 cambian.
+
+### 4. El tiempo real recargaba el tablero entero por cada evento
+
+`postgres_changes` con `event: "*"` disparaba `cargarDatos()`, que son seis consultas. Un proceso
+programado que actualiza N leads —el de seguimiento lo hace— provocaba 6N consultas en ráfaga,
+posiblemente más de lo que costaría sondear, mientras §4.7 justificaba la suscripción diciendo que
+«reduce el consumo innecesario de recursos». Se agrupan los eventos en una sola recarga.
+
+### Tres defectos menores del tablero, también corregidos
+
+- **La bandeja de pedidos de cambio no se podía vaciar.** Se derivaba de `notas IS NOT NULL` y nada
+  limpia `notas`: pedidos ya resueltos y leads facturados, cerrados o perdidos seguían listados con
+  los botones activos. Al pulsarlos el UPDATE no afectaba ninguna fila —los nodos guardan por
+  `estado = 'EN_SEGUIMIENTO'`, así que no había corrupción— pero la fila no desaparecía y no había
+  ninguna señal.
+- **La búsqueda decía «sin resultados» sobre datos existentes**, porque filtra en cliente sobre los
+  200 leads que trae la consulta. Ahora avisa cuando la lista está topeada y busca también por email.
+- **`/pago-exitoso` afirmaba «Registramos tu pago»** sin haber comprobado nada: es una `back_url` que
+  abre el navegador del cliente, mientras la factura pasa a COBRADO recién con la notificación
+  servidor a servidor verificada contra la API.
+
+### Verificación
+
+`npm test` 38+10+16 OK y 0 divergentes · `test:sql` 23 · `test:rls` 24/24 · `test:escenarios`
+**11/11 tres corridas seguidas** · typecheck y lint del frontend limpios. El nodo de acuse se
+verificó además contra la base de ejecuciones de n8n: corre en la rama COLD y la ejecución termina
+en `success`.
+
+El `.docx` quedó sincronizado en 30 puntos: recuentos de nodos (157→158, 141→142 funcionales,
+Gmail 7→8), §4.3.1 (rama COLD y tope del deslizante), §4.3.4 y Tabla 10 (cierre desde el tablero,
+con su autenticación), §4.2.5 (agrupación de eventos), Tabla 17, y todo lo que dependía de «siete
+webhooks sin autenticar» — §1.7, §4.6, §6.2, Tabla 11 S1 y el punto 1 del Capítulo 8—, más el punto
+10 del Capítulo 8, que pasa a estar hecho.
+
+### Lo que se deja anotado y no se tocó
+
+- El teléfono y la descripción aportan 5 puntos cada uno **por longitud, no por contenido**:
+  `"1234567"` cobra el bonus y el teléfono no se valida en ningún lado. Son 10 de 100 puntos que se
+  ganan tecleando, y con `/lead/nuevo` sin autenticar son triviales de inflar. Corregirlo cambia la
+  Tabla 5 y el test de 9240 casos.
+- La página de enlace inválido o vencido **no ofrece salida**: sin contacto, sin enlace, sin «pedí
+  uno nuevo», en la pantalla más crítica del producto. Además mezcla «inválido» con «vencido», la
+  confusión que §4.3.2 ya declara pendiente.
+- El formulario envía un campo `timestamp` que el normalizador descarta.
+- La validación del cliente es más estricta que la del servidor (descripción ≥ 20 y correo con punto
+  contra sólo exigir `@`). No es un defecto —el servidor es el contrato del webhook— pero conviene
+  saberlo: la Figura 17 documenta la validación del formulario, no la que protege la base.
+- **La Tabla 11 (S6) afirma que no hay «bloqueo del botón de envío» y sí lo hay** (`disabled` mientras
+  la petición está en vuelo). Es el único punto donde el documento se subestima.

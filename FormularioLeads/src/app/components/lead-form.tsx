@@ -41,7 +41,13 @@ const INITIAL_FORM: FormData = {
 };
 
 const PRESUPUESTO_MIN = 100;
-const PRESUPUESTO_MAX = 5000;
+// El tope era 5000, que es exactamente donde empieza el tramo más alto del
+// scoring: un proyecto de 20.000 tenía que declararse como uno de 5.000 y los
+// dos quedaban indistinguibles en la base, en el tablero y en la propuesta. El
+// sistema existe para priorizar y perdía la información justo en la franja que
+// más le importa. Subir el tope no toca la tabla de puntajes —de 5000 para
+// arriba se siguen sumando los mismos 40 puntos— pero deja de descartar el dato.
+const PRESUPUESTO_MAX = 20000;
 const PRESUPUESTO_STEP = 100;
 
 function validate(data: FormData): string | null {
