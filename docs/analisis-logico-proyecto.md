@@ -65,9 +65,15 @@ dato histórico que justifique que un lead no clasificable valga menos que uno c
 cosas distintas. Uno es "no sé cuánto vale", no "vale poco".
 
 **Veredicto:** esto no necesita datos de conversión para arreglarse, necesita una línea de código.
-Dar a "Otro" el peso *mediano* de la tabla (no el mínimo) es defendible sin ningún dato: es neutral en
-vez de sesgado. Es un cambio de una constante en `Code - Scoring`, verificable al instante con
-`tests/scoring.js` (9240 casos). **Lo puedo hacer ahora si querés.**
+Sacar a "Otro" del peso mínimo es defendible sin ningún dato: es neutral en vez de sesgado.
+
+> **Precisión del 24-ago.** Dos cosas de este párrafo no eran exactas. Primera: el cambio no va en
+> `Code - Scoring` sino en `Code - Normalizar Lead` (es el mapeo del servicio, no la tabla de pesos),
+> y por eso `tests/scoring.js` —que puntúa servicios ya normalizados— **no lo cubre**; la cobertura se
+> agregó en `tests/verificar_afirmaciones.js`. Segunda: `consultoria` vale 12 y la mediana de los
+> nueve pesos es 15, así que el valor elegido es "no mínimo", no "mediano". Se lo mantiene igual
+> porque además lee bien en el tablero: un proyecto atípico que hay que conversar es, literalmente,
+> una consultoría.
 
 ### 3.2 El endpoint de pago simulado sigue siendo explotable HOY, tal como lo describe el propio §6.2
 
@@ -160,13 +166,14 @@ vivo, mientras se prepara la defensa de un trabajo que advierte sobre ese mismo 
 | # | Acción | Quién | Costo | Nota |
 |---|---|---|---|---|
 | 1 | ~~Conseguir el `chat_id` real de Telegram y reiniciar n8n~~ | **Hecho** | — | `chat_id` real + credencial de bot vencida encontrada y actualizada; verificado con `message_id` real de Telegram |
-| 2 | ~~Neutralizar el peso de "Otro" en scoring~~ | **Hecho** | — | `'otro'` ahora mapea a `consultoria` (peso 12) en vez de `soporte` (peso 5). Commit `2630e7f` |
+| 2 | ~~Neutralizar el peso de "Otro" en scoring~~ | **Hecho** | — | `'otro'` ahora mapea a `consultoria` (peso 12) en vez de `soporte` (peso 5). Commit `2630e7f`. El 24-ago se alineó también el respaldo del normalizador, que era `desarrollo_web` (peso 20, el máximo) — el mismo error con el signo invertido |
 | 3 | ~~Cerrar el guard de `pago-confirmado`~~ | **Hecho** | — | Rechaza la petición si `MP_ACCESS_TOKEN` ya está configurado. Commit `2630e7f` |
 | 4 | ~~Auditar el resto del workflow por el patrón `.item` ambiguo~~ | **Hecho** | — | 2 casos más encontrados sin disparar (`Telegram - Lead Perdido`, `Notion - Estado Perdido`, misma rama de Follow-up) y corregidos. Commit `2630e7f` |
 | 5 | ~~Actualizar el Capítulo 5 / Anexo E del `.docx` con la corrida de hoy~~ | **Hecho** | — | E11-E13, triple repetición, OE5 pasa a "cumplido parcialmente". Commit `441e20f` |
 | 6 | ~~Subir el hallazgo del `TELEGRAM_CHAT_ID` como evidencia nueva~~ | **Hecho** | — | Integrado en el mismo párrafo de Capítulo 5 que describe E11-E13. Commit `441e20f` |
 | 7 | ~~Reflejar en la Tabla 11 / §6.2 el cierre de S2~~ | **Hecho** | — | Estado pasa de "Abierta" a "Parcial — cerrada para el cobro real". Commit `441e20f` |
 | 8 | Ensayar en voz alta la tensión de 3.1 antes de que la pregunten | Vos | — | Cambia la percepción de "se les pasó" a "lo decidieron" |
+| 9 | ~~Auditoría de coherencia documento-artefacto en frío~~ | **Hecho (24-ago)** | — | 11 incoherencias más, todas cerradas. Ver la "Cuarta pasada" de `docs/dictamen-v6-reejecucion.md` |
 
 **Detalle honesto que quedó en el propio `.docx` (Tabla 12, E11):** al re-ejercitar el proceso de
 seguimiento para verificar el fix, un lead de prueba (`LEAD-0004`) quedó con `seguimientos=3` sin

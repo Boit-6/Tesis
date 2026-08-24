@@ -779,3 +779,74 @@ UPDATE` que colapsa varios ítems en uno) encontró **2 casos más sin disparar 
 mismo `Postgres - Update Lead Seguimiento` que ya había roto `IF - Es Ultimo Seguimiento?`. Corregidos
 igual que los anteriores. No se había detectado antes porque ningún lead llegó a su tercer
 seguimiento sin respuesta durante las pruebas de hoy.
+
+---
+
+## Cuarta pasada — auditoría de coherencia del 24-ago-2026
+
+Lectura en frío del proyecto entero (documento contra artefacto) buscando lo que **no cierra**, sin
+partir de ningún dictamen previo. Aparecieron once incoherencias reales; se cerraron todas.
+
+### En el artefacto
+
+- **El respaldo de servicio del normalizador era `desarrollo_web`, la ponderación MÁXIMA (20).**
+  Un lead cuyo servicio el nodo no lograba mapear puntuaba como el mejor de la tabla. Es el mismo
+  error de lógica que el sesgo de «Otro» que se corrigió el 23-ago, con el signo invertido — y
+  convivían: el sistema tenía **tres** ponderaciones distintas para el mismo estado de conocimiento
+  («no sé qué pidió el cliente»): 12 para «Otro», 20 para un valor ilegible y 8 para la fila de
+  respaldo del nodo de scoring, que además es inalcanzable porque el normalizador ya forzó un valor
+  de la lista blanca. Se unificó en `consultoria` (12). Agrava lo anterior que `/lead/nuevo` no
+  autentica el origen (S1): omitir el campo era la forma más barata de comprarse 20 puntos.
+- **`Code - Validar Pago` leía `$env` sin protección.** n8n bloquea `$env` en los nodos Code por
+  omisión (`N8N_BLOCK_ENV_ACCESS_IN_NODE`); en una instancia con esa configuración el guard de S2
+  lanzaba un error opaco y el modo de desarrollo dejaba de funcionar entero, pese a que §1.7 y la
+  Tabla 16 lo declaran operativo sin credenciales. Se replicó el patrón defensivo que `Code - Scoring`
+  ya usaba: si el entorno no se puede leer no se adivina, se falla cerrado y el mensaje dice qué
+  configurar.
+- **`tests/smoke_code_nodes.js` corría sobre `workflow/*.json` con un `readdirSync`**, así que barría
+  también las copias de respaldo del directorio. En este momento ejecutaba 90 nodos de 4 archivos, de
+  los cuales 52 eran de código viejo: el resultado había dejado de decir nada sobre el artefacto.
+  Acotado a los dos flujos reales (38 nodos).
+- **`tests/verificar_afirmaciones.js` no cubría las ponderaciones de la Tabla 5.** La tesis lo
+  presenta (§5) como «la contención contra la deriva entre el documento y el artefacto», y no atrapó
+  justamente la deriva del 23-ago. Se agregaron cinco afirmaciones: servicios ponderados, puntaje
+  máximo, puntos de «Otro», puntos del respaldo y los dos umbrales que ya estaban.
+- **E4 no ejecutaba el método que declara el RNF3.** El RNF3 pide «tres entradas inválidas → 0 filas
+  en leads y 3 filas en logs»; la suite mandaba **una** entrada con las tres condiciones a la vez y
+  observaba **una** fila de log, y el Anexo E lo daba por «Verificado (E4)». Ahora manda las tres por
+  separado más la combinada de la Tabla 12. De paso, la aserción imprimía `filas nuevas en leads: null`
+  —una etiqueta que promete un conteo con un objeto nulo por valor— mientras la Tabla 12 citaba
+  `filas nuevas en leads = 0`, un número que el archivo de evidencia no producía. Ahora cuenta.
+
+### En el documento
+
+- **La ponderación de «Otro» seguía descrita como 5 en cinco lugares** (Tabla 5, §4.3.1 ×2, §6,
+  Capítulo 8), incluido un ejemplo numérico trabajado. El fix del 23-ago nunca se propagó.
+- **El ejemplo de §4.3.1 estaba mal desde antes del cambio**: «uno de 1000 dólares con urgencia media
+  pasa de WARM a COLD por esta única razón» — 20 + 15 + 5 = 40, que es exactamente el umbral WARM. El
+  caso que sí cruza es urgencia **baja** (30 COLD contra 45 WARM). Corregido.
+- **§4.2.1 anunciaba «dos consecuencias» y §4.3.1 desarrolla tres**: faltaba justo la del sesgo.
+- **La celda E13 de la Tabla 12 decía ser «la única evidencia que acreditaría OE5»**, contradiciendo
+  a la Tabla 18 y al Capítulo 7, que ya acreditan OE5 parcialmente con E11 y E12.
+- **§5 decía que RF8, RF9 y RF10 estaban «pendientes de ejecutar E11 a E13»**, cuando E11–E13 se
+  ejecutaron el 23-ago y el Anexo E ya los da por verificados parcialmente.
+- **§5 decía «los trece escenarios»** con una Tabla 12 de catorce filas (E14 incluida).
+- **§5 decía «los 34 nodos Code de ambos flujos»**: son 38 (28 + 10).
+- **La Tabla 18 citaba «la corrida del 22/8/2026»** apuntando a `docs/evidencia-validacion.md`, que
+  hoy consigna otra fecha porque **se sobrescribe en cada corrida**. La cita ahora remite al archivo,
+  que se autodata, en vez de a una fecha que el propio artefacto desmiente.
+- **La Tabla 21 traía valores por defecto en la columna «Ámbito»** en las cuatro filas de MercadoPago,
+  con marcadores de markdown sin convertir (`*(vacía)*`), y omitía dos variables requeridas:
+  `CRM_PANEL_TOKEN` (sin ella los cuatro webhooks del tablero responden 403) y `TOKEN_VIGENCIA_DIAS`.
+- **El paso 5 del Anexo G mandaba a comprobar que «el tablero lo refleja sin recarga»**, es decir
+  exactamente lo que el resto del documento declara no verificable en esa instancia (E7 / RNF6).
+
+### Pendiente de una corrida con el entorno levantado
+
+Docker no estaba corriendo, así que estos dos cambios quedan aplicados en el repositorio pero **sin
+verificar contra el sistema real**:
+
+1. Reimportar `workflow/crm_postgres.json` en n8n (o editar los dos nodos a mano en el editor) para
+   que el artefacto en ejecución tenga el respaldo de servicio y el guard de `$env` corregidos.
+2. Correr `npm run test:escenarios` y confirmar que E4 sigue en verde con las tres entradas
+   separadas. La suite offline (`npm test`) sí quedó en verde: 38 + 10 + 16 OK, 0 divergentes.
