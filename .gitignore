@@ -22,3 +22,8 @@ npm-debug.log*
 # Basura de Word (backups automáticos y lock files del .docx)
 *.docx.bak-*
 ~$*.docx
+
+# Copias de respaldo de los flujos exportados de n8n. No son el artefacto: si
+# entran al repo, cualquier herramienta que lea workflow/*.json termina midiendo
+# o probando código viejo.
+workflow/*.backup-*.json

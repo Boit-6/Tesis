@@ -66,18 +66,69 @@ function medirEsquema() {
 
 // Los umbrales de scoring ahora son configurables; lo que la tesis documenta
 // son los DEFAULTS, que es lo que se lee del nodo.
+//
+// Se miden además las ponderaciones de la Tabla 5, y no sólo los umbrales,
+// porque la deriva del 23-ago-2026 pasó justo por ahí: se cambió a qué servicio
+// mapea la opción «Otro» del formulario y el .docx siguió describiendo el valor
+// viejo, sin que nada fallara. Las ponderaciones se expresan en puntos, que es
+// como las declara la Tabla 5.
 function medirScoring() {
   const wf = leerWorkflow('crm_postgres.json');
   const js = wf.nodes.find((n) => n.name === 'Code - Scoring').parameters.jsCode;
-  const leerDefault = (clave) => {
-    const m = js.match(new RegExp("leerEnv\\('" + clave + "',\\s*'([^']*)'\\)"));
+  const jsNorm = wf.nodes.find((n) => n.name === 'Code - Normalizar Lead').parameters.jsCode;
 
-    return m ? Number(m[1]) : null;
+  // El nodo lee su configuración con tres ayudantes —`leerEnv` para los
+  // escalares, `tabla` para los mapas clave:puntos y `tramos` para los cortes
+  // de presupuesto—, todos con la misma firma (clave, valor por defecto).
+  const leerDefaultCrudo = (clave) => {
+    const m = js.match(new RegExp("(?:leerEnv|tabla|tramos)\\('" + clave + "',\\s*'([^']*)'\\)"));
+
+    return m ? m[1] : null;
   };
+  const leerDefault = (clave) => {
+    const v = leerDefaultCrudo(clave);
+
+    return v === null ? null : Number(v);
+  };
+  // "clave:puntos,clave:puntos" → {clave: puntos}
+  const tablaDefault = (clave) => Object.fromEntries(
+    (leerDefaultCrudo(clave) || '')
+      .split(',')
+      .map((p) => p.split(':'))
+      .filter((p) => p.length === 2)
+      .map(([k, v]) => [k.trim(), Number(v)]),
+  );
+  const maximoDe = (tabla) => Math.max(...Object.values(tabla));
+
+  const porServicio = tablaDefault('SCORING_SERVICIO');
+  const porUrgencia = tablaDefault('SCORING_URGENCIA');
+  const porPresupuesto = tablaDefault('SCORING_PRESUPUESTO');
+
+  // A qué servicio traduce el normalizador cada caso, antes de que el scoring
+  // lo pondere. Sin este paso las ponderaciones de la Tabla 5 se leen sobre un
+  // espacio de entrada que el pipeline real nunca produce.
+  const mapaSvc = jsNorm.match(/const svcMap = \{([^}]*)\}/);
+  const traduce = (opcion) => {
+    const m = mapaSvc && mapaSvc[1].match(new RegExp("'" + opcion + "'\\s*:\\s*'([a-z_]+)'"));
+
+    return m ? m[1] : null;
+  };
+  const respaldo = (jsNorm.match(/svcMap\[[^\]]*\]\s*\|\|\s*'([a-z_]+)'/) || [])[1] || null;
+  const puntosDe = (servicio) => (servicio && porServicio[servicio] !== undefined
+    ? porServicio[servicio]
+    : leerDefault('SCORING_SERVICIO_DEFAULT'));
 
   return {
     umbralHot: leerDefault('SCORING_UMBRAL_HOT'),
     umbralWarm: leerDefault('SCORING_UMBRAL_WARM'),
+    serviciosPonderados: Object.keys(porServicio).length,
+    // Puntos que termina recibiendo la opción «Otro» del formulario.
+    puntosOtro: puntosDe(traduce('otro')),
+    // Puntos que recibe un servicio que el normalizador no supo mapear.
+    puntosRespaldo: puntosDe(respaldo),
+    // Techo del modelo: el mejor tramo de cada criterio más los dos bonus.
+    puntajeMaximo: maximoDe(porPresupuesto) + maximoDe(porUrgencia) + maximoDe(porServicio) +
+      leerDefault('SCORING_BONUS_TELEFONO') + leerDefault('SCORING_BONUS_DESCRIPCION'),
   };
 }
 
@@ -138,7 +189,9 @@ console.log('\nMediciones actuales del artefacto:');
 console.log('  CRM      : ' + medidas.crm.total + ' nodos (' + medidas.crm.funcionales + ' funcionales + ' + medidas.crm.notas + ' notas), ' + medidas.crm.webhooks + ' webhooks, ' + medidas.crm.crons + ' crons');
 console.log('  Tickets  : ' + medidas.tickets.total + ' nodos (' + medidas.tickets.funcionales + ' funcionales + ' + medidas.tickets.notas + ' notas), ' + medidas.tickets.webhooks + ' webhooks, ' + medidas.tickets.crons + ' cron');
 console.log('  Esquema  : ' + medidas.db.tablas + ' tablas, ' + medidas.db.vistas + ' vistas, ' + medidas.db.enums + ' enums, ' + medidas.db.politicas + ' políticas RLS, ' + medidas.db.indices + ' índices');
-console.log('  Scoring  : HOT ≥ ' + medidas.scoring.umbralHot + ', WARM ≥ ' + medidas.scoring.umbralWarm);
+console.log('  Scoring  : HOT ≥ ' + medidas.scoring.umbralHot + ', WARM ≥ ' + medidas.scoring.umbralWarm +
+  ', ' + medidas.scoring.serviciosPonderados + ' servicios ponderados, máximo ' + medidas.scoring.puntajeMaximo);
+console.log('  Servicio : «Otro» → ' + medidas.scoring.puntosOtro + ' pts · respaldo del normalizador → ' + medidas.scoring.puntosRespaldo + ' pts');
 
 console.log('\nResultado: ' + ok + ' sin cambios, ' + explicados + ' con desvío documentado, ' + divergentes + ' divergentes');
 

@@ -90,6 +90,36 @@
       "medida": "scoring.umbralWarm",
       "valor_tesis": 40,
       "delta_documentado": 0
+    },
+    {
+      "id": "scoring-servicios-ponderados",
+      "descripcion": "Servicios con ponderación propia en la tabla de scoring (Tabla 5)",
+      "medida": "scoring.serviciosPonderados",
+      "valor_tesis": 9,
+      "delta_documentado": 0
+    },
+    {
+      "id": "scoring-puntaje-maximo",
+      "descripcion": "Puntaje máximo alcanzable del modelo (nota al pie de la Tabla 5)",
+      "medida": "scoring.puntajeMaximo",
+      "valor_tesis": 100,
+      "delta_documentado": 0
+    },
+    {
+      "id": "scoring-puntos-otro",
+      "descripcion": "Puntos de servicio que recibe la opción «Otro» del formulario (Tabla 5, §4.3.1, §6)",
+      "medida": "scoring.puntosOtro",
+      "valor_tesis": 5,
+      "delta_documentado": 7,
+      "nota": "El 23-ago-2026 se corrigió el sesgo que el propio §4.3.1 declaraba: «Otro» mapeaba a soporte (5 puntos, la ponderación mínima), penalizando justo los leads que el sistema no supo clasificar. Ahora mapea a consultoria (12). Reflejado en el .docx el 24-ago-2026."
+    },
+    {
+      "id": "scoring-puntos-respaldo",
+      "descripcion": "Puntos de servicio que recibe un valor que el normalizador no supo mapear (Tabla 5, fila de respaldo)",
+      "medida": "scoring.puntosRespaldo",
+      "valor_tesis": 8,
+      "delta_documentado": 4,
+      "nota": "La fila de respaldo de 8 puntos del nodo de scoring es inalcanzable: el normalizador ya fuerza un valor de la lista blanca antes de puntuar. Su respaldo real era desarrollo_web (20 puntos, la ponderación MÁXIMA), de modo que un servicio no clasificable puntuaba como el mejor. El 24-ago-2026 se lo alineó con «Otro» —el mismo caso— en consultoria (12)."
     }
   ]
 }

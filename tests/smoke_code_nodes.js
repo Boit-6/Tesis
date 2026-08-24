@@ -5,8 +5,13 @@
 const fs = require('fs');
 const path = require('path');
 
+// Los dos flujos del artefacto, nombrados uno por uno a propósito. Antes esto
+// era un `readdirSync` de `*.json`, que barría también las copias de respaldo
+// que quedan en el directorio (crm_postgres.backup-*.json): el test corría
+// sobre código viejo y el recuento de nodos dejaba de decir nada sobre el
+// artefacto que la tesis describe.
 const wfDir = path.join(__dirname, '..', 'workflow');
-const wfFiles = fs.readdirSync(wfDir).filter(f => f.endsWith('.json')).sort();
+const wfFiles = ['crm_postgres.json', 'tickets_notion.json'];
 
 // Variables de entorno que los nodos leen con $env. Los valores son de mentira:
 // alcanzan para que la config resuelva y el código corra.

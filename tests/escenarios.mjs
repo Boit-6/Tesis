@@ -229,27 +229,60 @@ const ESCENARIOS = [
   }),
 
   escenario('lead-invalido', 'E4', 'Un lead inválido se rechaza sin persistirse y queda registrado', async (t) => {
-    // Entrada EXACTA de E4: las tres condiciones inválidas a la vez — nombre de
-    // un carácter, correo sin arroba y presupuesto cero.
-    const emailMalo = `crm.test.${ejecucion}.invalido.example.test`; // sin arroba a propósito
+    // El RNF3 (Tabla 2) declara el método: TRES entradas inválidas, con el
+    // criterio «0 filas nuevas en leads y 3 filas nuevas en logs». Se manda una
+    // entrada por cada validación del nodo Normalizar Lead, por separado, para
+    // que lo ejecutado coincida con lo declarado. La Tabla 12 (E4) describe la
+    // combinación de las tres condiciones: ese caso va como cuarta entrada, y
+    // por eso el criterio de logs es «al menos 3».
+    const invalidas = [
+      {
+        motivo: 'correo sin arroba',
+        email: `crm.test.${ejecucion}.sinarroba.example.test`,
+        cuerpo: {nombre: 'Cliente Demo 4', telefono: '', descripcion: 'x', presupuesto: 1000},
+      },
+      {
+        motivo: 'nombre de un carácter',
+        email: `crm.test.${ejecucion}.nombrecorto@example.test`,
+        cuerpo: {nombre: 'A', telefono: '', descripcion: 'x', presupuesto: 1000},
+      },
+      {
+        motivo: 'presupuesto cero',
+        email: `crm.test.${ejecucion}.presupuestocero@example.test`,
+        cuerpo: {nombre: 'Cliente Demo 4', telefono: '', descripcion: 'x', presupuesto: 0},
+      },
+      {
+        motivo: 'las tres condiciones a la vez (entrada de la Tabla 12)',
+        email: `crm.test.${ejecucion}.invalido.example.test`,
+        cuerpo: {nombre: 'A', telefono: '', descripcion: 'x', presupuesto: 0},
+      },
+    ];
+
     const logsAntes = (await rest('logs?select=id&nivel=eq.ERROR&order=id.desc&limit=1'))[0]?.id ?? 0;
 
-    const res = await webhook('lead/nuevo', {
-      cuerpo: {nombre: 'A', email: emailMalo, telefono: '', descripcion: 'x', presupuesto: 0},
-    });
+    for (const entrada of invalidas) {
+      const res = await webhook('lead/nuevo', {cuerpo: {...entrada.cuerpo, email: entrada.email}});
 
-    t.verdad(res.status < 500, `el webhook respondió ${res.status} sin caerse`);
+      t.verdad(res.status < 500, `${entrada.motivo}: el webhook respondió ${res.status} sin caerse`);
+    }
 
     // Margen para que, si algo se hubiera persistido, alcance a aparecer.
     await esperar(3000);
 
-    const persistido = await leadPorEmail(emailMalo);
+    let persistidas = 0;
 
-    t.igual(persistido, null, 'filas nuevas en leads para la entrada inválida');
+    for (const entrada of invalidas) {
+      if (await leadPorEmail(entrada.email)) persistidas++;
+    }
 
-    const logsDespues = await rest(`logs?select=id,evento,error_msg&nivel=eq.ERROR&id=gt.${logsAntes}&order=id.desc&limit=5`);
+    t.igual(persistidas, 0, `filas nuevas en leads para las ${invalidas.length} entradas inválidas`);
 
-    t.verdad(logsDespues.length > 0, `quedó registrado en logs con nivel ERROR (${logsDespues.length} fila/s)`);
+    const logsDespues = await rest(`logs?select=id,evento,error_msg&nivel=eq.ERROR&id=gt.${logsAntes}&order=id.desc&limit=20`);
+
+    t.verdad(
+      logsDespues.length >= 3,
+      `filas nuevas en logs con nivel ERROR: ${logsDespues.length} (el RNF3 pide al menos 3)`,
+    );
   }),
 
   escenario('propuesta-lectura', null, 'La propuesta se lee sólo con el token correcto', async (t, ctx) => {
