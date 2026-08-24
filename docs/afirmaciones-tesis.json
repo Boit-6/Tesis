@@ -120,6 +120,13 @@
       "valor_tesis": 8,
       "delta_documentado": 4,
       "nota": "La fila de respaldo de 8 puntos del nodo de scoring es inalcanzable: el normalizador ya fuerza un valor de la lista blanca antes de puntuar. Su respaldo real era desarrollo_web (20 puntos, la ponderación MÁXIMA), de modo que un servicio no clasificable puntuaba como el mejor. El 24-ago-2026 se lo alineó con «Otro» —el mismo caso— en consultoria (12)."
+    },
+    {
+      "id": "importes-desde-presupuesto",
+      "descripcion": "Nodos que anuncian un importe leyendo `presupuesto` en vez del precio comprometido (§4.3.2)",
+      "medida": "importesDesdePresupuesto",
+      "valor_tesis": 0,
+      "delta_documentado": 0
     }
   ]
 }

@@ -1025,3 +1025,73 @@ webhooks sin autenticar» — §1.7, §4.6, §6.2, Tabla 11 S1 y el punto 1 del 
   saberlo: la Figura 17 documenta la validación del formulario, no la que protege la base.
 - **La Tabla 11 (S6) afirma que no hay «bloqueo del botón de envío» y sí lo hay** (`disabled` mientras
   la petición está en vuelo). Es el único punto donde el documento se subestima.
+
+---
+
+## Séptima pasada — sincronización del documento y cacería nueva, 24-ago-2026
+
+### El `.docx` quedó al día con el control del precio
+
+Cuarenta y seis ediciones. Recuentos (158→165 nodos, 142→149 funcionales, doce→trece webhooks, y la
+composición por tipo de la Tabla 15), §4.3.1 y un párrafo nuevo en §4.3.2 que explica el paso de
+fijación de términos y por qué existe, tres filas nuevas en la Tabla 6, la relectura del estado NUEVO
+en la Tabla 9, el webhook `/propuesta-enviar` en la Tabla 10, S1 pasando a «seis de los trece», el
+proceso nuevo en la Tabla 16, E1 reformulado y E1b agregado en la Tabla 12, y la cobertura y la
+triple repetición del Capítulo 5.
+
+Lo que más cambia el argumento está en el Capítulo 7: la respuesta al objetivo general ya no apoya el
+«control del profesional» sólo en el tablero. Ahora son dos piezas —el tablero y la decisión sobre
+los términos comerciales— y se dice explícitamente que la segunda se incorporó al detectarse que esa
+condición de la pregunta de investigación **carecía de respaldo real en el artefacto**. Es más fuerte
+declararlo así que haberlo tenido siempre.
+
+### Cinco casos más del mismo bug de importe
+
+Buscar sistemáticamente dónde el artefacto anuncia dinero encontró que **el arreglo del precio se
+había quedado a mitad de camino**. Seguían leyendo `presupuesto` —el valor que declara el
+interesado— en lugar del importe comprometido:
+
+- **`Gmail - Enviar Factura PDF`**, el correo que acompaña la factura. Es el peor: anunciaba un
+  importe en el cuerpo del mensaje y adjuntaba un PDF que decía otro, en el mismo envío.
+- **`Telegram - Lead Acepto`** («Monto: …» al aceptarse la propuesta).
+- **`Telegram - Proyecto Cerrado`** («Cobrado: …»).
+- **`Telegram - Propuesta Enviada`** («Monto: …»).
+
+Contando los tres que ya se habían corregido —la propuesta, el PDF y el `INSERT` de la factura—, la
+misma confusión entre «lo que el cliente declaró» y «lo que se cobra» apareció **siete veces**. Se
+agregó por eso una afirmación estática a `tests/verificar_afirmaciones.js`: cuenta los nodos que
+anuncian un importe leyéndolo de `presupuesto` y exige que sean cero.
+
+### Un riesgo que el propio cambio agranda, declarado
+
+El paso manual tiene un costo que conviene no esconder: **el estado NUEVO cubre ahora dos
+situaciones** —un fallo del scoring y un lead calificado esperando términos— y ninguna tiene un
+mecanismo desatendido que la reclame. El cron de seguimiento sólo mira `PROPUESTA_ENVIADA` y
+`EN_SEGUIMIENTO`, de modo que una oportunidad calificada puede quedarse detenida indefinidamente si
+el profesional no actúa. Hay notificación inmediata por Telegram y el tablero la muestra primero con
+su recuento, pero nadie vuelve a insistir. Queda declarado en §4.3.1 y sube de prioridad en el punto
+3 del Capítulo 8.
+
+### Materiales de defensa
+
+`guion-defensa-video.md`: quince escenarios en vez de catorce, y el pasaje del scoring aclara que el
+envío no es automático. `preparacion-defensa-oral.md`: apartado nuevo para la pregunta «¿quién fija
+el precio?», con la respuesta, el porqué de no automatizar ese paso y el detalle de cómo se detectó.
+
+### Figuras recapturadas
+
+`docs/figura05-formulario-20260824.jpg` (deslizante hasta 20.000) y
+`docs/figura07-aceptacion-con-propuesta-20260824.jpg` (la página mostrando servicio, entrega, alcance
+e inversión de 7.200). **Hay que insertarlas a mano en el `.docx`**, reemplazando las Figuras 5 y 7.
+La Figura 6 (tablero) sigue pendiente: exige iniciar sesión con rol admin, que no puede hacerse desde
+esta sesión.
+
+Quedan en la base dos leads de demostración conformes al protocolo de la Tabla 4
+(`cliente.demo.1@ejemplo.com`, ya con propuesta enviada, y `cliente.demo.2@ejemplo.com`, en NUEVO
+para poder capturar la sección «Propuestas por enviar»). Conviene borrarlos después de recapturar la
+Figura 6.
+
+### Verificación
+
+`npm test` 39+10+16 OK y 0 divergentes · `test:sql` 24 · `test:escenarios` **12/12 en tres corridas
+seguidas** · typecheck y lint limpios.

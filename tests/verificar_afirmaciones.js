@@ -32,6 +32,27 @@ function medirWorkflow(nombre) {
   };
 }
 
+// Nodos que anuncian un importe leyéndolo de `presupuesto`.
+//
+// `presupuesto` es lo que el interesado declara en el formulario; el importe
+// comprometido es `precio_propuesto` (y `monto` una vez emitida la factura).
+// Confundirlos apareció cinco veces: en la propuesta, en el PDF, en el INSERT de
+// la factura, en el correo que la acompaña —que llegó a anunciar un importe
+// distinto del que decía el PDF adjunto en el mismo envío— y en tres avisos de
+// Telegram. Este recuento tiene que quedarse en cero.
+function medirImportes() {
+  const wf = leerWorkflow('crm_postgres.json');
+  const sospechoso = /(monto|cobrado|inversion|inversión|por <b>\$)[^"]{0,80}\.presupuesto/i;
+
+  return wf.nodes.filter((n) => {
+    // El nodo que elige entre un campo y otro es justamente el que resuelve la
+    // ambigüedad: no cuenta como uso incorrecto.
+    if (n.name === 'Code - Generar ID Factura') return false;
+
+    return sospechoso.test(JSON.stringify(n.parameters || {}));
+  }).length;
+}
+
 function medirEsquema() {
   const sql = leer('db', 'schema.sql');
   // Sólo cuenta sentencias reales: si el patrón aparece dentro de un comentario
@@ -136,6 +157,7 @@ const medidas = {
   crm: medirWorkflow('crm_postgres.json'),
   tickets: medirWorkflow('tickets_notion.json'),
   db: medirEsquema(),
+  importesDesdePresupuesto: medirImportes(),
   scoring: medirScoring(),
 };
 
@@ -191,6 +213,7 @@ console.log('  Tickets  : ' + medidas.tickets.total + ' nodos (' + medidas.ticke
 console.log('  Esquema  : ' + medidas.db.tablas + ' tablas, ' + medidas.db.vistas + ' vistas, ' + medidas.db.enums + ' enums, ' + medidas.db.politicas + ' políticas RLS, ' + medidas.db.indices + ' índices');
 console.log('  Scoring  : HOT ≥ ' + medidas.scoring.umbralHot + ', WARM ≥ ' + medidas.scoring.umbralWarm +
   ', ' + medidas.scoring.serviciosPonderados + ' servicios ponderados, máximo ' + medidas.scoring.puntajeMaximo);
+console.log('  Importes : ' + medidas.importesDesdePresupuesto + ' nodos anuncian un importe leyendo presupuesto (debe ser 0)');
 console.log('  Servicio : «Otro» → ' + medidas.scoring.puntosOtro + ' pts · respaldo del normalizador → ' + medidas.scoring.puntosRespaldo + ' pts');
 
 console.log('\nResultado: ' + ok + ' sin cambios, ' + explicados + ' con desvío documentado, ' + divergentes + ' divergentes');

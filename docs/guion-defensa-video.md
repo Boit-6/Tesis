@@ -66,7 +66,7 @@ y cobro— con una arquitectura **orientada a eventos y de bajo código**?
 
 De ahí se desprende nuestro **objetivo general**: diseñar e implementar una plataforma web que
 automatice ese ciclo completo. Y lo bajamos a **cinco objetivos específicos**: primero, **captar y
-calificar** leads de forma automática mediante un scoring; segundo, **generar y enviar propuestas** y
+calificar** leads de forma automática mediante un scoring; segundo, **generar y enviar propuestas** —con los términos comerciales fijados por el profesional— y
 resolver de forma segura su aceptación, rechazo o pedido de cambios; tercero, **automatizar la
 facturación y el cobro**; cuarto, **centralizar la información** en una única fuente de verdad, con
 seguridad por rol y un tablero en tiempo real; y quinto, **validar** el sistema con escenarios
@@ -109,7 +109,7 @@ por HTTP, y n8n es el único que escribe. Así cada capa se cambia sin romper la
 
 ## [5:40–6:30] Metodología — validación por escenarios · **MATEO**
 
-"Sobre esa arquitectura, la **validación** se hizo con **escenarios controlados**: definimos catorce
+"Sobre esa arquitectura, la **validación** se hizo con **escenarios controlados**: definimos quince
 casos —del E1 al E14— que ejercitan tanto el camino principal como los alternativos de cada flujo.
 Cada escenario tiene una **entrada definida** y una **salida esperada**, que contrastamos contra
 criterios objetivos: la normalización de los datos, el score y el *tier* asignados, las transiciones
@@ -127,14 +127,14 @@ primario con usuarios reales**; la validación es de la **construcción del arte
 > completarlas (ver `docs/verificacion-y-seguridad.md` §4). Revisar y reescribir este párrafo recién
 > después de esa corrida, con los números y capturas que efectivamente salgan.
 
-"Los resultados confirman que el ciclo completo funciona de extremo a extremo. De los catorce
+"Los resultados confirman que el ciclo completo funciona de extremo a extremo. De los quince
 escenarios, **la mayoría tiene evidencia visual adjunta** —capturas del formulario, del scoring, de
 la propuesta, de la aceptación, de la factura y del tablero— y en todos el comportamiento observado
 coincidió con el esperado.
 
 Quiero destacar dos resultados técnicos. El primero es el **scoring**: cada lead se clasifica
 automáticamente como **HOT** —score mayor o igual a 70— o **WARM** —mayor o igual a 40—, ponderando
-presupuesto, urgencia y tipo de servicio; eso decide qué leads reciben propuesta de forma prioritaria.
+presupuesto, urgencia y tipo de servicio; eso decide qué leads pasan a la instancia de propuesta. El envío no es automático: el sistema deja al profesional fijar precio, plazo y alcance antes de mandarla, porque automatizar ese paso habría significado comprometerlo con un importe que no eligió.
 
 El segundo, y el más importante en cuanto a robustez, es la **aceptación atómica**. La confirmación de
 una propuesta se resuelve con una **actualización condicional**: un `UPDATE` sobre la fila del lead

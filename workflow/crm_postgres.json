@@ -1325,7 +1325,7 @@
     {
       "parameters": {
         "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=📤 <b>Propuesta enviada</b>\n\nCliente: {{ $('Code - Generar Propuesta').item.json.nombre }}\nServicio: {{ $('Code - Generar Propuesta').item.json.servicio }}\nMonto: ${{ $('Code - Generar Propuesta').item.json.presupuesto }}\nScore: {{ $('Code - Generar Propuesta').item.json.score }} ({{ $('Code - Generar Propuesta').item.json.tier }})",
+        "text": "=📤 <b>Propuesta enviada</b>\n\nCliente: {{ $('Code - Generar Propuesta').item.json.nombre }}\nServicio: {{ $('Code - Generar Propuesta').item.json.servicio }}\nMonto: ${{ $('Code - Generar Propuesta').item.json.precio_propuesto || $('Code - Generar Propuesta').item.json.presupuesto }}\nScore: {{ $('Code - Generar Propuesta').item.json.score }} ({{ $('Code - Generar Propuesta').item.json.tier }})",
         "additionalFields": {
           "appendAttribution": false,
           "parse_mode": "HTML"
@@ -1564,7 +1564,7 @@
       "parameters": {
         "sendTo": "={{ $('Code - Generar Factura HTML').item.json.email }}",
         "subject": "=Factura {{ $('Code - Generar Factura HTML').item.json.factura_id }}",
-        "message": "=<p>Hola <b>{{ $('Code - Generar Factura HTML').item.json.nombre.split(' ')[0] }}</b>,</p><p>Adjunto tu factura <b>{{ $('Code - Generar Factura HTML').item.json.factura_id }}</b> por <b>${{ $('Code - Generar Factura HTML').item.json.presupuesto }} USD</b>.</p>",
+        "message": "=<p>Hola <b>{{ $('Code - Generar Factura HTML').item.json.nombre.split(' ')[0] }}</b>,</p><p>Adjunto tu factura <b>{{ $('Code - Generar Factura HTML').item.json.factura_id }}</b> por <b>${{ $('Code - Generar Factura HTML').item.json.monto }} USD</b>.</p>",
         "options": {
           "appendAttribution": false,
           "attachmentsUi": {
@@ -1665,7 +1665,7 @@
     {
       "parameters": {
         "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=🎉 <b>¡LEAD ACEPTADO!</b>\n\nCliente: {{ $('Code - Generar Factura HTML').item.json.nombre }}\nServicio: {{ $('Code - Generar Factura HTML').item.json.servicio }}\nMonto: ${{ $('Code - Generar Factura HTML').item.json.presupuesto }} USD",
+        "text": "=🎉 <b>¡LEAD ACEPTADO!</b>\n\nCliente: {{ $('Code - Generar Factura HTML').item.json.nombre }}\nServicio: {{ $('Code - Generar Factura HTML').item.json.servicio }}\nMonto: ${{ $('Code - Generar Factura HTML').item.json.monto }} USD",
         "additionalFields": {
           "appendAttribution": false,
           "parse_mode": "HTML"
@@ -2222,7 +2222,7 @@
     {
       "parameters": {
         "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=🎊 <b>¡PROYECTO CERRADO!</b>\nCliente: {{ $('Postgres - Lead Cerrado').item.json.nombre }}\nCobrado: ${{ $('Postgres - Lead Cerrado').item.json.presupuesto }} USD\nDias del ciclo: {{ $('Postgres - Lead Cerrado').item.json.dias_ciclo_completo }}",
+        "text": "=🎊 <b>¡PROYECTO CERRADO!</b>\nCliente: {{ $('Postgres - Lead Cerrado').item.json.nombre }}\nCobrado: ${{ $('Postgres - Lead Cerrado').item.json.precio_propuesto || $('Postgres - Lead Cerrado').item.json.presupuesto }} USD\nDias del ciclo: {{ $('Postgres - Lead Cerrado').item.json.dias_ciclo_completo }}",
         "additionalFields": {
           "appendAttribution": false,
           "parse_mode": "HTML"

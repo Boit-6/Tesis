@@ -119,3 +119,40 @@ en la instancia (**M2**).
 - Recordar el conteo real: **141 nodos funcionales (157 con notas), 12 webhooks, 3 procesos programados** (CRM). El módulo de tickets es un workflow aparte: 39 nodos, 3 webhooks, 1 cron.
 - Saber señalar en el repo `github.com/Boit-6/Tesis`: `workflow/crm_postgres.json`, `db/schema.sql`, `FormularioLeads/src/`, y la suite de verificación (`npm test`, `npm run test:docker`).
 - Antes de grabar/defender: correr `npm run test:escenarios` contra el sistema levantado para completar los `[registrar]`/`Pendiente` que todavía quedan en la tabla de escenarios del `.docx` (ver Q5).
+
+---
+
+## Pregunta nueva a esperar: ¿quién fija el precio?
+
+Hasta el 24-ago-2026 la respuesta honesta habría sido incómoda: **lo fijaba el cliente**. La fila
+«Inversión» de la propuesta salía de `leads.presupuesto`, o sea del valor que el propio interesado
+elegía en el deslizante del formulario, y ese número se convertía después en el monto de la factura,
+el importe del PDF y el precio de la preferencia de MercadoPago, sin que el profesional interviniera
+en ningún punto.
+
+Es el hueco más serio que tuvo el trabajo, porque cae justo sobre la condición que la pregunta de
+investigación se compromete a sostener: automatizar «sin sacrificar el control del profesional sobre
+el proceso».
+
+**Cómo responderlo ahora.** El lead calificado HOT o WARM queda en `NUEVO` y aparece en la sección
+«Propuestas por enviar» del tablero, donde el profesional carga precio, plazo y alcance; recién ahí
+se genera y se envía la propuesta. El campo de precio arranca vacío a propósito: el presupuesto
+declarado se muestra al lado como referencia, no como valor por omisión. El `UPDATE` que guarda los
+términos es condicional (`WHERE estado = 'NUEVO' AND tier IN ('HOT','WARM')`), el mismo patrón que
+la aceptación, así que repetir la petición no reabre una propuesta ya enviada.
+
+**Si preguntan por qué no está automatizado ese paso**, la respuesta es que automatizarlo sería el
+error, no la mejora: un sistema que fija solo el precio de un servicio profesional compromete a quien
+lo cobra. La automatización se detiene exactamente donde empieza una decisión comercial, y eso es
+una decisión de diseño, no una carencia.
+
+**Si preguntan cómo se detectó**, conviene decirlo tal cual: no salió de leer el código sino de
+recorrer la página como la recorrería un cliente. Es el mismo argumento metodológico que sostiene el
+dictamen v6 —ejercitar el sistema revela lo que la lectura estática no— aplicado una vez más.
+
+**Detalle que refuerza la respuesta.** Al agregar la comprobación de que el monto facturado coincide
+con el precio fijado, el escenario E5 falló: `Code - Generar ID Factura` calculaba el importe pero no
+lo exponía en su salida, y aguas abajo el PDF y el `INSERT` seguían leyendo `presupuesto`. Sin esa
+aserción el cambio habría parecido aplicado y la factura habría seguido saliendo por el importe del
+cliente. Sirve para ilustrar por qué la validación tiene que comparar contra el valor esperado y no
+limitarse a comprobar que el flujo no falla.
