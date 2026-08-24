@@ -160,13 +160,15 @@ vivo, mientras se prepara la defensa de un trabajo que advierte sobre ese mismo 
 | # | Acción | Quién | Costo | Nota |
 |---|---|---|---|---|
 | 1 | Conseguir el `chat_id` real de Telegram y reiniciar n8n | Vos | 2 min | Bloquea probar que las notificaciones funcionan de verdad |
-| 2 | Decidir: ¿neutralizar el peso de "Otro" en scoring ahora? | Vos decidís, yo ejecuto | 5 min | Mejora real de lógica de negocio, no solo de nota |
-| 3 | Decidir: ¿cerrar el guard de `pago-confirmado` ahora o dejarlo declarado a propósito? | Vos decidís, yo ejecuto | 10 min | Ver el argumento de "declarar vs. corregir" en §3.2 |
-| 4 | Auditar el resto del workflow buscando el mismo patrón `.item` ambiguo | Yo, si querés | 20-30 min | Cierra la duda de 3.3 con evidencia en vez de supuesto |
+| 2 | ~~Neutralizar el peso de "Otro" en scoring~~ | **Hecho** | — | `'otro'` ahora mapea a `consultoria` (peso 12) en vez de `soporte` (peso 5). Commit `2630e7f` |
+| 3 | ~~Cerrar el guard de `pago-confirmado`~~ | **Hecho** | — | Rechaza la petición si `MP_ACCESS_TOKEN` ya está configurado. La Tabla 11 / §6.2 del `.docx` quedan desactualizadas — hay que reflejar el cierre ahí. Commit `2630e7f` |
+| 4 | ~~Auditar el resto del workflow por el patrón `.item` ambiguo~~ | **Hecho** | — | 2 casos más encontrados sin disparar (`Telegram - Lead Perdido`, `Notion - Estado Perdido`, misma rama de Follow-up) y corregidos. Commit `2630e7f` |
 | 5 | Actualizar el Capítulo 5 / Anexo E del `.docx` con la corrida de hoy (E11-E13, triple repetición) | Yo, si querés | 15 min | El texto hoy describe un estado ya superado |
 | 6 | Subir el hallazgo del `TELEGRAM_CHAT_ID` como evidencia nueva en el `.docx` | Vos decidís, yo redacto | 15 min | Refuerza el argumento del trabajo, no lo debilita |
 | 7 | Ensayar en voz alta la tensión de 3.1 antes de que la pregunten | Vos | — | Cambia la percepción de "se les pasó" a "lo decidieron" |
 
-Los puntos 2, 3 y 6 son decisiones tuyas porque cambian lo que el `.docx` puede seguir afirmando
-honestamente — no los voy a tocar sin que elijas. El resto lo puedo hacer ya mismo si me decís que
-sí.
+Con 2, 3 y 4 ya resueltos, el `.docx` quedó un paso más atrás del artefacto: la Tabla 11 sigue
+diciendo que la deuda de `pago-confirmado` está abierta cuando ya se cerró, y el Capítulo 6 la
+sigue llamando "la más grave, por su consecuencia de negocio" en presente. Eso hay que decidirlo
+también — no lo toqué porque cambia una afirmación central del capítulo de discusión, no solo un
+número.
