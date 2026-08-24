@@ -159,16 +159,21 @@ vivo, mientras se prepara la defensa de un trabajo que advierte sobre ese mismo 
 
 | # | Acción | Quién | Costo | Nota |
 |---|---|---|---|---|
-| 1 | Conseguir el `chat_id` real de Telegram y reiniciar n8n | Vos | 2 min | Bloquea probar que las notificaciones funcionan de verdad |
+| 1 | ~~Conseguir el `chat_id` real de Telegram y reiniciar n8n~~ | **Hecho** | — | `chat_id` real + credencial de bot vencida encontrada y actualizada; verificado con `message_id` real de Telegram |
 | 2 | ~~Neutralizar el peso de "Otro" en scoring~~ | **Hecho** | — | `'otro'` ahora mapea a `consultoria` (peso 12) en vez de `soporte` (peso 5). Commit `2630e7f` |
-| 3 | ~~Cerrar el guard de `pago-confirmado`~~ | **Hecho** | — | Rechaza la petición si `MP_ACCESS_TOKEN` ya está configurado. La Tabla 11 / §6.2 del `.docx` quedan desactualizadas — hay que reflejar el cierre ahí. Commit `2630e7f` |
+| 3 | ~~Cerrar el guard de `pago-confirmado`~~ | **Hecho** | — | Rechaza la petición si `MP_ACCESS_TOKEN` ya está configurado. Commit `2630e7f` |
 | 4 | ~~Auditar el resto del workflow por el patrón `.item` ambiguo~~ | **Hecho** | — | 2 casos más encontrados sin disparar (`Telegram - Lead Perdido`, `Notion - Estado Perdido`, misma rama de Follow-up) y corregidos. Commit `2630e7f` |
-| 5 | Actualizar el Capítulo 5 / Anexo E del `.docx` con la corrida de hoy (E11-E13, triple repetición) | Yo, si querés | 15 min | El texto hoy describe un estado ya superado |
-| 6 | Subir el hallazgo del `TELEGRAM_CHAT_ID` como evidencia nueva en el `.docx` | Vos decidís, yo redacto | 15 min | Refuerza el argumento del trabajo, no lo debilita |
-| 7 | Ensayar en voz alta la tensión de 3.1 antes de que la pregunten | Vos | — | Cambia la percepción de "se les pasó" a "lo decidieron" |
+| 5 | ~~Actualizar el Capítulo 5 / Anexo E del `.docx` con la corrida de hoy~~ | **Hecho** | — | E11-E13, triple repetición, OE5 pasa a "cumplido parcialmente". Commit `441e20f` |
+| 6 | ~~Subir el hallazgo del `TELEGRAM_CHAT_ID` como evidencia nueva~~ | **Hecho** | — | Integrado en el mismo párrafo de Capítulo 5 que describe E11-E13. Commit `441e20f` |
+| 7 | ~~Reflejar en la Tabla 11 / §6.2 el cierre de S2~~ | **Hecho** | — | Estado pasa de "Abierta" a "Parcial — cerrada para el cobro real". Commit `441e20f` |
+| 8 | Ensayar en voz alta la tensión de 3.1 antes de que la pregunten | Vos | — | Cambia la percepción de "se les pasó" a "lo decidieron" |
 
-Con 2, 3 y 4 ya resueltos, el `.docx` quedó un paso más atrás del artefacto: la Tabla 11 sigue
-diciendo que la deuda de `pago-confirmado` está abierta cuando ya se cerró, y el Capítulo 6 la
-sigue llamando "la más grave, por su consecuencia de negocio" en presente. Eso hay que decidirlo
-también — no lo toqué porque cambia una afirmación central del capítulo de discusión, no solo un
-número.
+**Detalle honesto que quedó en el propio `.docx` (Tabla 12, E11):** al re-ejercitar el proceso de
+seguimiento para verificar el fix, un lead de prueba (`LEAD-0004`) quedó con `seguimientos=3` sin
+completar la transición a `PERDIDO` — la reconciliación manual de ese registro de prueba sigue
+pendiente en la base (no en el código). Está documentado así a propósito, como evidencia en vivo del
+mismo riesgo que S5 ya declaraba para la rama de facturación.
+
+Lo único que queda de esta lista es el punto 8, y es tuyo: no hay nada más que yo pueda tocar sin
+tu intervención (E7, S7, E14 y la Figura 14 siguen bloqueados en vos o en el tercero, como ya se
+explicó arriba).
