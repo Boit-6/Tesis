@@ -186,6 +186,21 @@ DO $$ BEGIN
     CHECK (comision_plataforma >= 0) NOT VALID;
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
+-- Términos que fija el profesional antes de enviar la propuesta (para bases ya
+-- creadas). Hasta su incorporación, el precio de la propuesta y el monto de la
+-- factura salían de `leads.presupuesto`, es decir del valor que el propio
+-- interesado elegía en el formulario: el sistema comprometía al profesional con
+-- un importe que él nunca fijaba. `presupuesto` se conserva sin tocar porque es
+-- la entrada del scoring y el registro de lo que el cliente declaró; el importe
+-- que se factura es `precio_propuesto`.
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS precio_propuesto  NUMERIC(12,2);
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS plazo_propuesto   TEXT;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS alcance_propuesto TEXT;
+DO $$ BEGIN
+  ALTER TABLE leads ADD CONSTRAINT chk_leads_precio_propuesto
+    CHECK (precio_propuesto IS NULL OR precio_propuesto > 0) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
 
 -- ---------------------------------------------------------------------
 -- Índices

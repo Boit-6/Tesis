@@ -149,8 +149,32 @@ async function altaDeLead(sufijo, datos) {
   return {lead, email, t0};
 }
 
+// Fija los términos y envía la propuesta, que es lo que el profesional hace
+// desde el tablero. Desde que el precio dejó de salir del formulario público,
+// todo escenario que necesite un lead con propuesta enviada tiene que pasar por
+// acá: la calificación por sí sola ya no la dispara.
+async function enviarPropuestaDe(sufijo, {precio = 6500, plazo = '2 semanas', alcance = 'Alcance de prueba.'} = {}) {
+  const lead = await leadPorEmail(emailDe(sufijo));
+
+  await webhook('propuesta-enviar', {
+    cuerpo: {lead_id: lead.lead_id, precio, plazo, alcance},
+    headers: PANEL_TOKEN ? {[PANEL_HEADER]: PANEL_TOKEN} : {},
+  });
+
+  const {valor} = await esperarHasta(
+    `el lead ${sufijo} tenga propuesta enviada`,
+    async () => {
+      const l = await leadPorEmail(emailDe(sufijo));
+
+      return l && l.estado === 'PROPUESTA_ENVIADA' ? l : null;
+    },
+  );
+
+  return valor;
+}
+
 const ESCENARIOS = [
-  escenario('lead-hot', 'E1', 'Un lead de presupuesto alto se califica HOT y recibe propuesta', async (t) => {
+  escenario('lead-hot', 'E1', 'Un lead de presupuesto alto se califica HOT y queda esperando propuesta', async (t) => {
     // Entrada EXACTA de la Tabla 12, escenario E1: desarrollo_web, USD 5000,
     // urgencia alta, con teléfono de más de 6 caracteres y descripción de más
     // de 50. Si acá se usa otra entrada, el resultado no sirve como evidencia
@@ -164,24 +188,74 @@ const ESCENARIOS = [
     t.igual(lead.tier, 'HOT', 'tier');
     t.igual(lead.score, 100, 'score (40 presupuesto + 30 urgencia + 20 servicio + 5 teléfono + 5 descripción)');
 
+    // La calificación ya no dispara la propuesta: el lead espera a que el
+    // profesional fije los términos. Se comprueba que NO salió sola.
+    await esperar(3000);
+    const enEspera = await leadPorEmail(emailDe('hot'));
+
+    t.igual(enEspera.estado, 'NUEVO', 'queda esperando los términos del profesional');
+    t.igual(enEspera.precio_propuesto, null, 'todavía no hay precio fijado');
+
+    return enEspera;
+  }),
+
+  escenario('propuesta-enviar', 'E1b', 'El profesional fija precio, plazo y alcance, y recién ahí sale la propuesta', async (t, ctx) => {
+    const lead = ctx['lead-hot'];
+    const t0 = ahora();
+    // El precio de la propuesta NO es el presupuesto declarado (5000): lo fija
+    // el profesional. Se usa otro valor a propósito, para que la aserción
+    // distinga una cosa de la otra.
+    const PRECIO = 7200;
+
+    const res = await webhook('propuesta-enviar', {
+      cuerpo: {
+        lead_id: lead.lead_id,
+        precio: PRECIO,
+        plazo: '3 semanas',
+        alcance: 'Sitio de 5 secciones, carga de contenidos y puesta en producción.',
+      },
+      headers: PANEL_TOKEN ? {[PANEL_HEADER]: PANEL_TOKEN} : {},
+    });
+
+    t.verdad(res.status < 400, `el webhook del panel aceptó la credencial (${res.status})`);
+
     const {valor: conPropuesta, ms} = await esperarHasta(
       'el lead pase a PROPUESTA_ENVIADA',
       async () => {
-        const l = await leadPorEmail(lead.email ?? emailDe('hot'));
+        const l = await leadPorEmail(emailDe('hot'));
 
         return l && l.estado === 'PROPUESTA_ENVIADA' ? l : null;
       },
     );
 
     medir('propuesta enviada', ms, 'incluye el email de propuesta y la card de Notion');
+    t.igual(Number(conPropuesta.precio_propuesto), PRECIO, 'precio de la propuesta, fijado por el profesional');
+    t.igual(conPropuesta.plazo_propuesto, '3 semanas', 'plazo comprometido');
+    t.verdad(
+      Number(conPropuesta.precio_propuesto) !== Number(conPropuesta.presupuesto),
+      `el precio no es el presupuesto que declaró el cliente (${conPropuesta.presupuesto})`,
+    );
     t.verdad(!!conPropuesta.accept_token, 'se generó el token de aceptación');
     t.verdad(!!conPropuesta.token_expira_en, 'el token tiene fecha de vencimiento');
     t.verdad(!!conPropuesta.fecha_propuesta, 'se registró la fecha de propuesta');
 
+    // Reenviar la misma petición no debe reabrir un lead ya enviado.
+    const repetida = await webhook('propuesta-enviar', {
+      cuerpo: {lead_id: lead.lead_id, precio: 1, plazo: 'x', alcance: 'x'},
+      headers: PANEL_TOKEN ? {[PANEL_HEADER]: PANEL_TOKEN} : {},
+    });
+
+    t.verdad(
+      repetida.json?.status === 'invalido',
+      `una segunda petición no reabre la propuesta (status = ${repetida.json?.status})`,
+    );
+
+    void t0;
+
     return conPropuesta;
   }),
 
-  escenario('lead-warm', 'E2', 'Un lead de valor medio se califica WARM y recibe propuesta', async (t) => {
+  escenario('lead-warm', 'E2', 'Un lead de valor medio se califica WARM y también espera propuesta', async (t) => {
     // Entrada EXACTA de E2: consultoria, USD 1000, urgencia media, SIN teléfono
     // y descripción de menos de 50 caracteres (por eso no suma los dos bonus).
     const {lead} = await altaDeLead('warm', {
@@ -195,16 +269,10 @@ const ESCENARIOS = [
     t.igual(lead.tier, 'WARM', 'tier');
     t.igual(lead.score, 47, 'score (20 presupuesto + 15 urgencia + 12 servicio + 0 + 0)');
 
-    const {valor: conPropuesta} = await esperarHasta(
-      'el lead WARM también pase a PROPUESTA_ENVIADA',
-      async () => {
-        const l = await leadPorEmail(emailDe('warm'));
+    await esperar(3000);
+    const despues = await leadPorEmail(emailDe('warm'));
 
-        return l && l.estado === 'PROPUESTA_ENVIADA' ? l : null;
-      },
-    );
-
-    t.igual(conPropuesta.estado, 'PROPUESTA_ENVIADA', 'estado');
+    t.igual(despues.estado, 'NUEVO', 'queda esperando los términos, igual que el HOT');
   }),
 
   escenario('lead-cold', 'E3', 'Un lead de presupuesto bajo se califica COLD y NO recibe propuesta', async (t) => {
@@ -303,7 +371,9 @@ const ESCENARIOS = [
   }),
 
   escenario('propuesta-lectura', null, 'La propuesta se lee sólo con el token correcto', async (t, ctx) => {
-    const lead = ctx['lead-hot'];
+    // Depende de 'propuesta-enviar', no de 'lead-hot': el token de aceptación
+    // sólo tiene vigencia una vez que la propuesta salió.
+    const lead = ctx['propuesta-enviar'];
     const ok = await webhook(`lead-propuesta?lead_id=${lead.lead_id}&token=${lead.accept_token}`, {metodo: 'GET'});
 
     t.verdad(ok.texto.includes(lead.lead_id) || ok.json, 'con el token correcto devuelve la propuesta');
@@ -314,7 +384,7 @@ const ESCENARIOS = [
   }),
 
   escenario('aceptacion-atomica', 'E5/E6', 'Aceptación válida y reutilización del enlace: una sola factura', async (t, ctx) => {
-    const lead = ctx['lead-hot'];
+    const lead = ctx['propuesta-enviar'];
     const t0 = ahora();
 
     // E6 declara CUATRO invocaciones: dos concurrentes y dos consecutivas.
@@ -342,6 +412,16 @@ const ESCENARIOS = [
     );
 
     t.igual(dias, 15, 'días entre emisión y vencimiento de la factura');
+
+    // La garantía que introdujo la pantalla de términos: se factura el precio
+    // que fijó el profesional, no el presupuesto que el interesado declaró en
+    // el formulario público. Sin esta aserción el escenario pasaría igual con
+    // el comportamiento viejo.
+    t.igual(
+      Number(primera.monto),
+      Number(lead.precio_propuesto),
+      `monto facturado = precio fijado por el profesional (el cliente había declarado ${lead.presupuesto})`,
+    );
 
     // Ahora las dos consecutivas, reusando el mismo enlace ya consumido.
     const c = await webhook('lead-acepta', {cuerpo: {lead_id: lead.lead_id, token: lead.accept_token}});
@@ -389,14 +469,7 @@ const ESCENARIOS = [
 
   escenario('rechazo', 'E8', 'El rechazo de la propuesta deja el lead en PERDIDO', async (t) => {
     const {lead} = await altaDeLead('rechazo', {presupuesto: 6000, urgencia: 'alta', servicio: 'ecommerce'});
-    const {valor: conPropuesta} = await esperarHasta(
-      'el lead tenga propuesta enviada',
-      async () => {
-        const l = await leadPorEmail(emailDe('rechazo'));
-
-        return l && l.estado === 'PROPUESTA_ENVIADA' ? l : null;
-      },
-    );
+    const conPropuesta = await enviarPropuestaDe('rechazo');
 
     await webhook('lead-rechaza', {cuerpo: {lead_id: conPropuesta.lead_id, token: conPropuesta.accept_token}});
 
@@ -412,14 +485,7 @@ const ESCENARIOS = [
 
   escenario('pedido-cambios', 'E9', 'El pedido de cambios vuelve el lead a EN_SEGUIMIENTO y guarda el mensaje', async (t) => {
     const {lead} = await altaDeLead('cambios', {presupuesto: 6000, urgencia: 'alta', servicio: 'ecommerce'});
-    const {valor: conPropuesta} = await esperarHasta(
-      'el lead tenga propuesta enviada',
-      async () => {
-        const l = await leadPorEmail(emailDe('cambios'));
-
-        return l && l.estado === 'PROPUESTA_ENVIADA' ? l : null;
-      },
-    );
+    const conPropuesta = await enviarPropuestaDe('cambios');
 
     const mensaje = 'Necesito sumar una pasarela de pagos, con comas, para probar el escapado.';
 
@@ -460,14 +526,7 @@ const ESCENARIOS = [
 
   escenario('token-vencido', null, 'Un token vencido no permite aceptar la propuesta', async (t) => {
     const {lead} = await altaDeLead('vencido', {presupuesto: 6000, urgencia: 'alta', servicio: 'ecommerce'});
-    const {valor: conPropuesta} = await esperarHasta(
-      'el lead tenga propuesta enviada',
-      async () => {
-        const l = await leadPorEmail(emailDe('vencido'));
-
-        return l && l.estado === 'PROPUESTA_ENVIADA' ? l : null;
-      },
-    );
+    const conPropuesta = await enviarPropuestaDe('vencido');
 
     // Se fuerza el vencimiento hacia atrás para no esperar los días de vigencia.
     await rest(`leads?lead_id=eq.${conPropuesta.lead_id}`, {

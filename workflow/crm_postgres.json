@@ -1086,7 +1086,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const l = $input.first().json;\nconst primerNombre = String(l.nombre || 'Cliente').split(' ')[0];\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst tiempo = (l.urgencia === 'alta') ? '3-5 dias habiles' : '1-2 semanas';\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n// URL pública del front. Se configura con FRONTEND_URL (ver .env.example).\nconst FRONT_BASE = leerEnv('FRONTEND_URL', 'http://localhost:3000').replace(/\\/+$/, '');\nconst acceptUrl = FRONT_BASE + '/aceptar/' + encodeURIComponent(l.lead_id) + '?token=' + encodeURIComponent(l.accept_token);\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head><body style='margin:0;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif;color:#27272a'><div style='max-width:600px;margin:0 auto;background:#ffffff'><div style='background:#111827;padding:32px 40px'><div style='color:#fbbf24;font-size:20px;font-weight:800;letter-spacing:1px'>SODEROS S.A.</div><div style='color:#9ca3af;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:4px'>Propuesta de trabajo</div></div><div style='padding:40px'><p style='font-size:16px;margin:0 0 8px'>Hola <b>${primerNombre}</b>,</p><p style='font-size:15px;line-height:1.6;color:#52525b;margin:0 0 28px'>Gracias por tu interes. Preparamos una propuesta para tu proyecto de <b>${svc}</b>:</p><table style='width:100%;border-collapse:collapse;margin:0 0 28px'><tr><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;color:#71717a;font-size:13px'>Servicio</td><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;text-align:right;font-weight:700'>${svc}</td></tr><tr><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;color:#71717a;font-size:13px'>Tiempo de entrega</td><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;text-align:right;font-weight:700'>${tiempo}</td></tr><tr><td style='padding:14px 0;color:#71717a;font-size:13px'>Inversion</td><td style='padding:14px 0;text-align:right;font-weight:800;font-size:18px;color:#111827'>$${l.presupuesto} USD</td></tr></table><div style='text-align:center;margin:0 0 24px'><a href='${acceptUrl}' style='display:inline-block;background:#fbbf24;color:#111827;padding:16px 40px;border-radius:8px;text-decoration:none;font-weight:800;font-size:15px'>Ver propuesta y responder</a></div><p style='font-size:13px;line-height:1.6;color:#a1a1aa;text-align:center;margin:0'>Desde el enlace vas a poder <b>aceptar</b>, <b>pedir cambios</b> o <b>rechazar</b> la propuesta.</p></div><div style='background:#fafafa;padding:24px 40px;border-top:1px solid #e4e4e7'><p style='margin:0;font-size:13px;color:#71717a'>Saludos,<br><b style='color:#27272a'>Equipo Soderos S.A.</b></p></div></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { propuesta_html: html, accept_url: acceptUrl }) }];"
+        "jsCode": "const l = $input.first().json;\nconst primerNombre = String(l.nombre || 'Cliente').split(' ')[0];\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\n// El plazo, el precio y el alcance los fija el profesional al enviar la\n// propuesta. El respaldo por urgencia queda sólo para las propuestas\n// anteriores a que esa función existiera.\nconst tiempo = String(l.plazo_propuesto || '').trim() || ((l.urgencia === 'alta') ? '3-5 dias habiles' : '1-2 semanas');\nconst precio = Number(l.precio_propuesto) > 0 ? Number(l.precio_propuesto) : Number(l.presupuesto) || 0;\nconst alcance = String(l.alcance_propuesto || '').trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/\\n/g, '<br>');\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n// URL pública del front. Se configura con FRONTEND_URL (ver .env.example).\nconst FRONT_BASE = leerEnv('FRONTEND_URL', 'http://localhost:3000').replace(/\\/+$/, '');\nconst acceptUrl = FRONT_BASE + '/aceptar/' + encodeURIComponent(l.lead_id) + '?token=' + encodeURIComponent(l.accept_token);\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head><body style='margin:0;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif;color:#27272a'><div style='max-width:600px;margin:0 auto;background:#ffffff'><div style='background:#111827;padding:32px 40px'><div style='color:#fbbf24;font-size:20px;font-weight:800;letter-spacing:1px'>SODEROS S.A.</div><div style='color:#9ca3af;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:4px'>Propuesta de trabajo</div></div><div style='padding:40px'><p style='font-size:16px;margin:0 0 8px'>Hola <b>${primerNombre}</b>,</p><p style='font-size:15px;line-height:1.6;color:#52525b;margin:0 0 28px'>Gracias por tu interes. Preparamos una propuesta para tu proyecto de <b>${svc}</b>:</p><table style='width:100%;border-collapse:collapse;margin:0 0 28px'><tr><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;color:#71717a;font-size:13px'>Servicio</td><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;text-align:right;font-weight:700'>${svc}</td></tr>${alcance ? \"<tr><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;color:#71717a;font-size:13px;vertical-align:top'>Alcance</td><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;text-align:right;line-height:1.5'>\" + alcance + '</td></tr>' : ''}<tr><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;color:#71717a;font-size:13px'>Tiempo de entrega</td><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;text-align:right;font-weight:700'>${tiempo}</td></tr><tr><td style='padding:14px 0;color:#71717a;font-size:13px'>Inversion</td><td style='padding:14px 0;text-align:right;font-weight:800;font-size:18px;color:#111827'>${precio} USD</td></tr></table><div style='text-align:center;margin:0 0 24px'><a href='${acceptUrl}' style='display:inline-block;background:#fbbf24;color:#111827;padding:16px 40px;border-radius:8px;text-decoration:none;font-weight:800;font-size:15px'>Ver propuesta y responder</a></div><p style='font-size:13px;line-height:1.6;color:#a1a1aa;text-align:center;margin:0'>Desde el enlace vas a poder <b>aceptar</b>, <b>pedir cambios</b> o <b>rechazar</b> la propuesta.</p></div><div style='background:#fafafa;padding:24px 40px;border-top:1px solid #e4e4e7'><p style='margin:0;font-size:13px;color:#71717a'>Saludos,<br><b style='color:#27272a'>Equipo Soderos S.A.</b></p></div></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { propuesta_html: html, accept_url: acceptUrl }) }];"
       },
       "id": "b9af8421-c555-4320-a2d7-09912761c111",
       "name": "Code - Generar Propuesta",
@@ -1516,7 +1516,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const l = $input.first().json;\nconst payUrl = l.payUrl;\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst hoy = new Date().toLocaleDateString('es-AR');\nconst venc = new Date(l.fecha_vencimiento_iso).toLocaleDateString('es-AR');\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body style='font-family:Arial,Helvetica,sans-serif;padding:48px;color:#27272a'><div style='display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #111827;padding-bottom:24px'><div><div style='font-size:22px;font-weight:800;color:#111827;letter-spacing:1px'>SODEROS S.A.</div><div style='color:#71717a;font-size:13px;margin-top:4px'>facturacion@soderos.com</div></div><div style='text-align:right'><div style='font-size:24px;font-weight:800;color:#fbbf24'>FACTURA</div><div style='font-size:13px;color:#71717a;margin-top:6px'>N ${l.factura_id}</div><div style='font-size:13px;color:#71717a'>Emisión: ${hoy}</div><div style='font-size:13px;color:#71717a'>Vence: ${venc}</div></div></div><p style='margin:24px 0;font-size:14px'><b>Cliente:</b> ${l.nombre}<br><b>Email:</b> ${l.email}</p><table style='width:100%;border-collapse:collapse;margin:0 0 24px'><tr style='background:#111827;color:#fff'><th style='padding:12px;text-align:left;font-size:13px'>Descripción</th><th style='padding:12px;font-size:13px'>Cant.</th><th style='padding:12px;text-align:right;font-size:13px'>Total</th></tr><tr><td style='padding:12px;border-bottom:1px solid #e4e4e7'>${svc}</td><td style='padding:12px;border-bottom:1px solid #e4e4e7;text-align:center'>1</td><td style='padding:12px;border-bottom:1px solid #e4e4e7;text-align:right'>$${l.presupuesto}</td></tr><tr style='font-weight:800;background:#fafafa'><td colspan='2' style='padding:12px;text-align:right'>TOTAL</td><td style='padding:12px;text-align:right;font-size:18px'>${l.presupuesto} ${l.moneda}</td></tr></table><div style='text-align:center;margin:28px 0'><a href='${payUrl}' style='display:inline-block;background:#fbbf24;color:#111827;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:800'>💳 Pagar ahora</a></div><div style='background:#f8fafc;border-left:4px solid #111827;padding:16px;font-size:13px'><b>Datos de pago:</b><br>Alias: soderos.mp</div></body></html>`;\nconst b64 = Buffer.from(html, 'utf8').toString('base64');\nreturn [{ json: l, binary: { factura_html_file: { data: b64, mimeType: 'text/html', fileName: 'index.html', fileExtension: 'html' } } }];"
+        "jsCode": "const l = $input.first().json;\nconst payUrl = l.payUrl;\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst hoy = new Date().toLocaleDateString('es-AR');\nconst venc = new Date(l.fecha_vencimiento_iso).toLocaleDateString('es-AR');\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'></head><body style='font-family:Arial,Helvetica,sans-serif;padding:48px;color:#27272a'><div style='display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #111827;padding-bottom:24px'><div><div style='font-size:22px;font-weight:800;color:#111827;letter-spacing:1px'>SODEROS S.A.</div><div style='color:#71717a;font-size:13px;margin-top:4px'>facturacion@soderos.com</div></div><div style='text-align:right'><div style='font-size:24px;font-weight:800;color:#fbbf24'>FACTURA</div><div style='font-size:13px;color:#71717a;margin-top:6px'>N ${l.factura_id}</div><div style='font-size:13px;color:#71717a'>Emisión: ${hoy}</div><div style='font-size:13px;color:#71717a'>Vence: ${venc}</div></div></div><p style='margin:24px 0;font-size:14px'><b>Cliente:</b> ${l.nombre}<br><b>Email:</b> ${l.email}</p><table style='width:100%;border-collapse:collapse;margin:0 0 24px'><tr style='background:#111827;color:#fff'><th style='padding:12px;text-align:left;font-size:13px'>Descripción</th><th style='padding:12px;font-size:13px'>Cant.</th><th style='padding:12px;text-align:right;font-size:13px'>Total</th></tr><tr><td style='padding:12px;border-bottom:1px solid #e4e4e7'>${svc}</td><td style='padding:12px;border-bottom:1px solid #e4e4e7;text-align:center'>1</td><td style='padding:12px;border-bottom:1px solid #e4e4e7;text-align:right'>$${l.monto}</td></tr><tr style='font-weight:800;background:#fafafa'><td colspan='2' style='padding:12px;text-align:right'>TOTAL</td><td style='padding:12px;text-align:right;font-size:18px'>${l.monto} ${l.moneda}</td></tr></table><div style='text-align:center;margin:28px 0'><a href='${payUrl}' style='display:inline-block;background:#fbbf24;color:#111827;padding:14px 36px;border-radius:8px;text-decoration:none;font-weight:800'>💳 Pagar ahora</a></div><div style='background:#f8fafc;border-left:4px solid #111827;padding:16px;font-size:13px'><b>Datos de pago:</b><br>Alias: soderos.mp</div></body></html>`;\nconst b64 = Buffer.from(html, 'utf8').toString('base64');\nreturn [{ json: l, binary: { factura_html_file: { data: b64, mimeType: 'text/html', fileName: 'index.html', fileExtension: 'html' } } }];"
       },
       "id": "fbd489b7-a2c5-46a1-9c92-922c8caff89f",
       "name": "Code - Generar Factura HTML",
@@ -1612,7 +1612,7 @@
             "cliente": "={{ $('Code - Generar Factura HTML').item.json.nombre }}",
             "email": "={{ $('Code - Generar Factura HTML').item.json.email }}",
             "servicio": "={{ $('Code - Generar Factura HTML').item.json.servicio }}",
-            "monto": "={{ $('Code - Generar Factura HTML').item.json.presupuesto }}",
+            "monto": "={{ $('Code - Generar Factura HTML').item.json.monto }}",
             "fecha_emision": "={{ $('Code - Generar Factura HTML').item.json.fecha_emision_iso }}",
             "fecha_vencimiento": "={{ $('Code - Generar Factura HTML').item.json.fecha_vencimiento_iso }}",
             "mp_preference_id": "={{ $('Code - Generar Factura HTML').item.json.mp_preference_id }}",
@@ -2510,7 +2510,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const rows = $input.all();\nconst r = rows.length ? rows[0].json : null;\nif (!r || !r.lead_id) {\n  return [{ json: { status: 'invalido', mensaje: 'Enlace no válido o vencido.' } }];\n}\nconst activos = ['PROPUESTA_ENVIADA', 'EN_SEGUIMIENTO'];\nif (!activos.includes(r.estado)) {\n  return [{ json: { status: 'ya_procesado', mensaje: 'Este enlace ya fue usado.' } }];\n}\nreturn [{ json: { status: 'ok', lead: { nombre: r.nombre, servicio: r.servicio, presupuesto: Number(r.presupuesto) } } }];"
+        "jsCode": "const rows = $input.all();\nconst r = rows.length ? rows[0].json : null;\nif (!r || !r.lead_id) {\n  return [{ json: { status: 'invalido', mensaje: 'Enlace no válido o vencido.' } }];\n}\nconst activos = ['PROPUESTA_ENVIADA', 'EN_SEGUIMIENTO'];\nif (!activos.includes(r.estado)) {\n  return [{ json: { status: 'ya_procesado', mensaje: 'Este enlace ya fue usado.' } }];\n}\n// La pagina de aceptacion mostraba solo nombre, servicio y presupuesto, es\n// decir los tres datos que el propio cliente habia cargado en el formulario:\n// aceptaba una propuesta que esa pantalla no le mostraba. Se devuelven los\n// terminos que fijo el profesional, que son los que la propuesta compromete.\nconst precio = Number(r.precio_propuesto) > 0 ? Number(r.precio_propuesto) : Number(r.presupuesto) || 0;\nconst plazo = String(r.plazo_propuesto || '').trim() || ((r.urgencia === 'alta') ? '3-5 dias habiles' : '1-2 semanas');\nreturn [{ json: { status: 'ok', lead: {\n  nombre: r.nombre,\n  servicio: r.servicio,\n  presupuesto: Number(r.presupuesto),\n  precio: precio,\n  plazo: plazo,\n  alcance: String(r.alcance_propuesto || '').trim(),\n} } }];"
       },
       "id": "e1a2b3c4-0004-4f04-8a04-aa0000000004",
       "name": "Code - Armar Respuesta",
@@ -3748,7 +3748,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const l = $input.first().json;\nconst fid = 'FAC-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);\nconst vencISO = new Date(Date.now() + 15 * 86400000).toISOString();\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n// Comisión de la plataforma sobre el total facturado (MP_COMISION_PORCENTAJE,\n// 1% por defecto). Es contable: MercadoPago no la separa sola (ver RAMA 8).\nconst pct = Number(leerEnv('MP_COMISION_PORCENTAJE', '1')) || 0;\nconst monto = Number(l.presupuesto) || 0;\nconst moneda = leerEnv('MP_CURRENCY', 'ARS');\nconst comision = Math.round(monto * (pct / 100) * 100) / 100;\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst BASE = leerEnv('N8N_PUBLIC_URL', 'http://localhost:5678/').replace(/\\/+$/, '');\nconst FRONT = leerEnv('FRONTEND_URL', 'http://localhost:3000').replace(/\\/+$/, '');\n// Preferencia de pago de MercadoPago (Checkout Pro). Se crea en el próximo\n// nodo; acá solo se arma el cuerpo para no repetir esta lógica ahí.\nconst preferencia = {\n  items: [{ title: svc, quantity: 1, unit_price: monto, currency_id: moneda }],\n  external_reference: fid,\n  notification_url: BASE + '/webhook/mp/notificacion',\n  back_urls: {\n    success: FRONT + '/pago-exitoso',\n    pending: FRONT + '/pago-pendiente',\n    failure: FRONT + '/pago-fallido'\n  },\n  auto_return: 'approved'\n};\nreturn [{ json: Object.assign({}, l, { factura_id: fid, fecha_emision_iso: new Date().toISOString(), fecha_vencimiento_iso: vencISO, comision_plataforma: comision, moneda, mp_preference_body: preferencia }) }];"
+        "jsCode": "const l = $input.first().json;\nconst fid = 'FAC-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);\nconst vencISO = new Date(Date.now() + 15 * 86400000).toISOString();\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n// Comisión de la plataforma sobre el total facturado (MP_COMISION_PORCENTAJE,\n// 1% por defecto). Es contable: MercadoPago no la separa sola (ver RAMA 8).\nconst pct = Number(leerEnv('MP_COMISION_PORCENTAJE', '1')) || 0;\n// El importe que se factura es el que fijó el profesional al enviar la\n// propuesta, no el que el interesado declaró en el formulario. El respaldo\n// cubre las propuestas emitidas antes de que existiera precio_propuesto.\nconst monto = Number(l.precio_propuesto) > 0 ? Number(l.precio_propuesto) : Number(l.presupuesto) || 0;\nconst moneda = leerEnv('MP_CURRENCY', 'ARS');\nconst comision = Math.round(monto * (pct / 100) * 100) / 100;\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst BASE = leerEnv('N8N_PUBLIC_URL', 'http://localhost:5678/').replace(/\\/+$/, '');\nconst FRONT = leerEnv('FRONTEND_URL', 'http://localhost:3000').replace(/\\/+$/, '');\n// Preferencia de pago de MercadoPago (Checkout Pro). Se crea en el próximo\n// nodo; acá solo se arma el cuerpo para no repetir esta lógica ahí.\nconst preferencia = {\n  items: [{ title: svc, quantity: 1, unit_price: monto, currency_id: moneda }],\n  external_reference: fid,\n  notification_url: BASE + '/webhook/mp/notificacion',\n  back_urls: {\n    success: FRONT + '/pago-exitoso',\n    pending: FRONT + '/pago-pendiente',\n    failure: FRONT + '/pago-fallido'\n  },\n  auto_return: 'approved'\n};\nreturn [{ json: Object.assign({}, l, { factura_id: fid, fecha_emision_iso: new Date().toISOString(), fecha_vencimiento_iso: vencISO, comision_plataforma: comision, monto: monto, moneda, mp_preference_body: preferencia }) }];"
       },
       "id": "mp-01-0000-4000-8000-aaaaaaaaaaaa",
       "name": "Code - Generar ID Factura",
@@ -3982,6 +3982,160 @@
           "name": "Gmail account"
         }
       }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=📝 <b>Propuesta por enviar</b>\nCliente: {{ $json.nombre }}\nServicio: {{ $json.servicio }}\nNivel: {{ $json.tier }} ({{ $json.score }}/100)\nPresupuesto declarado: ${{ $json.presupuesto }}\n\nFijá precio, plazo y alcance desde el tablero para enviarla.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "b1a90001-0000-4b01-8b01-000000000001",
+      "name": "Telegram - Propuesta Por Enviar",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [
+        1650,
+        -80
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "Zv2UC716Fxh6BCDs",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "propuesta-enviar",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
+        },
+        "authentication": "headerAuth"
+      },
+      "id": "b1a90002-0000-4b02-8b02-000000000002",
+      "name": "📝 Webhook - Enviar Propuesta",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        150,
+        9000
+      ],
+      "webhookId": "propuesta-enviar",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "CRM - Header Auth (panel)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $input.first().json.body || {};\nif (!b.lead_id) throw new Error('Falta lead_id');\nconst precio = Number(b.precio);\nif (!Number.isFinite(precio) || precio <= 0) throw new Error('El precio de la propuesta tiene que ser mayor que cero');\n// Plazo y alcance son texto libre del profesional: se recortan, no se inventan.\nconst plazo = String(b.plazo || '').trim().substring(0, 120);\nconst alcance = String(b.alcance || '').trim().substring(0, 2000);\nreturn [{ json: { lead_id: b.lead_id, precio: precio, plazo: plazo, alcance: alcance } }];"
+      },
+      "id": "b1a90003-0000-4b03-8b03-000000000003",
+      "name": "Code - Leer Terminos Propuesta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        9000
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE leads SET precio_propuesto = {{ $json.precio }}, plazo_propuesto = $2, alcance_propuesto = $3 WHERE lead_id = $1 AND estado = 'NUEVO' AND tier IN ('HOT','WARM') RETURNING *;",
+        "options": {
+          "queryReplacement": "={{ $json.lead_id }}, {{ $json.plazo }}, {{ $json.alcance }}"
+        }
+      },
+      "id": "b1a90004-0000-4b04-8b04-000000000004",
+      "name": "Postgres - Guardar Terminos",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        650,
+        9000
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "terminos-aplicaron",
+              "leftValue": "={{ $json.lead_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b1a90005-0000-4b05-8b05-000000000005",
+      "name": "IF - Terminos Aplicaron?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        900,
+        9000
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"ok\", \"mensaje\": \"Propuesta enviada al cliente.\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "b1a90006-0000-4b06-8b06-000000000006",
+      "name": "Respond - Propuesta Enviada",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1400,
+        8900
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"invalido\", \"mensaje\": \"El lead ya no está esperando propuesta.\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "b1a90007-0000-4b07-8b07-000000000007",
+      "name": "Respond - Propuesta No Aplica",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1150,
+        9150
+      ]
     }
   ],
   "connections": {
@@ -4138,7 +4292,7 @@
       "main": [
         [
           {
-            "node": "Code - Generar Propuesta",
+            "node": "Telegram - Propuesta Por Enviar",
             "type": "main",
             "index": 0
           }
@@ -5219,6 +5373,62 @@
         [
           {
             "node": "Respond - Notificacion MP Ignorada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📝 Webhook - Enviar Propuesta": {
+      "main": [
+        [
+          {
+            "node": "Code - Leer Terminos Propuesta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Leer Terminos Propuesta": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Guardar Terminos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Guardar Terminos": {
+      "main": [
+        [
+          {
+            "node": "IF - Terminos Aplicaron?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Terminos Aplicaron?": {
+      "main": [
+        [
+          {
+            "node": "Respond - Propuesta Enviada",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code - Generar Propuesta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Propuesta No Aplica",
             "type": "main",
             "index": 0
           }

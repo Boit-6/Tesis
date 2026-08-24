@@ -3,6 +3,10 @@
 import {type ReactNode, useEffect, useState} from "react";
 
 const N8N_BASE = process.env.NEXT_PUBLIC_N8N_BASE;
+// Dirección a la que se invita a escribir cuando el enlace ya no sirve. Las
+// pantallas de error decían "escribinos" sin decir dónde: en la página que
+// cierra la venta, un callejón sin salida.
+const CONTACTO = process.env.NEXT_PUBLIC_EMAIL_CONTACTO;
 const HEADERS = {
   "Content-Type": "application/json",
   "ngrok-skip-browser-warning": "true",
@@ -26,6 +30,12 @@ interface LeadInfo {
   nombre?: string;
   servicio?: string;
   presupuesto?: number;
+  // Términos que fijó el profesional al enviar la propuesta. Antes esta pantalla
+  // sólo repetía lo que el cliente había cargado en el formulario, de modo que
+  // aceptaba —y con ello disparaba una factura— sin ver la propuesta.
+  precio?: number;
+  plazo?: string;
+  alcance?: string;
 }
 
 interface ApiResponse {
@@ -122,7 +132,7 @@ function buildContent(
         ),
         accent: "text-muted",
         title: "Enlace ya usado",
-        message: mensaje ?? "Este enlace ya fue usado. Si tenés dudas, escribinos.",
+        message: mensaje ?? "Este enlace ya fue usado.",
       };
     case "invalido":
       return {
@@ -158,6 +168,15 @@ function StatusView({accent, icon, title, message}: StatusContent) {
       <span className={accent}>{icon}</span>
       <h2 className="text-ink font-serif text-[32px] leading-none tracking-tight">{title}</h2>
       <p className="text-muted max-w-sm text-[14.5px] leading-relaxed">{message}</p>
+      {CONTACTO ? (
+        <p className="text-faint max-w-sm text-[13px] leading-relaxed">
+          ¿Necesitás una mano? Escribinos a{" "}
+          <a className="text-ochre underline-offset-4 hover:underline" href={`mailto:${CONTACTO}`}>
+            {CONTACTO}
+          </a>
+          .
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -195,17 +214,41 @@ function ConfirmarView({
         {lead?.nombre ? `Hola, ${lead.nombre}.` : "Hola."}
       </h2>
       <p className="text-muted max-w-sm text-[14.5px] leading-relaxed">
-        Te enviamos la propuesta de <span className="text-ink capitalize">{servicio}</span>
-        {lead?.presupuesto != null ? (
-          <>
-            {" "}
-            por{" "}
-            <span className="text-ochre font-serif text-[19px]">
-              ${lead.presupuesto.toLocaleString("es-AR")} USD
-            </span>
-          </>
+        Esta es la propuesta que preparamos para tu proyecto. Revisala antes de confirmar.
+      </p>
+
+      {/* Los mismos términos que viajan en el correo, repetidos acá: aceptar
+          emite una factura, así que el cliente tiene que poder leer qué acepta
+          sin volver a buscar el mail. */}
+      <dl className="border-rule-soft w-full max-w-sm border-t text-[14.5px]">
+        <div className="border-rule-soft flex justify-between gap-6 border-b py-3">
+          <dt className="text-faint">Servicio</dt>
+          <dd className="text-ink capitalize">{servicio}</dd>
+        </div>
+        {lead?.plazo ? (
+          <div className="border-rule-soft flex justify-between gap-6 border-b py-3">
+            <dt className="text-faint">Entrega</dt>
+            <dd className="text-ink">{lead.plazo}</dd>
+          </div>
         ) : null}
-        . ¿Cómo querés seguir?
+        {lead?.alcance ? (
+          <div className="border-rule-soft flex flex-col gap-1 border-b py-3">
+            <dt className="text-faint">Alcance</dt>
+            <dd className="text-ink leading-relaxed whitespace-pre-line">{lead.alcance}</dd>
+          </div>
+        ) : null}
+        {lead?.precio != null ? (
+          <div className="border-rule-soft flex items-baseline justify-between gap-6 border-b py-3">
+            <dt className="text-faint">Inversión</dt>
+            <dd className="text-ochre font-serif text-[24px]">
+              ${lead.precio.toLocaleString("es-AR")} USD
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+
+      <p className="text-faint max-w-sm text-[13px] leading-relaxed">
+        Al aceptar te enviamos la factura por email. ¿Cómo querés seguir?
       </p>
       <div className="flex w-full max-w-sm flex-col gap-3">
         <button

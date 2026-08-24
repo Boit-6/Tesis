@@ -25,6 +25,7 @@ const ACCIONES: Record<string, string> = {
   "cambio-rechazar": "cambio-rechazar",
   "trabajo-estado": "trabajo-estado",
   cerrar: "proyecto-cerrado",
+  "propuesta-enviar": "propuesta-enviar",
 };
 
 export async function POST(request: NextRequest, {params}: {params: Promise<{accion: string}>}) {

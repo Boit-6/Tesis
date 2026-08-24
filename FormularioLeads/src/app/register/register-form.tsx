@@ -2,7 +2,6 @@
 
 import {useState} from "react";
 import Link from "next/link";
-import {useRouter} from "next/navigation";
 
 import {createClient} from "@/lib/supabase/client";
 import {translateAuthError} from "@/lib/supabase/auth-errors";
@@ -23,13 +22,13 @@ function validate(email: string, password: string, confirmPassword: string): str
 }
 
 export default function RegisterForm() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checkEmail, setCheckEmail] = useState(false);
+  const [sesionActiva, setSesionActiva] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -63,14 +62,11 @@ export default function RegisterForm() {
 
       if (signUpError) throw signUpError;
 
-      // Si el proyecto tiene "Confirm email" desactivado, signUp ya devuelve una sesión activa.
-      if (data.session) {
-        router.push("/dashboard");
-        router.refresh();
-
-        return;
-      }
-
+      // Si el proyecto tiene "Confirm email" desactivado, signUp ya devuelve una
+      // sesión activa. Aun así no se redirige al panel: toda cuenta nueva nace
+      // con rol de usuario y el panel la devolvería a la portada sin decir por
+      // qué. Se informa acá, que es donde la persona está mirando.
+      setSesionActiva(Boolean(data.session));
       setCheckEmail(true);
     } catch (err) {
       setError(translateAuthError(err, "No pudimos crear la cuenta."));
@@ -96,10 +92,21 @@ export default function RegisterForm() {
           <path d="M3.5 6.5l8.5 6 8.5-6" />
         </svg>
         <h2 className="text-ink font-serif text-[32px] leading-none tracking-tight">
-          Revisá tu correo.
+          {sesionActiva ? "Cuenta creada." : "Revisá tu correo."}
         </h2>
         <p className="text-muted max-w-xs text-[14.5px] leading-relaxed">
-          Te enviamos un link de confirmación a {email}. Confirmalo para poder iniciar sesión.
+          {sesionActiva
+            ? `Tu cuenta ${email} quedó creada.`
+            : `Te enviamos un link de confirmación a ${email}. Confirmalo para poder iniciar sesión.`}
+        </p>
+        {/* El panel exige rol de administrador (§4.2.3) y toda cuenta nueva nace
+            con rol de usuario, así que confirmar el correo no alcanza para
+            entrar. Antes esto no se decía en ninguna parte: la cuenta se creaba,
+            el registro redirigía al panel y el panel devolvía a la portada sin
+            explicación. */}
+        <p className="text-faint max-w-xs text-[13px] leading-relaxed">
+          El acceso al panel lo habilita un administrador. Hasta entonces vas a poder iniciar sesión
+          pero no ver el tablero.
         </p>
       </div>
     );

@@ -64,6 +64,10 @@ const sample = {
     token: '550e8400-e29b-41d4-a716-446655440000',
     estado: 'EN_PROGRESO',
     mensaje: 'Quiero sumar una pasarela de pagos.',
+    // Términos que fija el profesional al enviar la propuesta.
+    precio: 7200,
+    plazo: '3 semanas',
+    alcance: 'Sitio de 5 secciones y puesta en produccion.',
     nombre: 'Juan Pérez', email: 'JUAN@test.com', presupuesto: '6000', urgencia: 'ALTA',
     servicio: 'ecommerce', telefono: '+541155555555',
     descripcion: 'Necesito una tienda online completa con varias funcionalidades.',
