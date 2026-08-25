@@ -1095,3 +1095,63 @@ Figura 6.
 
 `npm test` 39+10+16 OK y 0 divergentes · `test:sql` 24 · `test:escenarios` **12/12 en tres corridas
 seguidas** · typecheck y lint limpios.
+
+---
+
+## Octava pasada — los avisos que piden algo y no dan cómo hacerlo, 24-ago-2026
+
+Revisión de las zonas que las dos pasadas de producto anteriores no habían tocado: el tablero de
+tickets, los correos que el sistema manda solo y el reporte diario.
+
+### Tres avisos reclamaban una acción sin ofrecer la forma de ejecutarla
+
+- **El recordatorio de pago no traía enlace para pagar.** Los cuatro escalones —recordatorio, vence
+  hoy, vencida, urgente— reclamaban el cobro de una factura y no incluían ningún botón. El sistema
+  calculaba el enlace al emitir el comprobante (`Code - Resolver Link de Pago`: el checkout de
+  MercadoPago o el endpoint del modo de desarrollo) pero **lo descartaba**, porque vivía sólo en esa
+  ejecución. Se agregó la columna `facturas.pay_url`, se persiste al emitir y los cuatro avisos lo
+  ofrecen. Es la clase de defecto que no rompe ninguna prueba y cuesta cobranzas.
+- **El correo de seguimiento preguntaba «¿pudiste ver la propuesta?» sin adjuntarla.** El segundo
+  mensaje llega a invitar explícitamente a pedir cambios —«¿hay algo que quieras ajustar o
+  revisar?»—, y esa acción vive detrás de un enlace que el correo no daba: el cliente tenía que
+  rescatar un correo de días atrás. Los tres mensajes llevan ahora el enlace a la propuesta.
+- **Dos de los cuatro escalones de recordatorio dependían de una igualdad exacta de días.**
+  `dias === 3` y `dias === 0`: una corrida perdida del cron los salteaba en silencio y para siempre,
+  y entre el día 3 y el vencimiento no había ningún aviso. El escalón de recordatorio pasa a cubrir
+  el rango de uno a tres días.
+
+### El reporte diario no se emitía cuando más falta hacía
+
+`Postgres - Leer Metricas` consultaba `metrics_mensuales` por el mes en curso, y **la vista no
+devuelve fila cuando el mes no tiene actividad**: el proceso se detenía sin enviar nada. Es
+exactamente la razón por la que E13 nunca produjo evidencia, documentada hasta hoy como una
+limitación de los datos de prueba cuando en realidad era del propio flujo. La consulta parte ahora
+de una fila sintética del mes y hace una reunión externa con la vista, de modo que el reporte sale
+siempre.
+
+Se le agregó además, encabezando el mensaje, **el recuento de propuestas que esperan términos**. Es
+la mitigación que faltaba para el riesgo que la séptima pasada había declarado: el lead calificado
+que queda en `NUEVO` ya no depende sólo de que el profesional recuerde mirar el tablero.
+
+Comprobado contra la base real: la consulta devuelve `mes = 2026-08`, `total_leads = 2`,
+`propuestas_pendientes = 4`. **Y esos cuatro merecen una mirada**: uno es el lead de demostración de
+hoy, pero los otros tres son leads reales calificados HOT y WARM que están en `NUEVO` desde el 29 de
+junio y el 2 de julio. Son instancias vivas de la ventana de inconsistencia que §4.3.1 declara —el
+lead se persiste antes de puntuarse y un fallo lo deja ahí para siempre— y llevaban dos meses sin
+que nadie los viera. El recuento nuevo los saca a la luz todas las noches.
+
+### El tablero de tickets, revisado y sin hallazgos
+
+Alta rápida, columnas con recuento, arrastrar y soltar con botones de anterior y siguiente como
+alternativa accesible, aviso de truncado a los cien y nota de que la prioridad sube sola. Es, de
+hecho, el único lugar del frontend que ya advertía que su lista estaba topeada; el tablero de leads
+no lo hacía hasta que se corrigió en la primera pasada de producto.
+
+### Verificación
+
+`npm test` 39+10+16 OK y 0 divergentes · `test:sql` 24 · `test:escenarios` **12/12 en tres corridas
+seguidas**, con una aserción nueva que exige que la factura haya guardado su enlace de pago.
+
+El `.docx` quedó al día: §4.3.5 (los tres procesos programados), la fila `pay_url` en la Tabla 7 y
+la celda de E13, que pasa de «requiere una corrida que persista datos» a «pendiente sólo la captura
+del mensaje», porque la causa real ya está corregida y comprobada.

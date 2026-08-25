@@ -417,6 +417,11 @@ const ESCENARIOS = [
     // que fijó el profesional, no el presupuesto que el interesado declaró en
     // el formulario público. Sin esta aserción el escenario pasaría igual con
     // el comportamiento viejo.
+    // Los recordatorios de vencimiento reclaman el pago días después, cuando el
+    // enlace ya no está en memoria: si no quedó guardado con la factura, esos
+    // avisos vuelven a salir sin ninguna forma de pagar.
+    t.verdad(!!primera.pay_url, `la factura guardó el enlace de pago (${String(primera.pay_url).slice(0, 48)}…)`);
+
     t.igual(
       Number(primera.monto),
       Number(lead.precio_propuesto),

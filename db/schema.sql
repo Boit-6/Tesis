@@ -186,6 +186,13 @@ DO $$ BEGIN
     CHECK (comision_plataforma >= 0) NOT VALID;
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
+-- Enlace de pago de la factura (para bases ya creadas). Se calculaba al emitir
+-- el comprobante y vivía sólo en esa ejecución, de modo que los recordatorios
+-- de vencimiento —que leen la factura días después— reclamaban el pago sin
+-- poder ofrecer ninguna forma de hacerlo. Guardarlo con la factura, que es de
+-- lo que es propiedad, permite que cualquier aviso posterior lo incluya.
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS pay_url TEXT;
+
 -- Términos que fija el profesional antes de enviar la propuesta (para bases ya
 -- creadas). Hasta su incorporación, el precio de la propuesta y el monto de la
 -- factura salían de `leads.presupuesto`, es decir del valor que el propio
