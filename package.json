@@ -10,6 +10,7 @@
     "test:tickets": "node tests/tickets_envejecimiento.js",
     "test:afirmaciones": "node tests/verificar_afirmaciones.js",
     "test:rls": "node tests/verificar_rls.mjs",
+    "test:realtime": "node scripts/medir-realtime.mjs",
     "test:sql": "node tests/verificar_sql.mjs",
     "test:docker": "npm run test:sql && npm run test:rls",
     "test:escenarios": "node tests/escenarios.mjs",
