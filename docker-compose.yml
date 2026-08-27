@@ -53,6 +53,11 @@ services:
       # puede acceder al módulo aunque MP_WEBHOOK_SECRET esté configurado.
       - NODE_FUNCTION_ALLOW_BUILTIN=crypto
       # ── Cobro con MercadoPago (RAMA 8) ─────────────────────────────────────
+      # Base de la API de MercadoPago. El default es el servicio real, de modo
+      # que no cambia el comportamiento de producción. Se parametriza para poder
+      # apuntar los dos nodos HTTP a un doble de prueba local y ejercitar el
+      # escenario E14 sin depender del sandbox del proveedor (tests/mp-doble.mjs).
+      - MP_API_BASE=${MP_API_BASE:-https://api.mercadopago.com}
       - MP_ACCESS_TOKEN=${MP_ACCESS_TOKEN:-}
       - MP_CURRENCY=${MP_CURRENCY:-ARS}
       - MP_COMISION_PORCENTAJE=${MP_COMISION_PORCENTAJE:-1}

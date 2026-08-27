@@ -1,0 +1,88 @@
+{
+  "name": "TEMP - sembrar factura E14 (borrar)",
+  "id": "tmpSembrarE14",
+  "active": false,
+  "settings": {},
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sembrar-e14",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "s-01-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "WH",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "sembrar-e14"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO facturas (factura_id, lead_id, cliente, email, servicio, monto, moneda, estado_pago, mp_preference_id, fecha_vencimiento) VALUES ($1, $2, 'Cliente Demo E14', $3, 'desarrollo_web', 7200, 'ARS', 'PENDIENTE', $4, now() + interval '15 days') ON CONFLICT (factura_id) DO NOTHING RETURNING factura_id, lead_id, estado_pago, mp_preference_id, mp_payment_id, monto;",
+        "options": {
+          "queryReplacement": "={{ $json.body.factura_id }},{{ $json.body.lead_id }},{{ $json.body.email }},{{ $json.body.pref_id }}"
+        }
+      },
+      "id": "s-02-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "PG",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        220,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "s-03-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Resp",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        440,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "WH": {
+      "main": [
+        [
+          {
+            "node": "PG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG": {
+      "main": [
+        [
+          {
+            "node": "Resp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {}
+}

@@ -1,0 +1,88 @@
+{
+  "name": "TEMP - consulta E14 (borrar)",
+  "id": "tmpConsultaE14",
+  "active": false,
+  "settings": {},
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "consulta-e14",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "q-01-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Webhook Consulta",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "consulta-e14"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT l.lead_id, l.email, l.estado, l.tier, l.score, l.accept_token, l.precio_propuesto, f.factura_id, f.estado_pago, f.mp_payment_id, f.mp_preference_id, f.monto FROM leads l LEFT JOIN facturas f ON f.lead_id = l.lead_id WHERE l.email = $1;",
+        "options": {
+          "queryReplacement": "={{ $json.query.email }}"
+        }
+      },
+      "id": "q-02-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Postgres Consulta",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [
+        220,
+        0
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "q-03-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Responder",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        440,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Consulta": {
+      "main": [
+        [
+          {
+            "node": "Postgres Consulta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Consulta": {
+      "main": [
+        [
+          {
+            "node": "Responder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {}
+}

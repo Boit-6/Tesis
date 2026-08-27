@@ -1,0 +1,117 @@
+{
+  "name": "TEMP - verif MP_API_BASE (borrar)",
+  "id": "tmpVerifMpBase",
+  "active": false,
+  "settings": {},
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "verif-mp-base",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "v-01-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "WH",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "verif-mp-base"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ref = ($input.first().json.body||{}).external_reference || 'FAC-VERIF-0001';return [{json:{mp_preference_body:{items:[{title:'E14 verificacion',quantity:1,unit_price:7200,currency_id:'ARS'}],external_reference:ref,notification_url:'http://localhost:5678/webhook/mp/notificacion',back_urls:{success:'x',pending:'y',failure:'z'},auto_return:'approved'}}}];"
+      },
+      "id": "v-02-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Body",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.MP_API_BASE || 'https://api.mercadopago.com' }}/checkout/preferences",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.MP_ACCESS_TOKEN || '' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.mp_preference_body) }}",
+        "options": {}
+      },
+      "id": "v-03-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "MP Crear Preferencia",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        400,
+        0
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "v-04-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Resp",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        600,
+        0
+      ]
+    }
+  ],
+  "connections": {
+    "WH": {
+      "main": [
+        [
+          {
+            "node": "Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Body": {
+      "main": [
+        [
+          {
+            "node": "MP Crear Preferencia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MP Crear Preferencia": {
+      "main": [
+        [
+          {
+            "node": "Resp",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {}
+}
