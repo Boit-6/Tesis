@@ -11,6 +11,7 @@
     "test:afirmaciones": "node tests/verificar_afirmaciones.js",
     "test:rls": "node tests/verificar_rls.mjs",
     "test:realtime": "node scripts/medir-realtime.mjs",
+    "test:carga": "node scripts/medir-carga-administrativa.mjs",
     "test:sql": "node tests/verificar_sql.mjs",
     "test:docker": "npm run test:sql && npm run test:rls",
     "test:escenarios": "node tests/escenarios.mjs",
