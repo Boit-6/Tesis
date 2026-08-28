@@ -67,10 +67,15 @@ let codigoSalida = 0;
 // contenedor —donde funciona—, pero en Linux lo expande la shell de afuera e
 // inserta saltos de línea que rompen el `for`. El resultado era una verificación
 // que pasaba en la máquina de desarrollo y fallaba en CI.
-function esperarPostgres(intentos = 60) {
+function esperarPostgres(intentos = 120) {
   for (let i = 0; i < intentos; i++) {
     try {
-      execFileSync('docker', ['exec', CONTENEDOR, 'pg_isready', '-q', '-U', 'postgres'],
+      // `-h 127.0.0.1` fuerza TCP a propósito. Durante initdb, la imagen de
+      // postgres levanta un servidor temporal que escucha SÓLO por socket Unix
+      // (listen_addresses=''), y un pg_isready sin -h lo da por bueno: la
+      // verificación seguía y psql fallaba al conectarse un instante después.
+      execFileSync('docker',
+        ['exec', CONTENEDOR, 'pg_isready', '-q', '-h', '127.0.0.1', '-p', '5432', '-U', 'postgres'],
         {stdio: 'ignore'});
       return;
     } catch {
