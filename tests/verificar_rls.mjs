@@ -75,13 +75,33 @@ WHERE f.estado_pago = 'PENDIENTE';
 
 let codigoSalida = 0;
 
+// Espera a que PostgreSQL acepte conexiones. El bucle vive acá y no dentro de
+// `sh -c "for i in $(seq 1 60); …"`, que es como estaba: en Windows execSync
+// usa cmd.exe, que no expande `$(seq 1 60)` y se lo pasa intacto a la shell del
+// contenedor —donde funciona—, pero en Linux lo expande la shell de afuera e
+// inserta saltos de línea que rompen el `for`. El resultado era una verificación
+// que pasaba en la máquina de desarrollo y fallaba en CI.
+function esperarPostgres(intentos = 60) {
+  for (let i = 0; i < intentos; i++) {
+    try {
+      execFileSync('docker', ['exec', CONTENEDOR, 'pg_isready', '-q', '-U', 'postgres'],
+        {stdio: 'ignore'});
+      return;
+    } catch {
+      // Espera sincrónica de 500 ms sin depender de la shell.
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);
+    }
+  }
+  throw new Error('PostgreSQL no aceptó conexiones dentro del tiempo previsto.');
+}
+
 try {
   console.log('· Levantando ' + IMAGEN + ' …');
   limpiar();
   sh(`docker run -d --name ${CONTENEDOR} -e POSTGRES_PASSWORD=postgres ${IMAGEN}`);
 
   // Esperar a que acepte conexiones (el sleep corre dentro del contenedor).
-  sh(`docker exec ${CONTENEDOR} sh -c "for i in $(seq 1 60); do pg_isready -q -U postgres && exit 0; sleep 0.5; done; exit 1"`);
+  esperarPostgres();
 
   console.log('· Andamiaje de Supabase (roles, auth.users, auth.uid) …');
   psql(path.join(aqui, 'rls', 'bootstrap.sql'));
