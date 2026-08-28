@@ -159,6 +159,7 @@ npm test
 | `test:humo` | Ejecuta el JavaScript de los **41 nodos `Code`** de los dos workflows con mocks de n8n (`$input`, `$`, `$json`, `$env`), para detectar errores de runtime sin levantar nada |
 | `test:scoring` | Que la calificación de leads dé **idéntico a la Tabla 4** de la tesis en 9240 combinaciones, y que los umbrales sigan siendo configurables |
 | `test:tickets` | La regla de envejecimiento: que el ticket olvidado suba de prioridad, que el que se está atendiendo no, y que un tablero sin cambios no genere ni una llamada a la API |
+| `test:autherrores` | El RNF5 en su mitad medible: que los **22 códigos** de error que Supabase Auth puede devolver en los flujos que usa la aplicación (`signUp`, `signInWithPassword` y `verifyOtp`) tengan mensaje en español. El conjunto alcanzable se declara código por código, con la operación que lo origina |
 | `test:parametros` | Cómo los **28 nodos Postgres** le pasan los valores a su consulta: que usen la forma de arreglo (con la forma de texto n8n descarta los valores vacíos y parte los que traen comas), que la cantidad coincida con los `$N` del SQL y que ningún dato viaje concatenado dentro de la consulta |
 | `test:afirmaciones` | Que los números que afirma la tesis (nodos, webhooks, tablas, umbrales) sigan siendo ciertos sobre el código |
 

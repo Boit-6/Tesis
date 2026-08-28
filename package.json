@@ -4,9 +4,10 @@
   "private": true,
   "description": "CRM freelance automatizado con n8n — trabajo final de tesis",
   "scripts": {
-    "test": "npm run test:humo && npm run test:scoring && npm run test:tickets && npm run test:parametros && npm run test:afirmaciones",
+    "test": "npm run test:humo && npm run test:scoring && npm run test:tickets && npm run test:parametros && npm run test:autherrores && npm run test:afirmaciones",
     "test:humo": "node tests/smoke_code_nodes.js",
     "test:parametros": "node tests/parametros_sql.js",
+    "test:autherrores": "node tests/auth_errores.js",
     "test:scoring": "node tests/scoring.js",
     "test:tickets": "node tests/tickets_envejecimiento.js",
     "test:afirmaciones": "node tests/verificar_afirmaciones.js",
@@ -21,6 +22,7 @@
   },
   "comentarioScripts": {
     "test": "Suite offline: no necesita n8n, ni base, ni credenciales. Es la que corre en CI.",
+    "test:autherrores": "Verifica el RNF5: que los 22 códigos de error que Supabase Auth puede devolver en los flujos de la aplicación (signUp, signInWithPassword y verifyOtp) tengan mensaje en español. El conjunto alcanzable se declara código por código, con la operación que lo origina.",
     "test:parametros": "Revisa cómo cada nodo Postgres le pasa los valores a su consulta: exige la forma de arreglo (n8n descarta los valores vacíos y parte los que traen comas cuando se usa la forma de texto), que la cantidad coincida con los $N del SQL y que ningún dato viaje concatenado dentro del texto de la consulta.",
     "test:rls": "Levanta un PostgreSQL desechable en Docker y ejecuta las políticas RLS de db/schema.sql.",
     "test:sql": "Compila con PREPARE las 28 consultas SQL de los workflows contra el esquema real: detecta columnas mal escritas y tipos incompatibles sin ejecutar nada.",
