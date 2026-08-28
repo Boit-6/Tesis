@@ -7,6 +7,11 @@ out/
 .env
 .env.local
 .env*.local
+# Copias de respaldo del .env: `.env` sola no las cubre y el 28-ago-2026 una de
+# ellas se coló en un commit (se retiró antes de pushear).
+.env.bak-*
+.env.*.bak
+*.env.bak
 
 # Datos persistentes de n8n (docker compose)
 n8n_data/
