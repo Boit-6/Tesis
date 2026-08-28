@@ -1,6 +1,6 @@
 "use client";
 
-import {useState} from "react";
+import {useRef, useState} from "react";
 
 const N8N_BASE = process.env.NEXT_PUBLIC_N8N_BASE;
 const WEBHOOK_URL = `${N8N_BASE}/webhook/lead/nuevo`;
@@ -84,6 +84,15 @@ export default function LeadForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  // Cerrojo de envío (deuda S6 de la Tabla 11). El `disabled={loading}` del
+  // botón depende de que React vuelva a renderizar, y `setLoading(true)` no es
+  // inmediato: entre el primer clic y el repintado hay una ventana en la que un
+  // segundo clic —o un Enter repetido— entra igual a `handleSubmit`. La
+  // referencia se actualiza de forma síncrona y cierra esa ventana. Es la mitad
+  // de la mitigación: la otra es la deduplicación por correo del backend, que
+  // es la que vale, porque el navegador no es un lugar donde apoyar una
+  // garantía (el webhook es público y `fetch` se puede repetir a mano).
+  const enviando = useRef(false);
 
   const sliderPercent =
     ((formData.presupuesto - PRESUPUESTO_MIN) / (PRESUPUESTO_MAX - PRESUPUESTO_MIN)) * 100;
@@ -102,6 +111,9 @@ export default function LeadForm() {
   }
 
   async function handleSubmit() {
+    // Si ya hay un envío en vuelo, este clic no existe.
+    if (enviando.current) return;
+
     setError(null);
     const validationError = validate(formData);
 
@@ -117,6 +129,7 @@ export default function LeadForm() {
       return;
     }
 
+    enviando.current = true;
     setLoading(true);
     try {
       const response = await fetch(WEBHOOK_URL, {
@@ -142,6 +155,9 @@ export default function LeadForm() {
           : "Ocurrió un error al enviar el formulario. Intentá de nuevo.",
       );
     } finally {
+      // Se libera siempre: si el envío falló hay que poder reintentar, y si
+      // salió bien la pantalla ya pasó a «¡Gracias!» y el formulario no existe.
+      enviando.current = false;
       setLoading(false);
     }
   }

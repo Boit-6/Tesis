@@ -13,14 +13,16 @@
     "test:realtime": "node scripts/medir-realtime.mjs",
     "test:carga": "node scripts/medir-carga-administrativa.mjs",
     "test:sql": "node tests/verificar_sql.mjs",
-    "test:docker": "npm run test:sql && npm run test:rls",
+    "test:idempotencia": "node tests/idempotencia.mjs",
+    "test:docker": "npm run test:sql && npm run test:rls && npm run test:idempotencia",
     "test:escenarios": "node tests/escenarios.mjs",
     "setup:tickets": "node scripts/setup-notion-tickets.mjs"
   },
   "comentarioScripts": {
     "test": "Suite offline: no necesita n8n, ni base, ni credenciales. Es la que corre en CI.",
     "test:rls": "Levanta un PostgreSQL desechable en Docker y ejecuta las políticas RLS de db/schema.sql.",
-    "test:sql": "Compila con PREPARE las 23 consultas SQL de los workflows contra el esquema real: detecta columnas mal escritas y tipos incompatibles sin ejecutar nada.",
+    "test:sql": "Compila con PREPARE las 28 consultas SQL de los workflows contra el esquema real: detecta columnas mal escritas y tipos incompatibles sin ejecutar nada.",
+    "test:idempotencia": "Ejecuta de verdad las consultas de deduplicación (S6) y reconciliación de facturas (S5) sobre un PostgreSQL desechable con el esquema real. El SQL se lee del propio workflow: si un nodo deja de ser idempotente, se pone en rojo.",
     "test:escenarios": "Validación funcional de punta a punta: necesita n8n publicado y la base configurada (ver .env.example)."
   },
   "engines": {

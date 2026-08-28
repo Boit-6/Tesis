@@ -44,10 +44,15 @@ function medirImportes() {
   const wf = leerWorkflow('crm_postgres.json');
   const sospechoso = /(monto|cobrado|inversion|inversión|por <b>\$)[^"]{0,80}\.presupuesto/i;
 
+  // Los nodos que ELIGEN entre un campo y otro son justamente los que resuelven
+  // la ambigüedad: no cuentan como uso incorrecto. El segundo es la versión del
+  // primero dentro del cron de reconciliación (S5): aplica el mismo criterio
+  // —manda `precio_propuesto`, `presupuesto` es sólo el respaldo de las
+  // propuestas emitidas antes de que existiera la columna—.
+  const resuelvenLaAmbiguedad = ['Code - Generar ID Factura', 'Code - Preparar Factura Reconciliada'];
+
   return wf.nodes.filter((n) => {
-    // El nodo que elige entre un campo y otro es justamente el que resuelve la
-    // ambigüedad: no cuenta como uso incorrecto.
-    if (n.name === 'Code - Generar ID Factura') return false;
+    if (resuelvenLaAmbiguedad.includes(n.name)) return false;
 
     return sospechoso.test(JSON.stringify(n.parameters || {}));
   }).length;

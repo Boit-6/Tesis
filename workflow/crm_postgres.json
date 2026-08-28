@@ -2,8 +2,8 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## 🔵 Captación y calificación (RAMA 1)\nCapta el lead del formulario → normaliza → **score/tier** → lo guarda.\nSi es HOT/WARM: propuesta por email + card en Notion + Telegram. Si es COLD: solo aviso.",
-        "height": 470,
+        "content": "## 🔵 Captación y calificación (RAMA 1)\nCapta el lead del formulario → normaliza → **score/tier** → lo guarda.\nSi es HOT/WARM: propuesta por email + card en Notion + Telegram. Si es COLD: solo aviso.\n\n**Idempotencia (S6):** el INSERT es condicional — no inserta si ya entró un lead con el **mismo correo** dentro de `DEDUP_VENTANA_MINUTOS` (10 por defecto). Sin fila, `IF - Lead Nuevo?` corta en `No-op - Lead Duplicado`: ni segundo score ni segunda propuesta. El webhook ya respondió 200 al enviar, así que el que hizo doble clic ve éxito igual.\nEl `WHERE NOT EXISTS` **solo no alcanza**: dos peticiones solapadas abren transacciones distintas y, bajo READ COMMITTED, ninguna ve la fila que la otra no commiteó todavía (comprobado: dos POST simultáneos insertaban dos leads). Por eso va delante `pg_try_advisory_xact_lock` sobre el correo, que solo una de las dos transacciones consigue.",
+        "height": 650,
         "width": 3930,
         "color": 4
       },
@@ -649,379 +649,11 @@
     },
     {
       "parameters": {
-        "schema": {
-          "__rl": true,
-          "mode": "list",
-          "value": "public"
-        },
-        "table": {
-          "__rl": true,
-          "mode": "list",
-          "value": "leads"
-        },
-        "columns": {
-          "mappingMode": "defineBelow",
-          "value": {
-            "lead_id": "={{ $json.lead_id }}",
-            "nombre": "={{ $json.nombre }}",
-            "email": "={{ $json.email }}",
-            "telefono": "={{ $json.telefono }}",
-            "presupuesto": "={{ $json.presupuesto }}",
-            "urgencia": "={{ $json.urgencia }}",
-            "servicio": "={{ $json.servicio }}",
-            "descripcion": "={{ $json.descripcion }}",
-            "fuente": "={{ $json.fuente }}",
-            "score": "={{ $json.score }}",
-            "tier": "={{ $json.tier }}",
-            "seguimientos": 0,
-            "dias_ciclo_completo": 0
-          },
-          "matchingColumns": [
-            "id"
-          ],
-          "schema": [
-            {
-              "id": "id",
-              "displayName": "id",
-              "required": false,
-              "defaultMatch": true,
-              "display": true,
-              "type": "number",
-              "canBeUsedToMatch": true,
-              "removed": true
-            },
-            {
-              "id": "lead_id",
-              "displayName": "lead_id",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "nombre",
-              "displayName": "nombre",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "email",
-              "displayName": "email",
-              "required": true,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "telefono",
-              "displayName": "telefono",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "presupuesto",
-              "displayName": "presupuesto",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "number",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "urgencia",
-              "displayName": "urgencia",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "options",
-              "canBeUsedToMatch": true,
-              "options": [
-                {
-                  "name": "alta",
-                  "value": "alta"
-                },
-                {
-                  "name": "media",
-                  "value": "media"
-                },
-                {
-                  "name": "baja",
-                  "value": "baja"
-                }
-              ]
-            },
-            {
-              "id": "servicio",
-              "displayName": "servicio",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "options",
-              "canBeUsedToMatch": true,
-              "options": [
-                {
-                  "name": "desarrollo_web",
-                  "value": "desarrollo_web"
-                },
-                {
-                  "name": "ecommerce",
-                  "value": "ecommerce"
-                },
-                {
-                  "name": "app_movil",
-                  "value": "app_movil"
-                },
-                {
-                  "name": "automatizacion",
-                  "value": "automatizacion"
-                },
-                {
-                  "name": "diseno_ui",
-                  "value": "diseno_ui"
-                },
-                {
-                  "name": "consultoria",
-                  "value": "consultoria"
-                },
-                {
-                  "name": "soporte",
-                  "value": "soporte"
-                }
-              ]
-            },
-            {
-              "id": "descripcion",
-              "displayName": "descripcion",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "fuente",
-              "displayName": "fuente",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "estado",
-              "displayName": "estado",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "options",
-              "canBeUsedToMatch": true,
-              "options": [
-                {
-                  "name": "NUEVO",
-                  "value": "NUEVO"
-                },
-                {
-                  "name": "PROPUESTA_ENVIADA",
-                  "value": "PROPUESTA_ENVIADA"
-                },
-                {
-                  "name": "EN_SEGUIMIENTO",
-                  "value": "EN_SEGUIMIENTO"
-                },
-                {
-                  "name": "ACEPTADO",
-                  "value": "ACEPTADO"
-                },
-                {
-                  "name": "FACTURADO",
-                  "value": "FACTURADO"
-                },
-                {
-                  "name": "CERRADO",
-                  "value": "CERRADO"
-                },
-                {
-                  "name": "PERDIDO",
-                  "value": "PERDIDO"
-                }
-              ],
-              "removed": false
-            },
-            {
-              "id": "score",
-              "displayName": "score",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "number",
-              "canBeUsedToMatch": true
-            },
-            {
-              "id": "tier",
-              "displayName": "tier",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "options",
-              "canBeUsedToMatch": true,
-              "options": [
-                {
-                  "name": "HOT",
-                  "value": "HOT"
-                },
-                {
-                  "name": "WARM",
-                  "value": "WARM"
-                },
-                {
-                  "name": "COLD",
-                  "value": "COLD"
-                }
-              ]
-            },
-            {
-              "id": "seguimientos",
-              "displayName": "seguimientos",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "number",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "operador_asignado",
-              "displayName": "operador_asignado",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "notas",
-              "displayName": "notas",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "card_id",
-              "displayName": "card_id",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "accept_token",
-              "displayName": "accept_token",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "string",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "fecha_ingreso",
-              "displayName": "fecha_ingreso",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "dateTime",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "fecha_propuesta",
-              "displayName": "fecha_propuesta",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "dateTime",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "fecha_ultimo_seguimiento",
-              "displayName": "fecha_ultimo_seguimiento",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "dateTime",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "fecha_aceptacion",
-              "displayName": "fecha_aceptacion",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "dateTime",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "fecha_cierre",
-              "displayName": "fecha_cierre",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "dateTime",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "dias_ciclo_completo",
-              "displayName": "dias_ciclo_completo",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "number",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "creado_en",
-              "displayName": "creado_en",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "dateTime",
-              "canBeUsedToMatch": true,
-              "removed": false
-            },
-            {
-              "id": "actualizado_en",
-              "displayName": "actualizado_en",
-              "required": false,
-              "defaultMatch": false,
-              "display": true,
-              "type": "dateTime",
-              "canBeUsedToMatch": true,
-              "removed": false
-            }
-          ],
-          "attemptToConvertTypes": false,
-          "convertFieldsToString": false
-        },
-        "options": {}
+        "operation": "executeQuery",
+        "query": "=INSERT INTO leads (lead_id, nombre, email, telefono, presupuesto, urgencia, servicio, descripcion, fuente, score, tier, seguimientos, dias_ciclo_completo) SELECT $1::text, $2::text, $3::text, $4::text, $5::numeric, $6::urgencia_tipo, $7::servicio_tipo, $8::text, $9::text, $10::int, $11::tier_tipo, 0, 0 WHERE pg_try_advisory_xact_lock(hashtextextended(lower($3::text), 0)) AND NOT EXISTS (SELECT 1 FROM leads previo WHERE lower(previo.email) = lower($3::text) AND previo.creado_en > now() - make_interval(mins => {{ $env.DEDUP_VENTANA_MINUTOS || 10 }})) RETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.lead_id, $json.nombre, $json.email, $json.telefono, $json.presupuesto, $json.urgencia, $json.servicio, $json.descripcion, $json.fuente, $json.score, $json.tier] }}"
+        }
       },
       "id": "c5a941f0-8b31-4958-9d57-92b7a968d56a",
       "name": "Postgres - Insert Lead",
@@ -1036,7 +668,8 @@
           "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
@@ -4137,6 +3770,278 @@
         1150,
         9150
       ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "dedup-lead-nuevo",
+              "leftValue": "={{ $json.lead_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "s6dedupifleadnuevo00000000000001",
+      "name": "IF - Lead Nuevo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        460
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "s6noopleadduplicado0000000000001",
+      "name": "No-op - Lead Duplicado",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1500,
+        460
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## ♻️ Reconciliación de facturas (RAMA 9, cron cada 30 min)\nFrontera transaccional (S5): entre `ACEPTADO` y la fila de `facturas` median cuatro servicios externos y ninguno participa de una transacción. Este proceso busca leads **ACEPTADO sin factura** con más de `RECONCILIACION_GRACIA_MINUTOS` de antigüedad (para no pisar una aceptación en vuelo) y emite la factura que faltaba. **Idempotente**: el INSERT lleva `WHERE NOT EXISTS` por `lead_id` y el `factura_id` es determinista, así que correrlo dos veces no factura dos veces. No usa Gmail: persiste, avisa por Telegram y deja la factura en el circuito de recordatorios de la RAMA 4.",
+        "height": 470,
+        "width": 2730,
+        "color": 3
+      },
+      "id": "s5notarama9reconciliacion000001",
+      "name": "Nota — ♻️ RAMA 9 · Reconciliación de facturas",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        17225
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/30 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "s5cronreconciliarfacturas000001",
+      "name": "♻️ Cron - Reconciliar Facturas",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        150,
+        17350
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT l.lead_id, l.nombre, l.email, l.servicio, l.presupuesto, l.precio_propuesto, l.fecha_aceptacion FROM leads l WHERE l.estado = 'ACEPTADO' AND l.fecha_aceptacion IS NOT NULL AND l.fecha_aceptacion < now() - make_interval(mins => {{ $env.RECONCILIACION_GRACIA_MINUTOS || 15 }}) AND NOT EXISTS (SELECT 1 FROM facturas f WHERE f.lead_id = l.lead_id) ORDER BY l.fecha_aceptacion LIMIT 1;",
+        "options": {}
+      },
+      "id": "s5pgleeraceptadosinfactura00001",
+      "name": "Postgres - Leer Aceptado Sin Factura",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        450,
+        17350
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Reconciliación (S5): arma la factura que la rama de aceptación no llegó a\n// persistir. Toma UN lead por corrida (la consulta trae LIMIT 1), igual que el\n// resto de la cadena de facturación, que también razona sobre un ítem.\nconst l = $input.first().json;\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n// El identificador es DETERMINISTA a partir del lead: dos corridas del cron\n// producen el mismo `factura_id`, de modo que la restricción UNIQUE de la\n// columna es una segunda red por debajo del `WHERE NOT EXISTS` de la consulta.\nconst alnum = String(l.lead_id || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();\nconst fid = 'FAC-R-' + (alnum.slice(-8) || 'SINLEAD');\n// Mismo criterio de importe que la rama normal: manda el precio que fijó el\n// profesional; `presupuesto` es solo el respaldo de las propuestas viejas.\nconst monto = Number(l.precio_propuesto) > 0 ? Number(l.precio_propuesto) : Number(l.presupuesto) || 0;\nconst moneda = leerEnv('MP_CURRENCY', 'ARS');\nconst pct = Number(leerEnv('MP_COMISION_PORCENTAJE', '1')) || 0;\nconst comision = Math.round(monto * (pct / 100) * 100) / 100;\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst BASE = leerEnv('N8N_PUBLIC_URL', 'http://localhost:5678/').replace(/\\/+$/, '');\nconst FRONT = leerEnv('FRONTEND_URL', 'http://localhost:3000').replace(/\\/+$/, '');\nconst dias = Number(leerEnv('FACTURA_VENCIMIENTO_DIAS', '15')) || 15;\nconst preferencia = {\n  items: [{ title: svc, quantity: 1, unit_price: monto, currency_id: moneda }],\n  external_reference: fid,\n  notification_url: BASE + '/webhook/mp/notificacion',\n  back_urls: {\n    success: FRONT + '/pago-exitoso',\n    pending: FRONT + '/pago-pendiente',\n    failure: FRONT + '/pago-fallido'\n  },\n  auto_return: 'approved'\n};\nreturn [{ json: {\n  lead_id: String(l.lead_id || ''),\n  nombre: String(l.nombre || ''),\n  email: String(l.email || ''),\n  servicio: String(l.servicio || 'consultoria'),\n  factura_id: fid,\n  monto: monto,\n  moneda: moneda,\n  comision_plataforma: comision,\n  fecha_emision_iso: new Date().toISOString(),\n  fecha_vencimiento_iso: new Date(Date.now() + dias * 86400000).toISOString(),\n  mp_preference_body: preferencia\n} }];"
+      },
+      "id": "s5codeprepararfacturarecon00001",
+      "name": "Code - Preparar Factura Reconciliada",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        17350
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.MP_API_BASE || 'https://api.mercadopago.com' }}/checkout/preferences",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.MP_ACCESS_TOKEN || '' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.mp_preference_body) }}",
+        "options": {}
+      },
+      "id": "s5httpmppreferenciarecon0000001",
+      "name": "HTTP - MercadoPago Preferencia Reconciliada",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1050,
+        17350
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Idéntico criterio que `Code - Resolver Link de Pago` de la rama de aceptación:\n// con MercadoPago configurado el enlace es el checkout real; sin credenciales\n// (o si MP no respondió) cae al enlace del modo de desarrollo. Así la factura\n// reconciliada no es una factura de segunda: entra al circuito de recordatorios\n// con el mismo enlace de pago que habría tenido de haberse emitido a tiempo.\nconst l = $('Code - Preparar Factura Reconciliada').first().json;\nconst r = $input.first().json || {};\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\nconst BASE = leerEnv('N8N_PUBLIC_URL', 'http://localhost:5678/').replace(/\\/+$/, '');\nconst linkDesarrollo = BASE + '/webhook/pago-confirmado?factura_id=' + l.factura_id + '&lead_id=' + l.lead_id;\nconst initPoint = r.init_point || r.sandbox_init_point || '';\nreturn [{ json: Object.assign({}, l, {\n  payUrl: initPoint || linkDesarrollo,\n  mp_preference_id: r.id ? String(r.id) : null\n}) }];"
+      },
+      "id": "s5coderesolverlinkrecon00000001",
+      "name": "Code - Resolver Link Reconciliado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1350,
+        17350
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO facturas (factura_id, lead_id, cliente, email, servicio, monto, moneda, fecha_emision, fecha_vencimiento, mp_preference_id, comision_plataforma, pay_url) SELECT $1::text, $2::text, $3::text, $4::text, $5::servicio_tipo, $6::numeric, $7::text, $8::timestamptz, $9::timestamptz, $10::text, $11::numeric, $12::text WHERE NOT EXISTS (SELECT 1 FROM facturas f WHERE f.lead_id = $2::text) ON CONFLICT (factura_id) DO NOTHING RETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.factura_id, $json.lead_id, $json.nombre, $json.email, $json.servicio, $json.monto, $json.moneda, $json.fecha_emision_iso, $json.fecha_vencimiento_iso, $json.mp_preference_id, $json.comision_plataforma, $json.payUrl] }}"
+        }
+      },
+      "id": "s5pginsertfacturarecon00000001",
+      "name": "Postgres - Insert Factura Reconciliada",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1650,
+        17350
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "recon-factura-aplico",
+              "leftValue": "={{ $json.factura_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "s5iffacturareconciliada0000001",
+      "name": "IF - Factura Reconciliada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1950,
+        17350
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET estado = 'FACTURADO' WHERE lead_id = $1 AND estado = 'ACEPTADO' RETURNING lead_id, estado;",
+        "options": {
+          "queryReplacement": "={{ [$json.lead_id] }}"
+        }
+      },
+      "id": "s5pgleadafacturadorecon0000001",
+      "name": "Postgres - Lead a Facturado (Reconciliación)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2250,
+        17350
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=♻️ <b>FACTURA RECONCILIADA</b>\n\nUn lead había quedado ACEPTADO sin factura y el proceso de reconciliación la emitió.\n\nCliente: {{ $('Code - Resolver Link Reconciliado').item.json.nombre }}\nFactura: {{ $('Code - Resolver Link Reconciliado').item.json.factura_id }}\nMonto: {{ $('Code - Resolver Link Reconciliado').item.json.monto }} {{ $('Code - Resolver Link Reconciliado').item.json.moneda }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "s5telegramfacturarecon00000001",
+      "name": "Telegram - Factura Reconciliada",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2550,
+        17350
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "telegramApi": {
+          "id": "Zv2UC716Fxh6BCDs",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "id": "s5noopfacturayaexistia00000001",
+      "name": "No-op - Factura Ya Existía",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1950,
+        17530
+      ]
     }
   ],
   "connections": {
@@ -4271,7 +4176,7 @@
       "main": [
         [
           {
-            "node": "IF - Es HOT o WARM?",
+            "node": "IF - Lead Nuevo?",
             "type": "main",
             "index": 0
           }
@@ -5430,6 +5335,119 @@
         [
           {
             "node": "Respond - Propuesta No Aplica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Lead Nuevo?": {
+      "main": [
+        [
+          {
+            "node": "IF - Es HOT o WARM?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No-op - Lead Duplicado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "♻️ Cron - Reconciliar Facturas": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Leer Aceptado Sin Factura",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Leer Aceptado Sin Factura": {
+      "main": [
+        [
+          {
+            "node": "Code - Preparar Factura Reconciliada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Preparar Factura Reconciliada": {
+      "main": [
+        [
+          {
+            "node": "HTTP - MercadoPago Preferencia Reconciliada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - MercadoPago Preferencia Reconciliada": {
+      "main": [
+        [
+          {
+            "node": "Code - Resolver Link Reconciliado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Resolver Link Reconciliado": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Insert Factura Reconciliada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Insert Factura Reconciliada": {
+      "main": [
+        [
+          {
+            "node": "IF - Factura Reconciliada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Factura Reconciliada?": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Lead a Facturado (Reconciliación)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No-op - Factura Ya Existía",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Lead a Facturado (Reconciliación)": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Factura Reconciliada",
             "type": "main",
             "index": 0
           }

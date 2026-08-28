@@ -41,7 +41,7 @@ El sistema está desacoplado en tres capas con responsabilidades claras:
 
 > El front es público y **nunca** muta la base directo: habla con n8n por HTTP. n8n concentra la lógica y es el único que escribe en las tablas de negocio. El dashboard lee con la anon key bajo sesión (nunca la service key). Cada capa se cambia sin romper las otras.
 
-La orquestación tiene **12 webhooks** y **3 procesos programados** (más logging y manejo de errores global). El flujo exportado tiene **141 nodos funcionales** (157 en total, incluidas 16 notas de documentación):
+La orquestación tiene **13 webhooks** y **4 procesos programados** (más logging y manejo de errores global). El flujo exportado tiene **161 nodos funcionales** (178 en total, incluidas 17 notas de documentación):
 
 | Disparador | Proceso | Qué hace |
 |---|---|---|

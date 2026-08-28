@@ -13,7 +13,7 @@ flowchart TB
         direction TB
         spa["<b>Aplicación web</b><br/><i>[Contenedor: Next.js · React]</i><br/>Formulario público, página de<br/>aceptación y tablero interno"]
         proxy["<b>Capa de proxy</b><br/><i>[Contenedor: Next.js · Node.js]</i><br/>Refresca la sesión y revalida<br/>el rol admin"]
-        n8n["<b>Orquestador</b><br/><i>[Contenedor: n8n · 149 nodos]</i><br/>Lógica de negocio.<br/>Único con permiso de escritura"]
+        n8n["<b>Orquestador</b><br/><i>[Contenedor: n8n · 161 nodos]</i><br/>Lógica de negocio.<br/>Único con permiso de escritura"]
         db[("<b>Base de datos</b><br/><i>[Contenedor: PostgreSQL / Supabase]</i><br/>5 tablas · 2 vistas · RLS")]
         auth["<b>Autenticación</b><br/><i>[Contenedor: Supabase Auth]</i><br/>Sesión y rol de aplicación"]
     end

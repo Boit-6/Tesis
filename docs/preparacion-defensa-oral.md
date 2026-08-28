@@ -116,7 +116,7 @@ en la instancia (**M2**).
 
 ### Chequeo rápido antes de la defensa
 - Tener a mano las tres consultas «atómicas»: `Marcar Aceptado`, `Marcar Cobrado` (`… AND estado_pago='PENDIENTE'`) y el `SELECT` de `Buscar Lead (token)` (`accept_token::uuid`).
-- Recordar el conteo real: **141 nodos funcionales (157 con notas), 12 webhooks, 3 procesos programados** (CRM). El módulo de tickets es un workflow aparte: 39 nodos, 3 webhooks, 1 cron.
+- Recordar el conteo real: **161 nodos funcionales (178 con notas), 13 webhooks, 4 procesos programados** (CRM). El módulo de tickets es un workflow aparte: 39 nodos, 3 webhooks, 1 cron.
 - Saber señalar en el repo `github.com/Boit-6/Tesis`: `workflow/crm_postgres.json`, `db/schema.sql`, `FormularioLeads/src/`, y la suite de verificación (`npm test`, `npm run test:docker`).
 - Antes de grabar/defender: correr `npm run test:escenarios` contra el sistema levantado para completar los `[registrar]`/`Pendiente` que todavía quedan en la tabla de escenarios del `.docx` (ver Q5).
 
