@@ -37,6 +37,13 @@ jobs:
       - name: Verificación de RLS
         run: npm run test:rls
 
+      # Ejecuta de verdad las consultas de deduplicación (S6) y de reconciliación
+      # de facturas (S5), leyendo el SQL del propio workflow: si un nodo deja de
+      # ser idempotente, se pone en rojo acá. Mismo PostgreSQL desechable que las
+      # dos anteriores, en su propio contenedor.
+      - name: Idempotencia de la captación y la facturación
+        run: npm run test:idempotencia
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest

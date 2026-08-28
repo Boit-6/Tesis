@@ -28,11 +28,12 @@ más una captura, ahora hay además un comando.
 
 ```bash
 npm test                # suite offline: nodos Code, scoring, tickets, parámetros SQL, afirmaciones
-npm run test:rls        # RLS real sobre un PostgreSQL desechable (necesita Docker)
+npm run test:docker     # SQL, RLS e idempotencia sobre un PostgreSQL desechable (necesita Docker)
 npm run test:escenarios # validación funcional de punta a punta (necesita el sistema levantado)
 ```
 
-Las dos primeras corren en CI (`.github/workflows/ci.yml`) en cada push. La
+Las dos primeras corren en CI (`.github/workflows/ci.yml`) en cada push, con los
+tres pasos de Docker por separado para que el informe diga cuál falló. La
 tercera es manual: necesita n8n publicado, la base configurada y las
 credenciales, porque **no simula nada**.
 
