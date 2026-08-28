@@ -290,7 +290,7 @@
         "operation": "executeQuery",
         "query": "UPDATE facturas SET estado_pago = 'COBRADO', fecha_cobro = now() WHERE factura_id = $1 AND estado_pago = 'PENDIENTE' RETURNING *;",
         "options": {
-          "queryReplacement": "={{ $json.factura_id }}"
+          "queryReplacement": "={{ [$json.factura_id] }}"
         }
       },
       "id": "34d5e4a0-24df-422c-8e47-8120802a350a",
@@ -470,7 +470,7 @@
         "operation": "executeQuery",
         "query": "UPDATE leads SET card_id = COALESCE(NULLIF($1, ''), card_id) WHERE lead_id = $2;",
         "options": {
-          "queryReplacement": "={{ $json.id || '' }},={{ $('Code - Preparar Card Notion').item.json.lead_id }}"
+          "queryReplacement": "={{ [$json.id || '', $('Code - Preparar Card Notion').item.json.lead_id] }}"
         }
       },
       "id": "0afbc8e1-d009-4a3f-af1a-252c5f1ca56f",
@@ -786,7 +786,7 @@
         "operation": "executeQuery",
         "query": "=UPDATE leads SET estado = 'PROPUESTA_ENVIADA', fecha_propuesta = now(), token_expira_en = now() + make_interval(days => {{ $env.TOKEN_VIGENCIA_DIAS || 14 }}) WHERE lead_id = $1;",
         "options": {
-          "queryReplacement": "={{ $('Code - Generar Propuesta').item.json.lead_id }}"
+          "queryReplacement": "={{ [$('Code - Generar Propuesta').item.json.lead_id] }}"
         }
       },
       "id": "1f72265d-313f-43bd-a47f-08388a6ae7dd",
@@ -1018,7 +1018,7 @@
         "operation": "executeQuery",
         "query": "SELECT * FROM leads WHERE lead_id = $1 AND accept_token = $2::uuid AND (token_expira_en IS NULL OR token_expira_en > now()) LIMIT 1;",
         "options": {
-          "queryReplacement": "={{ $json.lead_id }},{{ $json.token }}"
+          "queryReplacement": "={{ [$json.lead_id, $json.token] }}"
         }
       },
       "id": "abdc0ec4-456e-403a-965c-05b4d7d01a2a",
@@ -1081,7 +1081,7 @@
         "operation": "executeQuery",
         "query": "UPDATE leads SET estado = 'ACEPTADO', fecha_aceptacion = now() WHERE lead_id = $1 AND estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO') RETURNING *;",
         "options": {
-          "queryReplacement": "={{ $json.lead_id }}"
+          "queryReplacement": "={{ [$json.lead_id] }}"
         }
       },
       "id": "bf77e4d9-4d4c-4902-8852-9bcf0103f3ec",
@@ -1278,7 +1278,7 @@
         "operation": "executeQuery",
         "query": "UPDATE leads SET estado = 'FACTURADO' WHERE lead_id = $1;",
         "options": {
-          "queryReplacement": "={{ $('Code - Generar Factura HTML').item.json.lead_id }}"
+          "queryReplacement": "={{ [$('Code - Generar Factura HTML').item.json.lead_id] }}"
         }
       },
       "id": "f371166a-5037-4a26-bb9f-3e5740a2e2af",
@@ -1487,7 +1487,7 @@
         "operation": "executeQuery",
         "query": "UPDATE leads SET seguimientos = seguimientos + 1, fecha_ultimo_seguimiento = now(), estado = 'EN_SEGUIMIENTO' WHERE lead_id = $1;",
         "options": {
-          "queryReplacement": "={{ $('Code - Preparar Follow-up').item.json.lead_id }}"
+          "queryReplacement": "={{ [$('Code - Preparar Follow-up').item.json.lead_id] }}"
         }
       },
       "id": "aa01ad73-8f1b-4cd4-afee-911a9295aad2",
@@ -1544,7 +1544,7 @@
         "operation": "executeQuery",
         "query": "UPDATE leads SET estado = 'PERDIDO' WHERE lead_id = $1;",
         "options": {
-          "queryReplacement": "={{ $('Code - Preparar Follow-up').item.json.lead_id }}"
+          "queryReplacement": "={{ [$('Code - Preparar Follow-up').item.json.lead_id] }}"
         }
       },
       "id": "ab63f449-ac4e-4cde-9020-16997462243a",
@@ -1683,7 +1683,7 @@
         "operation": "executeQuery",
         "query": "UPDATE facturas SET recordatorios_enviados = recordatorios_enviados + 1 WHERE factura_id = $1;",
         "options": {
-          "queryReplacement": "={{ $('Code - Filtrar Vencimientos').item.json.factura_id }}"
+          "queryReplacement": "={{ [$('Code - Filtrar Vencimientos').item.json.factura_id] }}"
         }
       },
       "id": "26216ba2-dd98-4989-aba2-fe6c2f43b399",
@@ -1812,7 +1812,7 @@
         "operation": "executeQuery",
         "query": "UPDATE leads SET estado = 'CERRADO', fecha_cierre = now(), dias_ciclo_completo = (now()::date - fecha_ingreso::date) WHERE lead_id = $1 RETURNING *;",
         "options": {
-          "queryReplacement": "={{ $json.lead_id }}"
+          "queryReplacement": "={{ [$json.lead_id] }}"
         }
       },
       "id": "a64ea7ca-05f7-46ac-bb90-fb168cfa353e",
@@ -1835,7 +1835,7 @@
         "operation": "executeQuery",
         "query": "UPDATE facturas SET estado_pago = 'COBRADO', fecha_cobro = now() WHERE lead_id = $1;",
         "options": {
-          "queryReplacement": "={{ $('Postgres - Lead Cerrado').item.json.lead_id }}"
+          "queryReplacement": "={{ [$('Postgres - Lead Cerrado').item.json.lead_id] }}"
         }
       },
       "id": "a0bab0f6-557d-413a-b219-fc059afb73fc",
@@ -2123,7 +2123,7 @@
         "operation": "executeQuery",
         "query": "SELECT * FROM leads WHERE lead_id = $1 AND accept_token::text = $2 AND (token_expira_en IS NULL OR token_expira_en > now()) LIMIT 1;",
         "options": {
-          "queryReplacement": "={{ $json.lead_id }},{{ $json.token }}"
+          "queryReplacement": "={{ [$json.lead_id, $json.token] }}"
         }
       },
       "id": "e1a2b3c4-0003-4f03-8a03-aa0000000003",
@@ -2218,7 +2218,7 @@
         "operation": "executeQuery",
         "query": "UPDATE leads SET estado = 'PERDIDO' WHERE lead_id = $1 AND accept_token::text = $2 AND estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO') AND (token_expira_en IS NULL OR token_expira_en > now()) RETURNING *;",
         "options": {
-          "queryReplacement": "={{ $json.lead_id }},{{ $json.token }}"
+          "queryReplacement": "={{ [$json.lead_id, $json.token] }}"
         }
       },
       "id": "f1a20003-0000-4003-8003-bb0000000003",
@@ -2364,7 +2364,7 @@
         "operation": "executeQuery",
         "query": "UPDATE leads SET estado = 'EN_SEGUIMIENTO' WHERE lead_id = $1 AND accept_token::text = $2 AND estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO') AND (token_expira_en IS NULL OR token_expira_en > now()) RETURNING *;",
         "options": {
-          "queryReplacement": "={{ $json.lead_id }},{{ $json.token }}"
+          "queryReplacement": "={{ [$json.lead_id, $json.token] }}"
         }
       },
       "id": "f1a20013-0000-4013-8013-bb0000000013",
@@ -2552,7 +2552,7 @@
         "operation": "executeQuery",
         "query": "UPDATE leads SET estado_trabajo = $2::trabajo_estado WHERE lead_id = $1 RETURNING *;",
         "options": {
-          "queryReplacement": "={{ $json.lead_id }},{{ $json.estado }}"
+          "queryReplacement": "={{ [$json.lead_id, $json.estado] }}"
         }
       },
       "id": "f1a20023-0000-4023-8023-cc0000000023",
@@ -2696,7 +2696,7 @@
         "operation": "executeQuery",
         "query": "SELECT card_id FROM leads WHERE lead_id = $1 LIMIT 1;",
         "options": {
-          "queryReplacement": "={{ $json.lead_id }}"
+          "queryReplacement": "={{ [$json.lead_id] }}"
         }
       },
       "id": "f1a20032-0000-4032-8032-dd0000000032",
@@ -2795,7 +2795,7 @@
         "operation": "executeQuery",
         "query": "UPDATE leads SET estado = 'PERDIDO' WHERE lead_id = $1 AND estado NOT IN ('CERRADO','PERDIDO') RETURNING *;",
         "options": {
-          "queryReplacement": "={{ $json.lead_id }}"
+          "queryReplacement": "={{ [$json.lead_id] }}"
         }
       },
       "id": "f1a20043-0000-4043-8043-ee0000000043",
@@ -2984,7 +2984,7 @@
         "operation": "executeQuery",
         "query": "=UPDATE leads SET estado = 'PROPUESTA_ENVIADA', fecha_propuesta = now(), token_expira_en = now() + make_interval(days => {{ $env.TOKEN_VIGENCIA_DIAS || 14 }}) WHERE lead_id = $1 AND estado = 'EN_SEGUIMIENTO' RETURNING *;",
         "options": {
-          "queryReplacement": "={{ $json.lead_id }}"
+          "queryReplacement": "={{ [$json.lead_id] }}"
         }
       },
       "id": "f1a20053-0000-4053-8053-ff0000000053",
@@ -3175,7 +3175,7 @@
         "operation": "executeQuery",
         "query": "=UPDATE leads SET estado = 'PROPUESTA_ENVIADA', fecha_propuesta = now(), token_expira_en = now() + make_interval(days => {{ $env.TOKEN_VIGENCIA_DIAS || 14 }}) WHERE lead_id = $1 AND estado = 'EN_SEGUIMIENTO' RETURNING *;",
         "options": {
-          "queryReplacement": "={{ $json.lead_id }}"
+          "queryReplacement": "={{ [$json.lead_id] }}"
         }
       },
       "id": "f1a20063-0000-4063-8063-ff0000000063",
@@ -3507,9 +3507,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=UPDATE facturas SET estado_pago = 'COBRADO', fecha_cobro = now(), mp_payment_id = '{{ $json.mp_payment_id }}' WHERE factura_id = $1 AND estado_pago = 'PENDIENTE' RETURNING *;",
+        "query": "UPDATE facturas SET estado_pago = 'COBRADO', fecha_cobro = now(), mp_payment_id = $2 WHERE factura_id = $1 AND estado_pago = 'PENDIENTE' RETURNING *;",
         "options": {
-          "queryReplacement": "={{ $json.factura_id }}"
+          "queryReplacement": "={{ [$json.factura_id, $json.mp_payment_id] }}"
         }
       },
       "id": "mp-08-0000-4000-8000-aaaaaaaaaaaa",
@@ -3683,9 +3683,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=UPDATE leads SET precio_propuesto = {{ $json.precio }}, plazo_propuesto = $2, alcance_propuesto = $3 WHERE lead_id = $1 AND estado = 'NUEVO' AND tier IN ('HOT','WARM') RETURNING *;",
+        "query": "UPDATE leads SET precio_propuesto = $4::numeric, plazo_propuesto = $2, alcance_propuesto = $3 WHERE lead_id = $1 AND estado = 'NUEVO' AND tier IN ('HOT','WARM') RETURNING *;",
         "options": {
-          "queryReplacement": "={{ $json.lead_id }}, {{ $json.plazo }}, {{ $json.alcance }}"
+          "queryReplacement": "={{ [$json.lead_id, $json.plazo, $json.alcance, $json.precio] }}"
         }
       },
       "id": "b1a90004-0000-4b04-8b04-000000000004",

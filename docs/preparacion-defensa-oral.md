@@ -118,6 +118,7 @@ en la instancia (**M2**).
 - Tener a mano las tres consultas «atómicas»: `Marcar Aceptado`, `Marcar Cobrado` (`… AND estado_pago='PENDIENTE'`) y el `SELECT` de `Buscar Lead (token)` (`accept_token::uuid`).
 - Recordar el conteo real: **161 nodos funcionales (178 con notas), 13 webhooks, 4 procesos programados** (CRM). El módulo de tickets es un workflow aparte: 39 nodos, 3 webhooks, 1 cron.
 - Saber señalar en el repo `github.com/Boit-6/Tesis`: `workflow/crm_postgres.json`, `db/schema.sql`, `FormularioLeads/src/`, y la suite de verificación (`npm test`, `npm run test:docker`).
+- Si preguntan qué defecto encontró la propia verificación: el 27-ago-2026, que n8n **descartaba los parámetros vacíos** de las consultas Postgres cuando se los pasaba como texto (`stringToArray` hace `.split(',').filter(entry => entry)`). Se comprobó en vivo: un `GET /webhook/lead-propuesta` sin `token` moría con «there is no parameter $2» y devolvía una página en blanco en vez del cartel «Enlace no válido o vencido». Los 28 nodos Postgres pasaron a la forma de arreglo y `npm run test:parametros` lo deja fijado.
 - Antes de grabar/defender: correr `npm run test:escenarios` contra el sistema levantado para completar los `[registrar]`/`Pendiente` que todavía quedan en la tabla de escenarios del `.docx` (ver Q5).
 
 ---

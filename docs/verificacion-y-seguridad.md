@@ -27,7 +27,7 @@ más una captura, ahora hay además un comando.
 ## 2. Comandos
 
 ```bash
-npm test                # suite offline: nodos Code, scoring, tickets, afirmaciones
+npm test                # suite offline: nodos Code, scoring, tickets, parámetros SQL, afirmaciones
 npm run test:rls        # RLS real sobre un PostgreSQL desechable (necesita Docker)
 npm run test:escenarios # validación funcional de punta a punta (necesita el sistema levantado)
 ```
@@ -157,6 +157,20 @@ aparente.
 - **`card_id` a prueba de fallos**: si la creación de la card falla, el `UPDATE`
   usa `COALESCE(NULLIF($1, ''), card_id)` y deja el valor como estaba en vez de
   escribir basura.
+- **Los valores llegan enteros a la consulta** (27-ago-2026). El nodo Postgres de
+  n8n acepta los parámetros como texto (`"a,b"`) o como arreglo, y no son
+  equivalentes: la forma de texto se resuelve con `stringToArray`, que hace
+  `.split(',').filter(entry => entry)`. Descarta los valores vacíos —los que
+  siguen se corren un lugar y la consulta muere con «there is no parameter $N»— y
+  parte los que traen comas internas. Eso volvía inútil la tolerancia del punto
+  anterior: cuando Notion fallaba, `card_id` llegaba como `''`, n8n lo descartaba
+  y el `UPDATE` se caía en vez de dejar el valor como estaba. El mismo defecto se
+  comprobó en el n8n vivo sobre `GET /webhook/lead-propuesta` sin `token`: el
+  visitante recibía una página en blanco en lugar del cartel «Enlace no válido o
+  vencido». Los 28 nodos Postgres pasaron a la forma de arreglo, y de paso los dos
+  valores que todavía viajaban concatenados dentro del texto del SQL
+  (`precio` y `mp_payment_id`) pasaron a ser parámetros.
+  `npm run test:parametros` deja el criterio escrito y falla si vuelve.
 
 ---
 
