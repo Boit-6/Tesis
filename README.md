@@ -212,15 +212,14 @@ tesis/
 │   ├── escenarios.mjs            # Validación funcional de punta a punta (E1–E10)
 │   └── rls/                      # Andamiaje de Supabase + los 24 casos de RLS
 ├── docs/
-│   ├── dictamen-tesis.md              # Evaluación del trabajo (v3)
-│   ├── dictamen-tesisv2.md            # Re-evaluación (re-ejecución del prompt evaluador)
-│   ├── checklist-dictamen-v2-estado.md# Estado del checklist del dictamen (quién hace qué)
 │   ├── verificacion-y-seguridad.md    # Qué responde cada prueba + cambios de seguridad
 │   ├── afirmaciones-tesis.json        # Números que afirma la tesis (los verifica el CI)
 │   ├── evidencia-validacion.md        # Reporte que genera la suite de escenarios
+│   ├── dictamen-v6-reejecucion.md     # Corrida manual de E11–E13 (evidencia citada en el Anexo A)
 │   ├── modulo-tickets.md              # Documentación del módulo de tickets
 │   ├── modulo-pagos.md                # Cobro real con MercadoPago + comisión de la plataforma
-│   └── roadmap-mejoras.md             # Backlog de mejoras
+│   ├── roadmap-mejoras.md             # Backlog de mejoras
+│   └── figura*.jpg                    # Capturas vigentes del Anexo A
 ├── FormularioLeads/           # Front Next.js (parte del monorepo — deploy en Vercel)
 │   ├── src/app/
 │   │   ├── components/lead-form.tsx   # Formulario de captación
@@ -230,7 +229,7 @@ tesis/
 │   │   ├── api/tickets/               # Proxy server-side hacia el módulo de tickets
 │   │   ├── login/ · register/ · auth/ # Autenticación (Supabase)
 │   │   └── lib/supabase/              # Clientes (client / server / middleware)
-│   └── tesis.docx             # Documento de la tesis (Anexo A con las Figuras 1–16)
+│   └── tesis.docx             # Documento de la tesis (Anexo A con las Figuras 1–18)
 ├── .github/workflows/ci.yml   # CI: pruebas del artefacto + RLS + lint/typecheck/build
 ├── .env.example               # Variables del entorno de n8n (CRM + tickets)
 ├── package.json               # Scripts de prueba de la raíz (npm test)
