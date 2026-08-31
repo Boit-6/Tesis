@@ -271,6 +271,14 @@ function medirCualitativas() {
       detalle: 'lead/nuevo → ' + (authDe('lead/nuevo') || 'sin autenticación'),
     },
     {
+      id: 'pago-confirmado-exige-token',
+      seccion: 'Tabla 11 (S1, cerrada)',
+      afirma: 'el modo de desarrollo de pago exige pago_token, no sólo factura_id',
+      ok: /pago_token/.test(params('Code - Validar Pago')) &&
+        /AND pago_token = \$2::uuid/.test(params('Postgres - Marcar Cobrado')),
+      detalle: 'Code - Validar Pago exige pago_token; Postgres - Marcar Cobrado lo verifica en el WHERE',
+    },
+    {
       id: 'frontend-no-escribe-negocio',
       seccion: '§4.1 y RNF4',
       afirma: 'ninguna salida del condicional de duplicado reinserta el lead',

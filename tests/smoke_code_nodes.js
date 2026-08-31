@@ -83,6 +83,7 @@ const sample = {
     lead_id: 'LD-1718000000000-ABCD',
     token: '550e8400-e29b-41d4-a716-446655440000',
     factura_id: 'FAC-2026-1234',
+    pago_token: '660f9511-f3ad-52e5-b827-557766551111',
     limite: '50',
   },
   headers: {'content-type': 'application/json'},

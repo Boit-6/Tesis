@@ -163,3 +163,71 @@ defecto al terminar) para confirmar que el camino firmado sigue aplicándose cor
 el cierre de S8: las quince comprobaciones del escenario, incluidas las dos de idempotencia,
 terminaron en verde (`estado_pago` PENDIENTE → COBRADO, `mp_payment_id` persistido y sin cambio
 ante la notificación repetida). El detalle completo de E14 se reporta en la Tabla 12 (§5.1).
+
+## S1 (pago-confirmado) — verificación en vivo tras el cierre parcial
+
+**Ejecución:** 2026-08-31T17:08:59Z · **n8n:** `http://localhost:5678` · **Supabase:** la
+declarada en `.env`
+
+El 31 de agosto de 2026 se cerró la deuda S1 de la Tabla 11 para el webhook `pago-confirmado`
+(modo desarrollo): antes exigía sólo `factura_id` (formato `FAC-<año>-<4 dígitos>`, 10.000
+combinaciones adivinables por año) y ninguna otra credencial. Se agregó `pago_token`, una
+columna nueva en `facturas` (`UUID NOT NULL DEFAULT gen_random_uuid()`, mismo mecanismo que
+`accept_token`), generada al emitir la factura, incluida en `pay_url` y exigida por
+`Code - Validar Pago` y verificada en el `WHERE` de `Postgres - Marcar Cobrado`. Los otros cinco
+webhooks sin autenticación de origen (`lead/nuevo`, `lead-acepta`, `lead-propuesta`,
+`lead-rechaza`, `lead-modifica`) quedan sin cambios: `docs/verificacion-y-seguridad.md` §5.2
+desarrolla por qué un secreto compartido ahí sería seguridad aparente, y por qué la mitigación
+que les corresponde es rate limiting, declarado como trabajo futuro (Capítulo 8).
+
+La corrida siguiente ejercita el ciclo completo contra el sistema real, con un lead y una
+factura de prueba que se eliminan al finalizar:
+
+```
+Verificación en vivo de S1 (pago-confirmado exige pago_token)
+
+1. Alta y calificación HOT
+  ✓ webhook de captación respondió 200
+  ✓ lead calificado HOT — score=100
+
+2. El profesional fija los términos (propuesta-enviar)
+  ✓ propuesta-enviar respondió 200 — status=200
+  ✓ el lead tiene accept_token
+
+3. Aceptación (crea la factura en modo desarrollo, con pago_token)
+  ✓ lead-acepta respondió 200
+  ✓ la factura tiene pago_token — pago_token=220a6e84-93c3-4a8a-9947-c573eb9a15ee
+  ✓ estado_pago inicial PENDIENTE
+  ✓ pay_url incluye el pago_token correcto — http://localhost:5678/webhook/pago-confirmado?factura_id=FAC-2026-9956&pago_token=220a6e84-93c3-4a8a-9947-c573eb9a15ee&lead_id=LD-1788196140164-0WXE
+
+4. Intento con pago_token INCORRECTO (no debe marcar como cobrado)
+  ✓ la petición con token incorrecto no rompe el webhook (200, respuesta de rechazo)
+  ✓ CRÍTICO: con token incorrecto, la factura SIGUE PENDIENTE (no se marcó cobrada) — estado_pago=PENDIENTE
+
+5. Intento con pago_token CORRECTO (debe marcar como cobrado)
+  ✓ la petición con token correcto respondió 200
+  ✓ con token correcto, la factura pasó a COBRADO
+
+6. Reintento con el token correcto (idempotencia)
+  ✓ la petición repetida respondió 200
+  ✓ sigue COBRADO (no rompió el estado)
+
+────────────────────────────────────────────────────────────────────────
+S1: todas las comprobaciones pasaron.
+────────────────────────────────────────────────────────────────────────
+(lead y factura de prueba eliminados: LD-1788196140164-0WXE)
+```
+
+**Nota sobre un hallazgo colateral, corregido en la misma sesión.** Al verificar S1 se detectó
+que el nodo `Postgres - Marcar Cobrado MP` —sin relación con S1, no tocado por este cambio— tenía
+en el n8n vivo una versión desactualizada respecto del repositorio: interpolaba `mp_payment_id`
+como texto dentro de la propia consulta SQL en vez de pasarlo como parámetro, y su
+`queryReplacement` era escalar en lugar de arreglo. El defecto se manifestaba únicamente cuando
+`Code - Procesar Pago MP` entregaba un `factura_id` vacío (una notificación de pago con un id
+inexistente, que fuerza una consulta real contra la API de MercadoPago sin token configurado):
+la consulta fallaba con `there is no parameter $1` y el webhook devolvía un cuerpo vacío en lugar
+de `{"ok": false}`. No afectaba ninguna factura real (0 filas, sin escritura) ni la garantía de
+S8 (la notificación se rechaza igual, antes de llegar a este nodo). Se sincronizó el nodo del
+n8n vivo con la forma ya correcta del repositorio (parámetro `$2` real y `queryReplacement` en
+arreglo) y se verificó que `POST /webhook/mp/notificacion` sin firma vuelve a responder
+`{"ok": false}` de forma limpia.

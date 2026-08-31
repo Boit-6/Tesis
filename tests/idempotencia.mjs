@@ -253,8 +253,10 @@ try {
   comprobar('no toca el lead que sí tiene factura',
     !pendientes().join('|').includes('LD-2000000000002-CONF'));
 
-  // Los doce parámetros que arma `Code - Preparar Factura Reconciliada`.
-  // `factura_id` es determinista: mismo lead, mismo identificador.
+  // Los trece parámetros que arma `Code - Preparar Factura Reconciliada`.
+  // `factura_id` es determinista: mismo lead, mismo identificador. `pago_token`
+  // se sumó al cerrar S1 (Tabla 11): el enlace de pago_confirmado ya no
+  // alcanza sólo con adivinar factura_id.
   const reconciliar = (over = {}) => {
     const f = {
       factura_id: 'FAC-R-0000PERD',
@@ -269,11 +271,12 @@ try {
       mp_preference_id: null,
       comision_plataforma: 72,
       pay_url: 'http://localhost:5678/webhook/pago-confirmado?factura_id=FAC-R-0000PERD',
+      pago_token: '11111111-2222-4333-8444-555555555555',
       ...over,
     };
     return ejecutar(SQL_INSERT_FACTURA, [f.factura_id, f.lead_id, f.cliente, f.email, f.servicio,
       f.monto, f.moneda, f.fecha_emision, f.fecha_vencimiento, f.mp_preference_id,
-      f.comision_plataforma, f.pay_url]).length;
+      f.comision_plataforma, f.pay_url, f.pago_token]).length;
   };
 
   comprobar('la primera corrida del cron emite la factura que faltaba',

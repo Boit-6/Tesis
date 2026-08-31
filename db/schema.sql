@@ -193,6 +193,15 @@ EXCEPTION WHEN duplicate_object THEN null; END $$;
 -- lo que es propiedad, permite que cualquier aviso posterior lo incluya.
 ALTER TABLE facturas ADD COLUMN IF NOT EXISTS pay_url TEXT;
 
+-- Token del modo de desarrollo de pago (S1 de la Tabla 11, para bases ya
+-- creadas). El endpoint GET /webhook/pago-confirmado sólo exigía factura_id
+-- —formato FAC-<año>-<4 dígitos>, 10.000 combinaciones adivinables por año—
+-- y ninguna credencial: cualquiera que adivinara o interceptara el
+-- identificador podía marcar una factura como cobrada. Mismo mecanismo que
+-- accept_token: un valor aleatorio por recurso, verificado contra la base
+-- en vez de un secreto compartido estático.
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS pago_token UUID NOT NULL DEFAULT gen_random_uuid();
+
 -- Términos que fija el profesional antes de enviar la propuesta (para bases ya
 -- creadas). Hasta su incorporación, el precio de la propuesta y el monto de la
 -- factura salían de `leads.presupuesto`, es decir del valor que el propio

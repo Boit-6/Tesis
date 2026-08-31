@@ -134,14 +134,36 @@ protegidos por el token UUID —ahora con vencimiento— que es el mecanismo
 adecuado para ese caso. Poner ahí un secreto compartido sería seguridad
 aparente.
 
+### 5.2.1 Token por factura en el pago de modo desarrollo (31-ago-2026)
+
+`GET /webhook/pago-confirmado` es un caso distinto de los cuatro anteriores: no
+tiene un cliente legítimo que necesite acceder sin ninguna credencial —el
+enlace lo recibe un único destinatario, el cliente deudor, en el PDF de su
+propia factura—, así que el razonamiento de "no puede llevar secreto" no
+aplica acá. Hasta el 31 de agosto de 2026 exigía sólo `factura_id`
+(`FAC-<año>-<4 dígitos>`, 10.000 combinaciones adivinables por año) y ninguna
+otra credencial. Se agregó `pago_token`: una columna UUID nueva en `facturas`
+(mismo mecanismo que `accept_token`), generada al emitir la factura,
+incluida en `pay_url` y exigida por `Code - Validar Pago` antes de continuar,
+con la verificación repetida en el `WHERE` de `Postgres - Marcar Cobrado`. Es
+S1 de la Tabla 11, cerrada de forma parcial: para `pago-confirmado`, y no para
+los cinco webhooks del párrafo anterior, que siguen sin cambios por la misma
+razón ya expuesta.
+
 ### 5.3 Qué sigue abierto
 
-- **Rate limiting / captcha en el formulario público.** Hoy nada impide inundar
-  `lead/nuevo` con altas falsas. Es la mitigación que corresponde a ese endpoint,
-  y queda como trabajo futuro.
-- **El token viaja en la query string** del `GET /lead-propuesta`, con lo que
-  puede quedar en logs de intermediarios. La vigencia acota la ventana, pero no
-  lo elimina.
+- **Rate limiting / captcha en el formulario público y en los cuatro webhooks
+  protegidos por accept_token.** Hoy nada impide inundar `lead/nuevo` con
+  altas falsas, ni invocar `lead-acepta`/`lead-rechaza`/`lead-modifica`/
+  `lead-propuesta` sin ser un navegador si se conoce (o se fuerza por fuerza
+  bruta) un token válido. Es la mitigación que corresponde a esos cinco
+  endpoints en lugar de un secreto compartido, y queda como trabajo futuro.
+- **El token viaja en la query string** del `GET /lead-propuesta` (y, desde el
+  31-ago-2026, también `pago_token` en el `GET /webhook/pago-confirmado`), con
+  lo que puede quedar en logs de intermediarios. La vigencia de `accept_token`
+  acota esa ventana; `pago_token` no vence —vive tanto como la factura— porque
+  su rol es identificar el recurso ante quien ya lo recibió por el único canal
+  legítimo (el PDF adjunto), no autorizar una acción repetible en el tiempo.
 
 ---
 
