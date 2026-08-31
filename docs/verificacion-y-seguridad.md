@@ -115,6 +115,29 @@ enviar (o reenviar) la propuesta, con `TOKEN_VIGENCIA_DIAS` días de validez, y
 siguen funcionando. La condición está en las cuatro consultas que aceptan token
 (ver propuesta, aceptar, rechazar, pedir cambios), no sólo en la de aceptación.
 
+### 5.1.1 Rotación del token en cada reenvío (31-ago-2026, S3)
+
+La Tabla 11 (S3) proponía originalmente guardar un resumen criptográfico de
+`accept_token` en vez del valor en claro. No es viable tal cual: los
+recordatorios de seguimiento (`Code - Preparar Follow-up`) releen el token en
+claro de la base, días después del envío inicial, para reconstruir el mismo
+enlace — un hash irreversible lo impediría.
+
+Se optó por rotación en su lugar: `accept_token` cambia en cada punto donde se
+reenvía la propuesta a un correo que ya la había recibido antes —
+`/cambio-aceptar`, `/cambio-rechazar` y el cron de seguimiento—, pero no en el
+envío inicial, porque ahí no hay ningún token previo que invalidar. Consecuencia
+observable: un cliente que abre un correo de propuesta viejo después de que
+salió un reenvío ve `status = ya_procesado` en vez de la propuesta, aunque el
+enlace nunca se haya usado — el mismo desenlace ambiguo que §4.3.2 ya señala
+para el caso de un lead PERDIDO por agotamiento de seguimientos.
+
+Verificado en vivo contra el sistema real (`docs/evidencia-E15-E16.md`): el
+token rota en las tres ramas, el enlace anterior deja de aceptar y el nuevo sí.
+Queda declarado, sin resolver, un caso límite: si el cron procesa varios leads
+en una corrida y el envío de Gmail falla para uno de ellos, su token ya rotó
+en la base aunque el correo con el token nuevo nunca haya salido.
+
 ### 5.2 Credencial en los webhooks del panel
 
 Los webhooks que dispara el panel interno (`trabajo-estado`, `lead-cancelar`,

@@ -231,3 +231,102 @@ S8 (la notificación se rechaza igual, antes de llegar a este nodo). Se sincroni
 n8n vivo con la forma ya correcta del repositorio (parámetro `$2` real y `queryReplacement` en
 arreglo) y se verificó que `POST /webhook/mp/notificacion` sin firma vuelve a responder
 `{"ok": false}` de forma limpia.
+
+## S3 (accept_token) — verificación en vivo de la rotación en cada reenvío
+
+**Ejecución:** 2026-08-31, entre las 17:11 y las 17:20 UTC · **n8n:** `http://localhost:5678` ·
+**Supabase:** la declarada en `.env`
+
+El 31 de agosto de 2026 se cerró la deuda S3 de la Tabla 11: `accept_token` pasó de generarse una
+única vez y reutilizarse en todo el ciclo de vida de la propuesta, a rotar en cada punto donde se
+reenvía la propuesta a un correo que ya la había recibido antes. El mecanismo elegido es rotación,
+no un resumen criptográfico del valor —la mitigación que la Tabla 11 proponía originalmente—,
+porque el sistema necesita reconstruir el mismo enlace en los recordatorios de seguimiento
+(`Code - Preparar Follow-up` relee `accept_token` de la base días después del envío inicial), y un
+hash irreversible haría eso imposible. El envío inicial (`propuesta-enviar`) no rota: no hay ningún
+token previo que invalidar la primera vez que se envía. Rotan tres puntos: `Postgres - Reabrir
+Propuesta` (`/cambio-aceptar`), `Postgres - Reabrir Original` (`/cambio-rechazar`) y
+`Postgres - Leer Leads Follow-up` (el cron de seguimiento, que pasó de `SELECT` a
+`UPDATE ... RETURNING *` para que el token nuevo ya esté en la fila antes de que se arme el correo).
+
+**Verificación 1 — `cambio-aceptar`.** Ciclo completo contra el sistema real: alta, propuesta,
+pedido de cambios del cliente, y el profesional acepta el pedido. El enlace del correo original
+(con el token previo a la rotación) deja de aceptar la propuesta; el enlace nuevo sí la acepta.
+
+```
+Verificación en vivo de S3 (rotación de accept_token)
+
+1. Alta, calificación HOT y envío de la propuesta (no debe rotar)
+  ✓ webhook de captación respondió 200
+  ✓ lead calificado HOT
+  ✓ propuesta-enviar respondió 200
+  ✓ el envío inicial generó accept_token — 843586e4-cd31-4c0d-8d79-2574b34c1b6b
+
+2. Pedido de cambios del cliente (vuelve a EN_SEGUIMIENTO)
+  ✓ lead-modifica respondió 200
+  ✓ el token NO cambió con el pedido de cambios (correcto: lead-modifica no lo toca)
+
+3. El profesional acepta el pedido de cambios (cambio-aceptar → debe ROTAR el token)
+  ✓ cambio-aceptar respondió 200
+  ✓ CRÍTICO: el token ROTÓ tras cambio-aceptar — antes=843586e4-cd31-4c0d-8d79-2574b34c1b6b después=948bfafa-0e1b-40f5-b5af-0d1e3ba85d25
+
+4. El enlace VIEJO (correo original) ya no debe funcionar
+  ✓ el token del correo original ya no acepta (enlace inválido/vencido) — status=ya_procesado
+  ✓ el lead NO quedó aceptado con el token viejo — estado=PROPUESTA_ENVIADA
+
+5. El enlace NUEVO (rotado) sí debe funcionar
+  ✓ el token nuevo (rotado) sí acepta la propuesta — status=ok
+
+────────────────────────────────────────────────────────────────────────
+S3 (cambio-aceptar): todas las comprobaciones pasaron.
+────────────────────────────────────────────────────────────────────────
+```
+
+Un dato no anticipado: el token viejo no responde "enlace inválido", sino `status = ya_procesado`
+— es semánticamente correcto y coincide con la observación que el propio §4.3.2 ya hace sobre el
+mismo desenlace ambiguo ("PERDIDO por agotamiento de seguimientos + clic tardío"): un enlace
+rotado y uno usado producen hoy el mismo mensaje, aunque la causa sea distinta.
+
+**Verificación 2 — `cambio-rechazar`** (rama simétrica, `Postgres - Reabrir Original`), mismo
+protocolo:
+
+```
+El profesional RECHAZA el pedido de cambios (cambio-rechazar → debe ROTAR el token)
+  ✓ cambio-rechazar respondió 200
+  ✓ CRÍTICO: el token ROTÓ tras cambio-rechazar — antes=ed295271-1e56-46d7-96f6-c094be9e0b4c después=dd5f03a6-77ae-4756-be5e-9ec37c6c731c
+  ✓ el token del correo original ya no acepta — status=ya_procesado
+  ✓ el token nuevo (rotado) sí acepta — status=ok
+
+────────────────────────────────────────────────────────────────────────
+S3 (cambio-rechazar): todas las comprobaciones pasaron.
+────────────────────────────────────────────────────────────────────────
+```
+
+**Verificación 3 — cron de seguimiento (`Postgres - Leer Leads Follow-up`).** Sin webhook propio
+—se dispara desde el editor de n8n, mismo protocolo que ya usan E11 a E13 (Tabla 4)—. Se preparó
+un lead con la propuesta enviada y `fecha_propuesta` forzada a cuatro días atrás (elegible según
+el criterio del nodo: `3 * (seguimientos + 1)` días desde la última interacción), y se ejecutó
+manualmente sólo ese nodo (`Execute step`) desde el editor:
+
+```
+accept_token ANTES del cron: ea8e63a6-fb81-432d-8257-af525d86bb41
+accept_token DESPUÉS:        12df34ce-9048-4b20-90f7-d5ad04e8e0e7
+
+✓ CRÍTICO: el token ROTÓ tras el cron de seguimiento
+```
+
+`seguimientos` no incrementó en esta corrida porque `Execute step` ejecuta únicamente el nodo
+señalado, no la cadena completa hasta `Postgres - Update Lead Seguimiento` (que es el que
+incrementa el contador). Eso no compromete la verificación: lo que había que confirmar —que el
+nuevo `UPDATE` rota el token en runtime real, no sólo en la lectura del código— quedó probado. Que
+el correo salga con el token ya rotado y no con el anterior está garantizado por el orden de
+conexiones del flujo (`Postgres - Leer Leads Follow-up` → `Code - Preparar Follow-up` →
+`Gmail - Enviar Follow-up`), verificado contra `workflow/crm_postgres.json` antes de aplicar el
+cambio.
+
+**Caso límite declarado, no resuelto esta ronda.** El cron procesa varios leads elegibles en una
+sola corrida. Si el envío de Gmail falla para un lead puntual dentro del lote, su token ya rotó
+en la base aunque el correo con el token nuevo nunca haya salido: el enlace anterior (que sí llegó
+a destino) queda inválido sin que uno nuevo lo reemplace. No es un caso nuevo introducido por este
+cambio —el contador de seguimientos de hoy ya avanza sin garantía de que el envío de Gmail haya
+sido exitoso—, y se declara en la Tabla 11 y en §4.3.5 como parte del alcance de la mitigación.

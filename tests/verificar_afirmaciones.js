@@ -279,6 +279,16 @@ function medirCualitativas() {
       detalle: 'Code - Validar Pago exige pago_token; Postgres - Marcar Cobrado lo verifica en el WHERE',
     },
     {
+      id: 'accept-token-rota-en-reenvios',
+      seccion: 'Tabla 11 (S3, cerrada)',
+      afirma: 'accept_token rota en cada reenvío de la propuesta (cambios y seguimiento), no en el envío inicial',
+      ok: /accept_token = gen_random_uuid\(\)/.test(params('Postgres - Reabrir Propuesta')) &&
+        /accept_token = gen_random_uuid\(\)/.test(params('Postgres - Reabrir Original')) &&
+        /UPDATE leads SET accept_token = gen_random_uuid\(\)/.test(params('Postgres - Leer Leads Follow-up')) &&
+        !/accept_token/.test(params('Postgres - Estado Propuesta Enviada')),
+      detalle: 'rota en Reabrir Propuesta, Reabrir Original y Leer Leads Follow-up; no en el envío inicial',
+    },
+    {
       id: 'frontend-no-escribe-negocio',
       seccion: '§4.1 y RNF4',
       afirma: 'ninguna salida del condicional de duplicado reinserta el lead',

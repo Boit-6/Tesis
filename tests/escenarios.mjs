@@ -450,7 +450,7 @@ const ESCENARIOS = [
   escenario('pago-idempotente', null, 'El pago simulado es idempotente', async (t, ctx) => {
     const {factura} = ctx['aceptacion-atomica'];
 
-    await webhook(`pago-confirmado?factura_id=${factura.factura_id}`, {metodo: 'GET'});
+    await webhook(`pago-confirmado?factura_id=${factura.factura_id}&pago_token=${factura.pago_token}`, {metodo: 'GET'});
 
     const {valor: cobrada, ms} = await esperarHasta(
       'la factura pase a COBRADO',
@@ -465,7 +465,7 @@ const ESCENARIOS = [
     const cobroOriginal = cobrada.fecha_cobro;
 
     // Segundo intento con el mismo enlace: no debe volver a cobrar.
-    await webhook(`pago-confirmado?factura_id=${factura.factura_id}`, {metodo: 'GET'});
+    await webhook(`pago-confirmado?factura_id=${factura.factura_id}&pago_token=${factura.pago_token}`, {metodo: 'GET'});
     await esperar(2500);
     const otraVez = (await rest(`facturas?factura_id=eq.${factura.factura_id}&select=*`))[0];
 

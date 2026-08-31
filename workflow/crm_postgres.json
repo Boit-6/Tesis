@@ -1387,7 +1387,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM leads WHERE estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO') AND seguimientos < 3 AND fecha_propuesta IS NOT NULL AND now() - COALESCE(fecha_ultimo_seguimiento, fecha_propuesta) >= make_interval(days => 3 * (seguimientos + 1));",
+        "query": "UPDATE leads SET accept_token = gen_random_uuid() WHERE estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO') AND seguimientos < 3 AND fecha_propuesta IS NOT NULL AND now() - COALESCE(fecha_ultimo_seguimiento, fecha_propuesta) >= make_interval(days => 3 * (seguimientos + 1)) RETURNING *;",
         "options": {}
       },
       "id": "5689b2de-6e48-4ddc-9588-5ce0d76024b2",
@@ -2983,7 +2983,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=UPDATE leads SET estado = 'PROPUESTA_ENVIADA', fecha_propuesta = now(), token_expira_en = now() + make_interval(days => {{ $env.TOKEN_VIGENCIA_DIAS || 14 }}) WHERE lead_id = $1 AND estado = 'EN_SEGUIMIENTO' RETURNING *;",
+        "query": "=UPDATE leads SET estado = 'PROPUESTA_ENVIADA', fecha_propuesta = now(), token_expira_en = now() + make_interval(days => {{ $env.TOKEN_VIGENCIA_DIAS || 14 }}), accept_token = gen_random_uuid() WHERE lead_id = $1 AND estado = 'EN_SEGUIMIENTO' RETURNING *;",
         "options": {
           "queryReplacement": "={{ [$json.lead_id] }}"
         }
@@ -3174,7 +3174,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=UPDATE leads SET estado = 'PROPUESTA_ENVIADA', fecha_propuesta = now(), token_expira_en = now() + make_interval(days => {{ $env.TOKEN_VIGENCIA_DIAS || 14 }}) WHERE lead_id = $1 AND estado = 'EN_SEGUIMIENTO' RETURNING *;",
+        "query": "=UPDATE leads SET estado = 'PROPUESTA_ENVIADA', fecha_propuesta = now(), token_expira_en = now() + make_interval(days => {{ $env.TOKEN_VIGENCIA_DIAS || 14 }}), accept_token = gen_random_uuid() WHERE lead_id = $1 AND estado = 'EN_SEGUIMIENTO' RETURNING *;",
         "options": {
           "queryReplacement": "={{ [$json.lead_id] }}"
         }
