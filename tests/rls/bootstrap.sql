@@ -7,10 +7,14 @@
 
 -- ── Roles de la plataforma ─────────────────────────────────────────────────
 -- `anon`: público sin sesión. `authenticated`: usuario logueado.
--- `service_role`: el que usa n8n para escribir; en Supabase tiene BYPASSRLS.
+-- `service_role`: rol administrativo de Supabase, con BYPASSRLS.
+-- `n8n_writer`: el que realmente usa la conexión de n8n (§4.6, S4 de la
+-- Tabla 11) — sin BYPASSRLS; sus GRANT y sus políticas los define
+-- db/schema.sql, no este archivo.
 DO $$ BEGIN CREATE ROLE anon NOLOGIN;          EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN CREATE ROLE authenticated NOLOGIN; EXCEPTION WHEN duplicate_object THEN null; END $$;
 DO $$ BEGIN CREATE ROLE service_role NOLOGIN BYPASSRLS; EXCEPTION WHEN duplicate_object THEN null; END $$;
+DO $$ BEGIN CREATE ROLE n8n_writer NOLOGIN;    EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 

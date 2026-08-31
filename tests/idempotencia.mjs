@@ -9,6 +9,14 @@
 // que la prueba siga diciendo algo si alguien toca un nodo: si el INSERT deja
 // de ser condicional, este verificador se pone en rojo.
 //
+// Las consultas que representan una escritura real de n8n corren con
+// `SET ROLE n8n_writer` (el rol acotado que cierra S4 de la Tabla 11, §4.6),
+// no como el superusuario `postgres` que arma los datos de prueba. Antes de
+// esto la única cobertura de una escritura bajo un rol sin BYPASSRLS era un
+// único caso de tests/rls/casos.sql; si `n8n_writer` careciera de un
+// privilegio que alguna de estas consultas necesita, esta verificación lo
+// habría dejado en rojo en vez de pasarlo por alto.
+//
 // Los parámetros se enlazan con PREPARE/EXECUTE, que es la misma vía por la que
 // el nodo Postgres de n8n los pasa ($1, $2, …): no hay interpolación de texto.
 //
@@ -127,7 +135,12 @@ try {
   const ejecutar = (sql, valores = []) => {
     const args = valores.length ? `(${valores.map(lit).join(', ')})` : '';
 
-    return filas(`PREPARE consulta AS ${sql};\nEXECUTE consulta${args};`);
+    // SET ROLE: la sesión se abre como `postgres` (superusuario, para poder
+    // sembrar los datos de prueba), pero la consulta del nodo se ejecuta
+    // como `n8n_writer`, el rol sin BYPASSRLS que usa la conexión real de
+    // n8n. Un superusuario puede tomar cualquier rol sin necesitar LOGIN ni
+    // contraseña; esto no requiere credenciales del rol acotado.
+    return filas(`SET ROLE n8n_writer;\nPREPARE consulta AS ${sql};\nEXECUTE consulta${args};`);
   };
 
   // Un lead tal como lo entrega `Code - Scoring`: los once parámetros del nodo.
@@ -208,6 +221,7 @@ try {
     });
 
   const sentenciaLead = (leadId, correo) =>
+    `SET ROLE n8n_writer;\n` +
     `PREPARE consulta AS ${SQL_INSERT_LEAD};\n` +
     `EXECUTE consulta(${[leadId, 'Doble Clic', correo, '', 1000, 'media', 'consultoria',
       'Dos peticiones solapadas.', 'formulario_web', 50, 'WARM'].map(lit).join(', ')});\n`;

@@ -107,6 +107,37 @@ SELECT probar('service_role puede escribir', 'service_role', NULL, 'WITH x AS (U
 -- ── 9. Sin sesión, `authenticated` no ve nada (auth.uid() nulo) ────────────
 SELECT probar('authenticated sin JWT ve 0 leads', 'authenticated', NULL, 'SELECT count(*) FROM leads', '0 filas');
 
+-- ── 10. n8n_writer: el rol acotado que usa la conexión de n8n (S4, §4.6) ───
+-- A diferencia de `service_role` (caso 8), este rol NO tiene BYPASSRLS: si
+-- puede leer y escribir, es porque las políticas de la sección 5.1 de
+-- db/schema.sql se lo permiten, no porque la RLS lo esté ignorando.
+SELECT probar('n8n_writer inserta un lead',
+  'n8n_writer', NULL,
+  'WITH x AS (INSERT INTO leads (lead_id, nombre, email) VALUES (''LD-N8NW-0001'', ''Prueba n8n_writer'', ''n8nwriter@test.com'') RETURNING 1) SELECT count(*) FROM x',
+  '1 filas');
+SELECT probar('n8n_writer actualiza el lead que acaba de insertar',
+  'n8n_writer', NULL,
+  'WITH x AS (UPDATE leads SET notas = ''actualizado por n8n_writer'' WHERE lead_id = ''LD-N8NW-0001'' RETURNING 1) SELECT count(*) FROM x',
+  '1 filas');
+SELECT probar('n8n_writer lee las dos filas de leads que ya existen',
+  'n8n_writer', NULL, 'SELECT count(*) FROM leads', '2 filas');
+SELECT probar('n8n_writer lee logs',
+  'n8n_writer', NULL, 'SELECT count(*) FROM logs', '1 filas');
+SELECT probar('n8n_writer inserta en logs',
+  'n8n_writer', NULL,
+  'WITH x AS (INSERT INTO logs (workflow, evento, nivel, detalle) VALUES (''test'', ''prueba_n8n_writer'', ''INFO'', ''fila de prueba'') RETURNING 1) SELECT count(*) FROM x',
+  '1 filas');
+SELECT probar('n8n_writer lee facturas_pendientes (vista security_invoker)',
+  'n8n_writer', NULL, 'SELECT count(*) FROM facturas_pendientes', '1 filas');
+SELECT probar('n8n_writer NO puede borrar un lead: sin GRANT DELETE',
+  'n8n_writer', NULL,
+  'WITH x AS (DELETE FROM leads WHERE lead_id = ''LD-N8NW-0001'' RETURNING 1) SELECT count(*) FROM x',
+  'permiso denegado');
+SELECT probar('n8n_writer NO puede leer profiles',
+  'n8n_writer', NULL, 'SELECT count(*) FROM profiles', 'permiso denegado');
+SELECT probar('n8n_writer NO puede leer auth.users: sin USAGE sobre el esquema auth',
+  'n8n_writer', NULL, 'SELECT count(*) FROM auth.users', 'permiso denegado');
+
 -- ── Reporte ────────────────────────────────────────────────────────────────
 \o
 \pset border 2

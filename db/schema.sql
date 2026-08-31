@@ -7,9 +7,14 @@
 -- Anexo C; requisitos RNF1 y RNF2).
 --
 -- Modelo de seguridad:
---   • La ESCRITURA la realiza exclusivamente n8n con la `service_role`
---     key, que evade la RLS por diseño (BYPASSRLS). No se definen
---     políticas de INSERT/UPDATE/DELETE para usuarios finales.
+--   • La ESCRITURA la realiza n8n con el rol `n8n_writer`: sin BYPASSRLS,
+--     con políticas propias de SELECT/INSERT/UPDATE sobre leads, facturas,
+--     seguimientos y logs (nunca profiles) y sin privilegio de DELETE,
+--     porque ningún nodo del flujo borra filas. Cierra S4 de la Tabla 11
+--     de la tesis: si esta credencial se filtra, el radio de daño queda
+--     acotado a esas cuatro tablas, no a la base entera. `service_role`
+--     sigue existiendo (GRANT más abajo) para uso administrativo puntual,
+--     pero deja de ser la credencial que usa la conexión de n8n.
 --   • La LECTURA del tablero requiere rol de aplicación `admin`: cada
 --     usuario de `auth.users` tiene una fila en `profiles` (creada por
 --     trigger) con `role` en {'user','admin'}. Las políticas de SELECT
@@ -410,31 +415,84 @@ DROP POLICY IF EXISTS profiles_select_own ON profiles;
 CREATE POLICY profiles_select_own ON profiles
   FOR SELECT TO authenticated USING (id = auth.uid());
 
--- 3) `logs` (auditoría/errores) queda sin política: solo la service_role
---    (que evade la RLS) escribe y consulta. `authenticated` y `anon` no
---    acceden. Es intencional: la auditoría no se expone al tablero.
+-- 3) `logs` (auditoría/errores) no tiene ninguna política para
+--    `authenticated`: `service_role` (que evade la RLS) y `n8n_writer`
+--    (por la política `logs_rw_n8n_writer` de la sección 5.1) pueden
+--    escribir y consultar, pero `authenticated` y `anon` no acceden. Es
+--    intencional: la auditoría no se expone al tablero.
 
 -- 4) Privilegios de tabla (GRANT). La RLS filtra filas, pero el rol
 --    igual necesita el privilegio SELECT sobre el objeto.
 GRANT SELECT ON leads, facturas, seguimientos, profiles TO authenticated;
 GRANT SELECT ON metrics_mensuales, facturas_pendientes TO authenticated;
 
--- 5) Escritura de n8n con la `service_role`. En Supabase este rol ya trae
---    privilegios plenos; en un PostgreSQL vanilla (p. ej. el autoalojado
---    del docker-compose) NO, y BYPASSRLS solo evade la RLS, no otorga el
---    privilegio de tabla. Se conceden explícitamente para que funcione en
---    ambos entornos.
+-- 5) `service_role` se conserva para acceso administrativo (SQL editor,
+--    tareas puntuales) y como red de contención, pero deja de ser la
+--    credencial de la conexión de n8n (véase 5.1). En Supabase este rol ya
+--    trae privilegios plenos; en un PostgreSQL vanilla (p. ej. el
+--    autoalojado del docker-compose) NO, y BYPASSRLS solo evade la RLS, no
+--    otorga el privilegio de tabla. Se conceden explícitamente para que
+--    funcione en ambos entornos.
 GRANT SELECT, INSERT, UPDATE, DELETE ON leads, facturas, seguimientos, logs, profiles TO service_role;
 GRANT SELECT ON metrics_mensuales, facturas_pendientes TO service_role;
+
+-- Nota: la `service_role` posee además BYPASSRLS, por lo que sus escrituras
+-- no quedan sujetas a las políticas de fila.
+
+-- 5.1) Rol acotado para la conexión de n8n (cierra S4 de la Tabla 11).
+--    `service_role` evade la RLS por completo y, en un proyecto de Supabase
+--    real, alcanza más que las cinco tablas de este esquema: si esa
+--    credencial se filtra —ya ocurrió una vez, incidente S7, véase §6.3—,
+--    el radio de daño es el de un superusuario de facto. `n8n_writer` es el
+--    rol que debe usar la credencial Postgres del nodo homónimo de n8n en
+--    su lugar: sin BYPASSRLS, sin acceso a `profiles` ni al esquema `auth`,
+--    y sin DELETE, porque ningún nodo del flujo borra filas (verificado
+--    contra los 35 nodos Postgres del flujo exportado,
+--    workflow/crm_postgres.json, y con evidencia ejecutable en
+--    tests/rls/casos.sql y tests/idempotencia.mjs).
+DO $$ BEGIN CREATE ROLE n8n_writer NOLOGIN;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+GRANT USAGE ON SCHEMA public TO n8n_writer;
+GRANT SELECT, INSERT, UPDATE ON leads, facturas, seguimientos, logs TO n8n_writer;
+GRANT SELECT ON metrics_mensuales, facturas_pendientes TO n8n_writer;
+REVOKE ALL ON profiles FROM n8n_writer;
+
+-- Políticas de escritura de `n8n_writer`. No filtran filas (USING/WITH CHECK
+-- en true): a diferencia de las políticas de `authenticated`, el límite de
+-- este rol no es «qué fila» sino «qué tabla y qué operación», y eso ya lo
+-- resuelve el GRANT de arriba. Sin estas políticas, con RLS habilitada y sin
+-- BYPASSRLS, el rol no podría hacer nada aunque tuviera el GRANT: la RLS
+-- deniega por omisión toda operación sin una política permisiva.
+DROP POLICY IF EXISTS leads_rw_n8n_writer ON leads;
+CREATE POLICY leads_rw_n8n_writer ON leads
+  FOR ALL TO n8n_writer USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS facturas_rw_n8n_writer ON facturas;
+CREATE POLICY facturas_rw_n8n_writer ON facturas
+  FOR ALL TO n8n_writer USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS seguimientos_rw_n8n_writer ON seguimientos;
+CREATE POLICY seguimientos_rw_n8n_writer ON seguimientos
+  FOR ALL TO n8n_writer USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS logs_rw_n8n_writer ON logs;
+CREATE POLICY logs_rw_n8n_writer ON logs
+  FOR ALL TO n8n_writer USING (true) WITH CHECK (true);
+
+-- Paso operativo pendiente, fuera del alcance de este script porque no debe
+-- versionar contraseñas: en el proyecto de Supabase real, dar LOGIN y una
+-- contraseña a `n8n_writer` (`ALTER ROLE n8n_writer WITH LOGIN PASSWORD
+-- '<secreto generado>';`, guardada en un gestor de secretos y no en este
+-- archivo) y reemplazar la credencial Postgres del nodo homónimo de n8n por
+-- esa nueva conexión. Mientras ese paso no se haga, el esquema queda listo
+-- pero la conexión real de n8n sigue usando `service_role`.
 
 -- 6) El rol público (`anon`) no debe leer las tablas de negocio ni las
 --    vistas. Se revoca explícitamente por si el default privilege de la
 --    plataforma lo hubiera otorgado.
 REVOKE ALL ON leads, facturas, seguimientos, logs, profiles FROM anon;
 REVOKE ALL ON metrics_mensuales, facturas_pendientes FROM anon;
-
--- Nota: la `service_role` posee además BYPASSRLS, por lo que sus escrituras
--- no quedan sujetas a las políticas de fila.
 
 -- 7) Realtime: el tablero se suscribe a los cambios de `leads`
 --    (postgres_changes, §4.2.5 / RNF6 / escenario E7). Se agrega la tabla
