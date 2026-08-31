@@ -47,18 +47,22 @@ y la función `auth.uid()`), aplica **`db/schema.sql` tal cual está en el
 repositorio** —dos veces, para comprobar que es idempotente— y después intenta,
 rol por rol, todo lo que el modelo de seguridad promete impedir.
 
-Los 24 casos cubren:
+Los 33 casos cubren:
 
 - **El público (`anon`) no accede a nada**: ni tablas ni vistas.
 - **Estar logueado no alcanza**: un usuario sin rol `admin` ve 0 filas — la RLS
   filtra, no da error, que es justamente lo que hace difícil detectarla a ojo.
 - **El admin lee el tablero**, incluidas las vistas `security_invoker`.
 - **La auditoría está cerrada**: ni siquiera el admin puede leer `logs`.
-- **Nadie escribe desde el navegador**: no hay políticas de INSERT/UPDATE/DELETE,
-  así que el admin tampoco puede modificar un lead.
+- **Nadie escribe desde el navegador**: no hay políticas de INSERT/UPDATE/DELETE
+  para `authenticated`, así que el admin tampoco puede modificar un lead.
 - **No hay escalada de privilegios**: un usuario no puede darse el rol `admin`.
 - **`profiles` es privada**: cada uno ve sólo su fila.
-- **`service_role` (n8n) escribe y lee todo**, que es el diseño declarado.
+- **`service_role` escribe y lee todo**, que sigue siendo su diseño declarado
+  (uso administrativo, ya no la conexión de n8n — ver §5.4).
+- **`n8n_writer` (nueve casos) puede exactamente lo que el flujo necesita y
+  nada más**: lee y escribe `leads`, `facturas`, `seguimientos` y `logs`; no
+  puede borrar ninguna fila ni leer `profiles` ni `auth.users`.
 
 La respuesta a la cuestión 2 de la defensa pasa a ser: *«está aplicada, y así se
 verifica — mirá»*.
@@ -173,7 +177,58 @@ S1 de la Tabla 11, cerrada de forma parcial: para `pago-confirmado`, y no para
 los cinco webhooks del párrafo anterior, que siguen sin cambios por la misma
 razón ya expuesta.
 
-### 5.3 Qué sigue abierto
+### 5.3 Rol acotado para la conexión de n8n (31-ago-2026, S4)
+
+Hasta el 31 de agosto de 2026, toda la escritura del flujo se hacía con la
+`service_role` key: en un proyecto de Supabase real ese rol evade la RLS por
+completo (`BYPASSRLS`) y alcanza más que las cinco tablas de este esquema. Si
+esa credencial se filtraba —ya ocurrió una vez, ver S7 y §6.3 de la tesis—, el
+radio de daño era el de un superusuario de facto.
+
+`n8n_writer` es el rol que debe usar la credencial Postgres del nodo homónimo
+de n8n en su lugar (`db/schema.sql`, sección 5.1):
+
+- Sin `BYPASSRLS`. Sujeto a políticas de fila propias
+  (`leads_rw_n8n_writer`, `facturas_rw_n8n_writer`, `seguimientos_rw_n8n_writer`,
+  `logs_rw_n8n_writer`), sin las cuales no podría hacer nada aunque tuviera el
+  `GRANT` — la RLS deniega por omisión.
+- `GRANT SELECT, INSERT, UPDATE` sobre exactamente las cuatro tablas que las
+  35 consultas Postgres del flujo tocan (`leads`, `facturas`, `seguimientos`,
+  `logs`). Nunca `profiles`, nunca el esquema `auth`.
+- Sin `DELETE`: ningún nodo del flujo borra una fila.
+
+La mitigación de código que la Tabla 11 proponía originalmente para S4
+—políticas de escritura acotadas por rol, sin tocar la credencial— no tenía
+efecto real: `service_role` con `BYPASSRLS` ignora cualquier política que se
+le agregue. Lo que sí cierra la deuda es reemplazar el rol de la conexión, y
+eso exigía antes cobertura de pruebas que no existía: `tests/idempotencia.mjs`
+corría como superusuario (con la RLS inerte) y sólo un caso de
+`tests/rls/casos.sql` ejercitaba una escritura bajo `service_role`. Se agregó:
+
+- **Nueve casos nuevos en `tests/rls/casos.sql`** bajo `n8n_writer`: inserta,
+  actualiza y lee `leads` y `logs`; lee `facturas_pendientes`; y confirma que
+  no puede borrar, ni leer `profiles`, ni leer `auth.users`.
+- **`tests/idempotencia.mjs` ejecuta con `SET ROLE n8n_writer`** las cuatro
+  consultas reales del flujo que ya cubría (inserción condicional del lead de
+  S6, las tres consultas de reconciliación de S5), en vez de como superusuario.
+  Si el rol acotado careciera de un privilegio que alguna de ellas necesita,
+  esta verificación se pone en rojo antes de que el cambio llegue a producción.
+
+**Cerrada — 31-ago-2026, verificado contra el proyecto real.** El esquema
+versionado define el rol, sus `GRANT` y sus políticas, y ambos verificadores
+del harness de Docker (`npm run test:docker`) pasan en verde con la nueva
+cobertura. El paso operativo —dar `LOGIN` y contraseña a `n8n_writer` en el
+proyecto de Supabase real y reemplazar la credencial Postgres del nodo
+homónimo de n8n— también se completó. La verificación quedó registrada dos
+veces: primero, con la contraseña todavía desactualizada en n8n, el nodo
+`Postgres - Insert Lead` falló con `password authentication failed for user
+"n8n_writer"` —el propio error de Postgres ya nombraba a `n8n_writer` como
+usuario de la conexión, confirmando que la credencial apuntaba al rol
+correcto—; corregida la contraseña, un alta de lead disparada contra el
+webhook real (`POST /webhook/lead/nuevo`) se persistió en `leads` sin error.
+La instancia real de n8n escribe hoy con `n8n_writer`, no con `service_role`.
+
+### 5.4 Qué sigue abierto
 
 - **Rate limiting / captcha en el formulario público y en los cuatro webhooks
   protegidos por accept_token.** Hoy nada impide inundar `lead/nuevo` con
