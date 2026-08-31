@@ -73,7 +73,11 @@ services:
       - MP_ACCESS_TOKEN=${MP_ACCESS_TOKEN:-}
       - MP_CURRENCY=${MP_CURRENCY:-ARS}
       - MP_COMISION_PORCENTAJE=${MP_COMISION_PORCENTAJE:-1}
-      - MP_WEBHOOK_SECRET=${MP_WEBHOOK_SECRET:-}
+      # Firma obligatoria por defecto (S8 de la Tabla 11, cerrada): el nodo
+      # rechaza toda notificación sin secreto configurado o con firma inválida.
+      # El valor de acá abajo es sólo para desarrollo local; en producción hay
+      # que reemplazarlo por el secreto real que entrega el panel de MercadoPago.
+      - MP_WEBHOOK_SECRET=${MP_WEBHOOK_SECRET:-dev-secret-cambiar-en-produccion}
       # ── Calificación de leads (Tabla 4) ───────────────────────────────────
       # Los defaults reproducen exactamente la tabla documentada en la tesis;
       # están acá para poder recalibrar el criterio sin tocar el workflow.

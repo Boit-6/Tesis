@@ -35,6 +35,11 @@
  *     cualquier valor no vacío (vacío = modo de desarrollo, no aplica).
  *   - Workflows auxiliares de consulta y siembra importados (ver el reporte de
  *     la corrida para el detalle).
+ *   - MP_WEBHOOK_SECRET (S8 de la Tabla 11, cerrada — la firma ya es
+ *     obligatoria): este script firma sus notificaciones con el mismo valor
+ *     por defecto que docker-compose.yml aplica al contenedor de n8n
+ *     (`dev-secret-cambiar-en-produccion`) cuando la variable no está fijada
+ *     en `.env`. Si se fija un valor propio en `.env`, ambos lo leen igual.
  *
  * Uso:  node tests/e14-cobro-mp.mjs
  */
@@ -42,6 +47,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { createHmac, randomUUID } from 'node:crypto';
 
 const aqui = path.dirname(fileURLToPath(import.meta.url));
 const raiz = path.join(aqui, '..');
@@ -58,12 +64,26 @@ const N8N = (process.env.N8N_BASE ?? 'http://localhost:5678').replace(/\/+$/, ''
 const DOBLE = (process.env.MP_DOBLE_BASE ?? 'http://localhost:8799').replace(/\/+$/, '');
 const PANEL_TOKEN = process.env.CRM_PANEL_TOKEN ?? '';
 const PANEL_HEADER = process.env.CRM_PANEL_HEADER ?? 'x-crm-token';
+// Mismo default que docker-compose.yml aplica al contenedor cuando la
+// variable no está fijada en .env — así ambos lados firman/validan igual.
+const MP_WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET || 'dev-secret-cambiar-en-produccion';
 
 const SUFIJO = Date.now();
 const EMAIL = `cliente.demo.e14.${SUFIJO}@ejemplo.com`;
 const FACTURA_ID = `FAC-2026-E14${String(SUFIJO).slice(-4)}`;
 
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Réplica local del mismo cálculo que hace el nodo «Code - Leer Notificacion
+// MP» (workflow/crm_postgres.json) para validar x-signature. No depende de
+// ningún servicio externo: es la misma lógica HMAC, del lado del cliente.
+function firmarNotificacion(paymentId) {
+  const ts = Math.floor(Date.now() / 1000);
+  const requestId = randomUUID();
+  const manifest = `id:${String(paymentId).toLowerCase()};request-id:${requestId};ts:${ts};`;
+  const hmac = createHmac('sha256', MP_WEBHOOK_SECRET).update(manifest).digest('hex');
+  return { 'x-signature': `ts=${ts},v1=${hmac}`, 'x-request-id': requestId };
+}
 
 let fallos = 0;
 function comprobar(ok, etiqueta, detalle = '') {
@@ -166,6 +186,7 @@ async function main() {
   console.log('\n4. MercadoPago notifica el pago aprobado');
   const notif = await webhook('mp/notificacion', {
     cuerpo: { type: 'payment', action: 'payment.updated', data: { id: pagoId } },
+    headers: firmarNotificacion(pagoId),
   });
   comprobar(notif.estado === 200, 'la notificación respondió 200', `status=${notif.estado}`);
 
@@ -184,6 +205,7 @@ async function main() {
   console.log('\n5. Idempotencia: MercadoPago reintenta la misma notificación');
   const notif2 = await webhook('mp/notificacion', {
     cuerpo: { type: 'payment', action: 'payment.updated', data: { id: pagoId } },
+    headers: firmarNotificacion(pagoId),
   });
   comprobar(notif2.estado === 200,
     'la notificación duplicada respondió 200 (no genera reintentos infinitos)',
