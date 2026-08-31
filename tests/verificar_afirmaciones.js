@@ -158,6 +158,128 @@ function medirScoring() {
   };
 }
 
+// ── Afirmaciones cualitativas ──────────────────────────────────────────────
+// Las comprobaciones de arriba miden CANTIDADES. La deriva del 29-ago-2026
+// mostró que eso no alcanza: tres afirmaciones del documento habían dejado de
+// ser ciertas sin que nada fallara, porque ninguna es un número. El §4.3.1
+// describía el orden de ejecución invertido; el §4.8 decía que la rama fría
+// sólo avisaba al profesional, cuando ya acusa recibo al cliente; y declaraba
+// como reglas vigentes dos transiciones de estado que ningún nodo ejecuta.
+//
+// Lo que sigue verifica esas afirmaciones —las de forma, no las de tamaño—
+// contra el flujo exportado, que es lo que la tesis declara como fuente.
+function cadenaDesde(wf, inicio) {
+  const sig = (n) => ((wf.connections[n] || {}).main || []).flat().filter(Boolean).map((c) => c.node);
+  const orden = [];
+  const visto = new Set([inicio]);
+  let frente = [inicio];
+
+  while (frente.length) {
+    orden.push(...frente);
+    frente = [...new Set(frente.flatMap(sig))].filter((n) => !visto.has(n));
+    frente.forEach((n) => visto.add(n));
+  }
+
+  return orden;
+}
+
+function medirCualitativas() {
+  const wf = leerWorkflow('crm_postgres.json');
+  const nodo = (nombre) => wf.nodes.find((n) => n.name === nombre);
+  const params = (nombre) => JSON.stringify((nodo(nombre) || {}).parameters || {});
+  const webhooks = wf.nodes.filter((n) => n.type === 'n8n-nodes-base.webhook');
+  const authDe = (ruta) => {
+    const w = webhooks.find((n) => (n.parameters || {}).path === ruta);
+
+    return w ? (w.parameters.authentication || null) : undefined;
+  };
+  const salidasDe = (n) => ((wf.connections[n] || {}).main || []).flat().filter(Boolean).map((c) => c.node);
+
+  const captacion = wf.nodes.find((n) => n.type === 'n8n-nodes-base.webhook' &&
+    (n.parameters || {}).path === 'lead/nuevo');
+  const cadena = captacion ? cadenaDesde(wf, captacion.name) : [];
+  const pos = (nombre) => cadena.indexOf(nombre);
+
+  // Rama fría: los nodos que cuelgan del condicional de nivel por la salida falsa.
+  const condicionalNivel = wf.nodes.find((n) => /Es HOT o WARM/i.test(n.name));
+  const ramaFria = condicionalNivel
+    ? (((wf.connections[condicionalNivel.name] || {}).main || [])[1] || []).map((c) => c.node)
+    : [];
+
+  const escribenEstadoPago = wf.nodes.filter((n) => /estado_pago\s*=\s*'/.test(params(n.name)));
+  const marcanCobrado = escribenEstadoPago.filter((n) => /estado_pago\s*=\s*'COBRADO'/.test(params(n.name)));
+  const sinGuarda = marcanCobrado.filter((n) => !/AND estado_pago\s*=\s*'PENDIENTE'/.test(params(n.name)));
+  const asignan = (valor) => wf.nodes
+    .filter((n) => new RegExp("estado_pago\\s*=\\s*'" + valor + "'").test(params(n.name)))
+    .map((n) => n.name);
+
+  const conAuth = webhooks.filter((n) => (n.parameters || {}).authentication === 'headerAuth')
+    .map((n) => n.parameters.path).sort();
+  const panelEsperado = ['cambio-aceptar', 'cambio-rechazar', 'lead-cancelar', 'propuesta-enviar',
+    'proyecto-cerrado', 'trabajo-estado'].sort();
+
+  return [
+    {
+      id: 'orden-scoring-antes-de-insert',
+      seccion: '§4.3.1 y §4.8',
+      afirma: 'el cálculo del puntaje precede a la persistencia del lead',
+      ok: pos('Code - Scoring') >= 0 && pos('Postgres - Insert Lead') >= 0 &&
+        pos('Code - Scoring') < pos('Postgres - Insert Lead'),
+      detalle: 'cadena real: ' + cadena.slice(0, 4).join(' → '),
+    },
+    {
+      id: 'rama-fria-avisa-al-cliente',
+      seccion: '§4.3.1 y §4.8',
+      afirma: 'el lead COLD genera aviso interno y acuse de recibo al interesado',
+      ok: ramaFria.some((n) => /telegram/i.test(n)) && ramaFria.some((n) => /gmail/i.test(n)),
+      detalle: 'rama fría: ' + (ramaFria.join(' + ') || '(vacía)'),
+    },
+    {
+      id: 'cobrado-solo-desde-pendiente',
+      seccion: '§4.8',
+      afirma: 'una factura sólo pasa a COBRADO desde PENDIENTE',
+      ok: marcanCobrado.length > 0 && sinGuarda.length === 0,
+      detalle: marcanCobrado.length + ' nodos marcan COBRADO; sin guarda: ' +
+        (sinGuarda.map((n) => n.name).join(', ') || 'ninguno'),
+    },
+    {
+      id: 'estados-pago-sin-asignar',
+      seccion: '§4.4 y §4.8',
+      afirma: 'VENCIDA y ANULADA están previstos en el enumerado y ningún nodo los escribe',
+      ok: asignan('VENCIDA').length === 0 && asignan('ANULADA').length === 0,
+      detalle: 'los escriben: ' + ([...asignan('VENCIDA'), ...asignan('ANULADA')].join(', ') || 'ninguno'),
+    },
+    {
+      id: 'aceptacion-condicional-atomica',
+      seccion: '§4.3.2 y RNF2',
+      afirma: 'la transición a ACEPTADO es condicional sobre el estado previo',
+      ok: /estado IN \('PROPUESTA_ENVIADA','EN_SEGUIMIENTO'\)/.test(params('Postgres - Marcar Aceptado')),
+      detalle: 'nodo Postgres - Marcar Aceptado',
+    },
+    {
+      id: 'webhooks-del-panel-autenticados',
+      seccion: '§4.5, Tabla 10 y Tabla 11 (S1)',
+      afirma: 'los seis webhooks invocados desde el tablero exigen Header Auth y ningún otro lo hace',
+      ok: JSON.stringify(conAuth) === JSON.stringify(panelEsperado),
+      detalle: 'con headerAuth: ' + conAuth.join(', '),
+    },
+    {
+      id: 'captacion-sin-auth-de-origen',
+      seccion: 'Tabla 11 (S1)',
+      afirma: 'el webhook de captación sigue sin autenticación de origen (deuda declarada)',
+      ok: authDe('lead/nuevo') === null,
+      detalle: 'lead/nuevo → ' + (authDe('lead/nuevo') || 'sin autenticación'),
+    },
+    {
+      id: 'frontend-no-escribe-negocio',
+      seccion: '§4.1 y RNF4',
+      afirma: 'ninguna salida del condicional de duplicado reinserta el lead',
+      ok: salidasDe('IF - Lead Nuevo?').some((n) => /No-op/i.test(n)),
+      detalle: 'salidas: ' + salidasDe('IF - Lead Nuevo?').join(' | '),
+    },
+  ];
+}
+
 const medidas = {
   crm: medirWorkflow('crm_postgres.json'),
   tickets: medirWorkflow('tickets_notion.json'),
@@ -165,6 +287,8 @@ const medidas = {
   importesDesdePresupuesto: medirImportes(),
   scoring: medirScoring(),
 };
+
+const cualitativas = medirCualitativas();
 
 // ── Comparación ────────────────────────────────────────────────────────────
 const decl = JSON.parse(leer('docs', 'afirmaciones-tesis.json'));
@@ -221,7 +345,27 @@ console.log('  Scoring  : HOT ≥ ' + medidas.scoring.umbralHot + ', WARM ≥ ' 
 console.log('  Importes : ' + medidas.importesDesdePresupuesto + ' nodos anuncian un importe leyendo presupuesto (debe ser 0)');
 console.log('  Servicio : «Otro» → ' + medidas.scoring.puntosOtro + ' pts · respaldo del normalizador → ' + medidas.scoring.puntosRespaldo + ' pts');
 
+// ── Reporte de las afirmaciones cualitativas ───────────────────────────────
+const anchoCual = Math.max(...cualitativas.map((c) => c.id.length));
+const rotas = cualitativas.filter((c) => !c.ok);
+
+console.log('\nAfirmaciones cualitativas (forma del flujo, no cantidades):');
+for (const c of cualitativas) {
+  console.log('  ' + (c.ok ? 'OK  ' : 'FALLA') + '  ' + c.id.padEnd(anchoCual + 2) + c.seccion);
+  if (!c.ok) {
+    console.log('        ↳ el documento afirma que ' + c.afirma);
+    console.log('        ↳ ' + c.detalle);
+  }
+}
+
 console.log('\nResultado: ' + ok + ' sin cambios, ' + explicados + ' con desvío documentado, ' + divergentes + ' divergentes');
+console.log('           ' + (cualitativas.length - rotas.length) + '/' + cualitativas.length + ' afirmaciones cualitativas verificadas');
+
+if (rotas.length) {
+  console.log('\n✗ Hay afirmaciones cualitativas del documento que ya no describen el flujo.');
+  console.log('  Corregí el texto de la sección indicada, o el nodo del flujo, según cuál');
+  console.log('  de los dos quedó desactualizado.');
+}
 
 if (divergentes) {
   console.log('\n✗ Hay afirmaciones del documento que ya no son ciertas.');
@@ -229,4 +373,4 @@ if (divergentes) {
   console.log('  con `delta_documentado` + `nota` explicando de dónde sale la diferencia.');
 }
 
-process.exit(divergentes ? 1 : 0);
+process.exit(divergentes || rotas.length ? 1 : 0);
