@@ -127,10 +127,24 @@ Leer Notificacion MP`, `Code - Procesar Pago MP`) con mocks de `$env`/`$input`.
 `tests/verificar_sql.mjs` compila la consulta de `Postgres - Marcar Cobrado
 MP` contra el esquema real. Ninguno de los dos necesita credenciales de
 MercadoPago: validan que el código corre y que el SQL es válido, no que un
-pago real se apruebe (eso exige la tarjeta de prueba de MercadoPago desde el
-navegador — no es automatizable sin la cuenta real).
+pago real se apruebe.
 
 El escenario `pago-idempotente` de `tests/escenarios.mjs` sigue probando el
 modo de desarrollo (`GET /webhook/pago-confirmado`), que no cambió: es lo que
 permite validar la idempotencia end-to-end sin depender de una cuenta de
 MercadoPago en CI.
+
+**Escenario E14 (rama de cobro), dos instrumentos.** `tests/e14-cobro-mp.mjs`
+ejercita los nodos reales de esta sección de punta a punta contra dos
+backends intercambiables (`MP_API_BASE` apunta a uno u otro, sin tocar el
+flujo): `tests/mp-doble.mjs` fabrica el desenlace del pago (`status:
+'approved'` fijo) y no necesita ninguna credencial; `tests/adaptador-stripe-
+e14.mjs` habla el mismo contrato hacia n8n pero por dentro llama a la API
+real de Stripe en modo de prueba, de modo que el pago ocurre de verdad
+(tarjeta de prueba oficial, PaymentIntent real) en vez de fabricarse. Ninguno
+de los dos prueba el servicio real de MercadoPago —eso sigue exigiendo la
+tarjeta de prueba desde el navegador con una cuenta real, hoy bloqueada por
+la falla de activación del proveedor (§5.3)—, pero el adaptador de Stripe sí
+prueba que la lógica de cobro del artefacto sostiene un ciclo de vida de pago
+real y no sólo el que el doble le fabrica. Ver `tests/fixtures-e14/README.md`
+para la receta de cada uno.

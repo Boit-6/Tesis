@@ -53,8 +53,45 @@ node tests/e14-cobro-mp.mjs
 Al terminar conviene borrar los tres flujos auxiliares de la instancia y volver
 a levantar n8n sin las variables `MP_*` para restituir el modo de desarrollo.
 
+## Modo con pasarela real (Stripe)
+
+Además del doble de contrato, existe un segundo instrumento:
+`tests/adaptador-stripe-e14.mjs`. Habla el mismo contrato HTTP hacia n8n que
+`mp-doble.mjs` —los mismos dos endpoints, los mismos auxiliares `/__estado` y
+`/__reset`— pero cada llamada dispara una llamada real a la API de Stripe en
+modo de prueba: el pago **ocurre** (tarjeta de prueba oficial, PaymentIntent
+real), no se fabrica un `status: 'approved'` fijo. La receta es la misma, sólo
+cambia el instrumento y el puerto:
+
+```bash
+# 1. Adaptador de Stripe (necesita STRIPE_TEST_SECRET_KEY en .env, sk_test_...)
+node tests/adaptador-stripe-e14.mjs   # queda escuchando en :8798
+
+# 2. n8n apuntado al adaptador (mismo MP_ACCESS_TOKEN no vacío que en el paso 2 de arriba)
+MP_API_BASE=http://host.docker.internal:8798 \
+MP_ACCESS_TOKEN=TEST-stripe-e14-local \
+  docker compose up -d --force-recreate n8n
+
+# 3. Los mismos tres flujos auxiliares del paso 3 de arriba (si no están ya importados)
+
+# 4. El mismo escenario, apuntado al adaptador en vez del doble
+MP_DOBLE_BASE=http://localhost:8798 node tests/e14-cobro-mp.mjs
+```
+
+`tests/e14-cobro-mp.mjs` no necesita ningún cambio para esto: ya lee
+`MP_DOBLE_BASE` de una variable de entorno, y el adaptador responde con la
+misma forma que el doble. Por qué Stripe y no MercadoPago real, qué acredita
+esta corrida y qué no, y la restricción del id numérico del pago están
+documentadas en la cabecera de `tests/adaptador-stripe-e14.mjs`.
+
 ## Alcance
 
-La corrida verifica el **artefacto** contra el contrato documentado de la API de
-MercadoPago. **No** verifica el servicio real del proveedor: esa validación
-sigue pendiente y así está declarada en la tesis.
+Hay dos instrumentos y acreditan cosas distintas. Contra el **doble**
+(`mp-doble.mjs`), la corrida verifica el **artefacto** contra el contrato
+documentado de la API de MercadoPago, con el desenlace del pago fabricado.
+Contra el **adaptador de Stripe**, la corrida verifica además que esa misma
+lógica de cobro —idempotencia, el gate `status === 'approved'`, el ciclo
+preferencia→confirmación completo— funciona correctamente cuando la respalda
+un pago real de una pasarela real, no fabricado. Ninguna de las dos corridas
+verifica el servicio real de **MercadoPago**: esa validación sigue pendiente
+y así está declarada en la tesis (Capítulo 8, punto 6).

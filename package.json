@@ -18,10 +18,14 @@
     "test:idempotencia": "node tests/idempotencia.mjs",
     "test:docker": "npm run test:sql && npm run test:rls && npm run test:idempotencia",
     "test:escenarios": "node tests/escenarios.mjs",
+    "test:trazabilidad": "node tests/trazabilidad.mjs",
+    "test:exposicion": "node tests/exposicion-webhooks.mjs",
+    "test:e14-stripe": "node tests/adaptador-stripe-e14.mjs",
     "setup:tickets": "node scripts/setup-notion-tickets.mjs"
   },
   "comentarioScripts": {
     "test": "Suite offline: no necesita n8n, ni base, ni credenciales. Es la que corre en CI.",
+    "test:e14-stripe": "Levanta el adaptador que habla el contrato de MercadoPago hacia n8n y llama a la API real de Stripe en modo de prueba (sk_test_...) hacia afuera. No corre solo: hay que apuntar MP_API_BASE del contenedor de n8n a su puerto y luego correr tests/e14-cobro-mp.mjs con MP_DOBLE_BASE apuntando ahí (ver tests/fixtures-e14/README.md, sección 'Modo con pasarela real (Stripe)'). No sustituye a tests/mp-doble.mjs: ese sigue siendo el camino sin credenciales para CI.",
     "test:autherrores": "Verifica el RNF5: que los 22 códigos de error que Supabase Auth puede devolver en los flujos de la aplicación (signUp, signInWithPassword y verifyOtp) tengan mensaje en español. El conjunto alcanzable se declara código por código, con la operación que lo origina.",
     "test:parametros": "Revisa cómo cada nodo Postgres le pasa los valores a su consulta: exige la forma de arreglo (n8n descarta los valores vacíos y parte los que traen comas cuando se usa la forma de texto), que la cantidad coincida con los $N del SQL y que ningún dato viaje concatenado dentro del texto de la consulta.",
     "test:rls": "Levanta un PostgreSQL desechable en Docker y ejecuta las políticas RLS de db/schema.sql.",
