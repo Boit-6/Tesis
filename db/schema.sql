@@ -337,8 +337,15 @@ fact_mes AS (
     coalesce(sum(monto), 0)                                            AS facturacion,
     coalesce(sum(monto) FILTER (WHERE estado_pago = 'COBRADO'), 0)     AS cobrado,
     coalesce(sum(monto) FILTER (WHERE estado_pago <> 'COBRADO'), 0)    AS pendiente,
-    count(*) FILTER (WHERE estado_pago = 'PENDIENTE'
-                      AND fecha_vencimiento < now())                   AS facturas_vencidas,
+    -- Hasta el 01-sep-2026 esto se inferia contando PENDIENTE + fecha_vencimiento
+    -- < now(), porque ningun nodo escribia la transicion VENCIDA (limitacion
+    -- declarada en §4.8 y en el punto 7 del Capitulo 8). Con "🟠 Cron -
+    -- Recordatorios Pago 10AM" marcando VENCIDA a las facturas PENDIENTE que
+    -- superan FACTURA_VENCIDA_DIAS_GRACIA dias de atraso (workflow/crm_postgres.json),
+    -- el indicador de la Tabla 8 pasa a contar el estado real en vez de inferirlo:
+    -- una factura ANULADA (tambien nueva) no debe sumar acá, y con la inferencia
+    -- vieja sí lo habria hecho mientras siguiera con fecha_vencimiento pasada.
+    count(*) FILTER (WHERE estado_pago = 'VENCIDA')                    AS facturas_vencidas,
     round(100.0 * coalesce(sum(monto) FILTER (WHERE estado_pago = 'COBRADO'), 0)
                  / NULLIF(sum(monto), 0), 1)                           AS tasa_cobro_pct,
     -- Comisión de la plataforma (MP_COMISION_PORCENTAJE) realizada sobre lo
@@ -366,6 +373,12 @@ FROM lead_mes l
 FULL OUTER JOIN fact_mes f ON l.mes = f.mes
 ORDER BY mes DESC;
 
+-- Sigue filtrando sólo PENDIENTE a propósito (01-sep-2026): es la que alimenta
+-- los recordatorios de cobro (RAMA 4) y la sección IV del tablero. Una factura
+-- que ya pasó a VENCIDA (más de FACTURA_VENCIDA_DIAS_GRACIA días de atraso) o a
+-- ANULADA sale de esta lista sin que haga falta agregar un WHERE: ambos son
+-- estados distintos de PENDIENTE. El conteo de vencidas para la Tabla 8 vive en
+-- `metrics_mensuales.facturas_vencidas`, no acá.
 CREATE OR REPLACE VIEW facturas_pendientes
   WITH (security_invoker = true) AS
 SELECT
@@ -447,7 +460,7 @@ GRANT SELECT ON metrics_mensuales, facturas_pendientes TO service_role;
 --    rol que debe usar la credencial Postgres del nodo homónimo de n8n en
 --    su lugar: sin BYPASSRLS, sin acceso a `profiles` ni al esquema `auth`,
 --    y sin DELETE, porque ningún nodo del flujo borra filas (verificado
---    contra los 35 nodos Postgres del flujo exportado,
+--    contra los 38 nodos Postgres del flujo exportado (01-sep-2026),
 --    workflow/crm_postgres.json, y con evidencia ejecutable en
 --    tests/rls/casos.sql y tests/idempotencia.mjs).
 DO $$ BEGIN CREATE ROLE n8n_writer NOLOGIN;

@@ -400,16 +400,20 @@ export default function DashboardClient() {
 
   // Las acciones del panel van por /api/crm/*, no directo a n8n: el route
   // handler revalida el rol admin y agrega la credencial del lado del servidor.
-  async function accionPanel(accion: string, leadId: string, mensajeError: string) {
+  // El body es genérico (no siempre es `lead_id`: factura-anular manda
+  // `factura_id`) porque el route handler sólo reenvía lo que reciba.
+  async function accionPanel(accion: string, body: Record<string, unknown>, mensajeError: string) {
     try {
       const res = await fetch(`/api/crm/${accion}`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({lead_id: leadId}),
+        body: JSON.stringify(body),
       });
       const json = await res.json().catch(() => ({}));
 
-      if (!res.ok || json.ok === false) throw new Error(json.error ?? `Error ${res.status}`);
+      if (!res.ok || json.ok === false || json.status === "invalido") {
+        throw new Error(json.error ?? json.mensaje ?? `Error ${res.status}`);
+      }
 
       cargarDatos();
     } catch (err) {
@@ -445,7 +449,7 @@ export default function DashboardClient() {
     if (!window.confirm("¿Cancelar este pedido? Se marca como PERDIDO y se avisa al cliente."))
       return;
 
-    accionPanel("cancelar", leadId, "No se pudo cancelar el pedido.");
+    accionPanel("cancelar", {lead_id: leadId}, "No se pudo cancelar el pedido.");
   }
 
   // Único camino del sistema al estado CERRADO. Sin esta acción el lead se
@@ -460,12 +464,12 @@ export default function DashboardClient() {
     )
       return;
 
-    accionPanel("cerrar", leadId, "No se pudo cerrar el proyecto.");
+    accionPanel("cerrar", {lead_id: leadId}, "No se pudo cerrar el proyecto.");
   }
 
   function aceptarCambio(leadId: string) {
     if (window.confirm("¿Aceptar los cambios y reenviar la propuesta al cliente?")) {
-      accionPanel("cambio-aceptar", leadId, "No se pudo procesar el pedido de cambio.");
+      accionPanel("cambio-aceptar", {lead_id: leadId}, "No se pudo procesar el pedido de cambio.");
     }
   }
 
@@ -475,8 +479,24 @@ export default function DashboardClient() {
         "¿Rechazar los cambios? Se mantiene la propuesta original y se le avisa al cliente.",
       )
     ) {
-      accionPanel("cambio-rechazar", leadId, "No se pudo procesar el pedido de cambio.");
+      accionPanel("cambio-rechazar", {lead_id: leadId}, "No se pudo procesar el pedido de cambio.");
     }
+  }
+
+  // Cierra la transición ANULADA del enum `pago_estado` (§4.8 y Cap. 8, punto
+  // 7): hasta el 01-sep-2026 estaba prevista en el esquema pero ningún botón
+  // ni nodo la disparaba. El backend (`Postgres - Marcar Factura Anulada`) ya
+  // es quien decide si aplica (sólo PENDIENTE o VENCIDA, nunca COBRADO); acá
+  // sólo se pide confirmación y se refresca la lista si se aplicó.
+  function anularFactura(facturaId: string) {
+    if (
+      !window.confirm(
+        `¿Anular la factura ${facturaId}? No se puede deshacer y deja de contar como pendiente ni como vencida.`,
+      )
+    )
+      return;
+
+    accionPanel("factura-anular", {factura_id: facturaId}, "No se pudo anular la factura.");
   }
 
   if (loading) {
@@ -691,7 +711,8 @@ export default function DashboardClient() {
                   <th className={thClass}>Servicio</th>
                   <th className={`${thClass} text-right`}>Monto</th>
                   <th className={`${thClass} text-right`}>Vence</th>
-                  <th className={`${thClass} pr-0 text-right`}>Días</th>
+                  <th className={`${thClass} text-right`}>Días</th>
+                  <th className={`${thClass} pr-0 text-right`}>Acción</th>
                 </tr>
               </thead>
               <tbody>
@@ -713,7 +734,7 @@ export default function DashboardClient() {
                         {formatDate(factura.fecha_vencimiento)}
                       </td>
                       <td
-                        className={`${tdClass} pr-0 text-right ${
+                        className={`${tdClass} text-right ${
                           vencida ? "text-brick" : venceHoy ? "text-ochre" : "text-muted"
                         }`}
                       >
@@ -722,6 +743,15 @@ export default function DashboardClient() {
                           : venceHoy
                             ? "hoy"
                             : factura.dias_al_vencimiento}
+                      </td>
+                      <td className={`${tdClass} pr-0 text-right`}>
+                        <button
+                          className={ghostButtonClass}
+                          type="button"
+                          onClick={() => anularFactura(factura.factura_id)}
+                        >
+                          Anular
+                        </button>
                       </td>
                     </tr>
                   );

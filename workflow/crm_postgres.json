@@ -4043,6 +4043,332 @@
         1950,
         17530
       ]
+    },
+    {
+      "parameters": {
+        "content": "## 🔔 Propuestas pendientes de enviar (RAMA 10, cron cada 2h L-V 9-17)\nRiesgo declarado en §4.3.1 y §4.9: un lead **HOT/WARM** califica y queda en `NUEVO` esperando que el profesional le fije precio, plazo y alcance (`POST /propuesta-enviar`). Hoy solo hay un aviso puntual al calificarlo (`Telegram - Propuesta Por Enviar`) y su visibilidad en el tablero (sección «Propuestas por enviar»); si el profesional no actúa, nadie vuelve a insistir. Este cron **reinsiste** mientras `precio_propuesto` siga NULL y hayan pasado más de `PROPUESTA_PENDIENTE_HORAS_UMBRAL` horas (24 por defecto) desde `fecha_ingreso`. Es un **recordatorio, no una acción automática**: no envía la propuesta ni toca `estado` — sólo notifica por Telegram, con cuántas propuestas siguen pendientes en total y hace cuánto espera cada una.",
+        "height": 470,
+        "width": 1550,
+        "color": 4
+      },
+      "id": "s10notarama10propuestas0001",
+      "name": "Nota — 🔔 RAMA 10 · Propuestas pendientes (cron cada 2h L-V)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        17750
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9-17/2 * * 1-5"
+            }
+          ]
+        }
+      },
+      "id": "s10cronpropuestaspend0001",
+      "name": "🔔 Cron - Propuestas Pendientes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        150,
+        17875
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT l.lead_id, l.nombre, l.servicio, l.tier, l.score, l.presupuesto, l.fecha_ingreso, EXTRACT(EPOCH FROM (now() - l.fecha_ingreso)) / 3600 AS horas_espera FROM leads l WHERE l.estado = 'NUEVO' AND l.tier IN ('HOT','WARM') AND l.precio_propuesto IS NULL AND l.fecha_ingreso < now() - make_interval(hours => {{ $env.PROPUESTA_PENDIENTE_HORAS_UMBRAL || 24 }}) ORDER BY l.fecha_ingreso;",
+        "options": {}
+      },
+      "id": "s10pgleerpropuestaspend0001",
+      "name": "Postgres - Leer Propuestas Pendientes",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        450,
+        17875
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Recordatorio (§4.3.1 / §4.9): un lead HOT/WARM quedó en NUEVO esperando\n// que el profesional le fije precio, plazo y alcance. Sin LIMIT en la\n// consulta: se avisa por cada lead que siga esperando, no solo el más\n// viejo, y cada aviso lleva el total para que el profesional dimensione la\n// cola sin entrar al tablero.\nconst items = $input.all();\nconst total = items.length;\nconst out = [];\nfor (const it of items) {\n  const l = it.json;\n  const horas = Math.floor(Number(l.horas_espera) || 0);\n  const dias = Math.floor(horas / 24);\n  const horaResto = horas % 24;\n  const espera = dias > 0 ? (dias + ' día(s) y ' + horaResto + ' hora(s)') : (horas + ' hora(s)');\n  out.push({ json: Object.assign({}, l, { espera_legible: espera, total_pendientes: total }) });\n}\nreturn out;"
+      },
+      "id": "s10codeprepararpropuestapend0001",
+      "name": "Code - Preparar Aviso Propuestas Pendientes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        17875
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=🔔 <b>Propuesta pendiente de enviar</b>\nCliente: {{ $json.nombre }}\nServicio: {{ $json.servicio }}\nNivel: {{ $json.tier }} ({{ $json.score }}/100)\nEsperando hace: {{ $json.espera_legible }}\n\nHay {{ $json.total_pendientes }} propuesta(s) pendiente(s) de enviar en total. Fijá precio, plazo y alcance desde el tablero para enviarla.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "s10telegrampropuestaspend0001",
+      "name": "Telegram - Propuestas Pendientes",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1050,
+        17875
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "telegramApi": {
+          "id": "Zv2UC716Fxh6BCDs",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE facturas SET estado_pago = 'VENCIDA' WHERE estado_pago = 'PENDIENTE' AND fecha_vencimiento < now() - make_interval(days => {{ $env.FACTURA_VENCIDA_DIAS_GRACIA || 7 }}) RETURNING factura_id, cliente, monto, moneda;",
+        "options": {}
+      },
+      "id": "s4pgmarcarfacturasvencidas0001",
+      "name": "Postgres - Marcar Facturas Vencidas",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        450,
+        14300
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Resume el UPDATE condicional de arriba en un solo aviso: con 0 filas no\n// devuelve nada y el Telegram de abajo no llega a ejecutarse (sin esto,\n// correr el cron sin facturas vencidas mandaría un mensaje vacío todos los\n// días).\nconst items = $input.all();\nif (!items.length) return [];\nconst detalle = items.map((it) => it.json.cliente + ' — ' + it.json.factura_id + ' (' + it.json.monto + ' ' + it.json.moneda + ')').join('\\n');\nreturn [{ json: { cantidad: items.length, detalle: detalle } }];"
+      },
+      "id": "s4coderesumenfacturasvencidas0001",
+      "name": "Code - Resumen Facturas Vencidas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        14300
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=🟠 <b>Facturas marcadas VENCIDA</b>\nSe marcaron {{ $json.cantidad }} factura(s) como VENCIDA por superar {{ $env.FACTURA_VENCIDA_DIAS_GRACIA || 7 }} día(s) de gracia desde el vencimiento.\n\n{{ $json.detalle }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "s4telegramfacturasvencidas0001",
+      "name": "Telegram - Facturas Vencidas",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1050,
+        14300
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "telegramApi": {
+          "id": "Zv2UC716Fxh6BCDs",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "factura-anular",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
+        },
+        "authentication": "headerAuth"
+      },
+      "id": "s12webhookanularfactura0001",
+      "name": "🧾 Webhook - Anular Factura (panel)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        150,
+        18550
+      ],
+      "webhookId": "factura-anular",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "CRM - Header Auth (panel)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst body = j.body || {};\nconst query = j.query || {};\nconst factura_id = body.factura_id || query.factura_id;\nif (!factura_id) throw new Error('Falta factura_id');\nreturn [{ json: { factura_id: String(factura_id) } }];"
+      },
+      "id": "s12codeleeranularfactura0001",
+      "name": "Code - Leer Anular Factura",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        450,
+        18550
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE facturas SET estado_pago = 'ANULADA' WHERE factura_id = $1 AND estado_pago IN ('PENDIENTE','VENCIDA') RETURNING *;",
+        "options": {
+          "queryReplacement": "={{ [$json.factura_id] }}"
+        }
+      },
+      "id": "s12pgmarcarfacturaanulada0001",
+      "name": "Postgres - Marcar Factura Anulada",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        750,
+        18550
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "anular-factura-aplico",
+              "leftValue": "={{ $json.factura_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "s12ifanuladaok0001",
+      "name": "IF - Factura Anulada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        18550
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"ok\", \"mensaje\": \"Factura anulada.\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "s12respondanuladaok0001",
+      "name": "Respond - Factura Anulada OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1350,
+        18460
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=🧾 <b>Factura ANULADA desde el panel</b>\nFactura: {{ $json.factura_id }}\nCliente: {{ $json.cliente }}\nMonto: {{ $json.monto }} {{ $json.moneda }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "s12telegramanulada0001",
+      "name": "Telegram - Factura Anulada",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1350,
+        18640
+      ],
+      "onError": "continueRegularOutput",
+      "credentials": {
+        "telegramApi": {
+          "id": "Zv2UC716Fxh6BCDs",
+          "name": "Telegram account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"invalido\", \"mensaje\": \"La factura no existe o ya está COBRADA o ANULADA.\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "s12respondanuladainvalido0001",
+      "name": "Respond - Factura Anulada Invalido",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1350,
+        18820
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 🧾 Anular factura (dashboard)\nEl freelancer **anula** una factura desde el panel (`POST /factura-anular`, Header Auth) → UPDATE condicional: sólo si está `PENDIENTE` o `VENCIDA`, nunca si ya está `COBRADO` → Telegram. Cierra la transición `ANULADA` del enum `pago_estado` (§4.8 y Cap. 8, punto 7): estaba prevista en el esquema pero ningún nodo la escribía.",
+        "height": 830,
+        "width": 1530,
+        "color": 2
+      },
+      "id": "s12notaanularfactura0001",
+      "name": "Nota — 🧾 Anular factura (dashboard)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        18450
+      ]
     }
   ],
   "connections": {
@@ -4510,6 +4836,33 @@
         [
           {
             "node": "Postgres - Leer Facturas Pendientes",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Postgres - Marcar Facturas Vencidas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Marcar Facturas Vencidas": {
+      "main": [
+        [
+          {
+            "node": "Code - Resumen Facturas Vencidas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Resumen Facturas Vencidas": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Facturas Vencidas",
             "type": "main",
             "index": 0
           }
@@ -5449,6 +5802,95 @@
         [
           {
             "node": "Telegram - Factura Reconciliada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔔 Cron - Propuestas Pendientes": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Leer Propuestas Pendientes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Leer Propuestas Pendientes": {
+      "main": [
+        [
+          {
+            "node": "Code - Preparar Aviso Propuestas Pendientes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Preparar Aviso Propuestas Pendientes": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Propuestas Pendientes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🧾 Webhook - Anular Factura (panel)": {
+      "main": [
+        [
+          {
+            "node": "Code - Leer Anular Factura",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Leer Anular Factura": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Marcar Factura Anulada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Marcar Factura Anulada": {
+      "main": [
+        [
+          {
+            "node": "IF - Factura Anulada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Factura Anulada?": {
+      "main": [
+        [
+          {
+            "node": "Respond - Factura Anulada OK",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram - Factura Anulada",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Factura Anulada Invalido",
             "type": "main",
             "index": 0
           }

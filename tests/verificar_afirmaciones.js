@@ -215,8 +215,8 @@ function medirCualitativas() {
 
   const conAuth = webhooks.filter((n) => (n.parameters || {}).authentication === 'headerAuth')
     .map((n) => n.parameters.path).sort();
-  const panelEsperado = ['cambio-aceptar', 'cambio-rechazar', 'lead-cancelar', 'propuesta-enviar',
-    'proyecto-cerrado', 'trabajo-estado'].sort();
+  const panelEsperado = ['cambio-aceptar', 'cambio-rechazar', 'factura-anular', 'lead-cancelar',
+    'propuesta-enviar', 'proyecto-cerrado', 'trabajo-estado'].sort();
 
   return [
     {
@@ -243,11 +243,29 @@ function medirCualitativas() {
         (sinGuarda.map((n) => n.name).join(', ') || 'ninguno'),
     },
     {
-      id: 'estados-pago-sin-asignar',
-      seccion: '§4.4 y §4.8',
-      afirma: 'VENCIDA y ANULADA están previstos en el enumerado y ningún nodo los escribe',
-      ok: asignan('VENCIDA').length === 0 && asignan('ANULADA').length === 0,
-      detalle: 'los escriben: ' + ([...asignan('VENCIDA'), ...asignan('ANULADA')].join(', ') || 'ninguno'),
+      // Hasta el 01-sep-2026 esta afirmación era la inversa: VENCIDA y ANULADA
+      // estaban previstos en el enumerado y NINGÚN nodo los escribía (limitación
+      // declarada en §4.8 y en el punto 7 del Capítulo 8). Se cierra acá: ahora
+      // se verifica que ambas transiciones existan Y que sigan siendo
+      // condicionales sobre el estado previo, con el mismo criterio de UPDATE
+      // atómico que ya usaba 'cobrado-solo-desde-pendiente'.
+      id: 'vencida-solo-desde-pendiente',
+      seccion: '§4.8 y Cap. 8 (punto 7, cerrado 01-sep-2026)',
+      afirma: 'una factura sólo pasa a VENCIDA desde PENDIENTE, con un umbral de días de gracia',
+      ok: asignan('VENCIDA').length === 1 &&
+        /WHERE estado_pago = 'PENDIENTE' AND fecha_vencimiento < now\(\)/.test(
+          params('Postgres - Marcar Facturas Vencidas'),
+        ),
+      detalle: 'la escribe: ' + (asignan('VENCIDA').join(', ') || 'ninguno'),
+    },
+    {
+      id: 'anulada-desde-pendiente-o-vencida',
+      seccion: '§4.8 y Cap. 8 (punto 7, cerrado 01-sep-2026)',
+      afirma: 'una factura sólo pasa a ANULADA desde PENDIENTE o VENCIDA, nunca desde COBRADO',
+      ok: asignan('ANULADA').length === 1 &&
+        /estado_pago IN \('PENDIENTE','VENCIDA'\)/.test(params('Postgres - Marcar Factura Anulada')) &&
+        !/estado_pago IN \([^)]*COBRADO/.test(params('Postgres - Marcar Factura Anulada')),
+      detalle: 'la escribe: ' + (asignan('ANULADA').join(', ') || 'ninguno'),
     },
     {
       id: 'aceptacion-condicional-atomica',
