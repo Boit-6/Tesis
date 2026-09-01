@@ -128,7 +128,7 @@ async function altaDeLead(sufijo, datos) {
   const email = emailDe(sufijo);
   const t0 = ahora();
 
-  await webhook('lead/nuevo', {
+  await webhook('lead-nuevo', {
     cuerpo: {
       nombre: `[TEST ${ejecucion}] ${sufijo}`,
       email,
@@ -143,7 +143,7 @@ async function altaDeLead(sufijo, datos) {
     () => leadPorEmail(email),
   );
 
-  medir('alta del lead en la base', ms, `POST /lead/nuevo → fila en leads (${sufijo})`);
+  medir('alta del lead en la base', ms, `POST /lead-nuevo → fila en leads (${sufijo})`);
   creados.push(lead.lead_id);
 
   return {lead, email, t0};
@@ -346,7 +346,7 @@ const ESCENARIOS = [
     const logsAntes = (await rest('logs?select=id&nivel=eq.ERROR&order=id.desc&limit=1'))[0]?.id ?? 0;
 
     for (const entrada of invalidas) {
-      const res = await webhook('lead/nuevo', {cuerpo: {...entrada.cuerpo, email: entrada.email}});
+      const res = await webhook('lead-nuevo', {cuerpo: {...entrada.cuerpo, email: entrada.email}});
 
       t.verdad(res.status < 500, `${entrada.motivo}: el webhook respondió ${res.status} sin caerse`);
     }

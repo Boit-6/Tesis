@@ -105,7 +105,7 @@ let leadId = null;
 try {
   // 1) Alta del lead. Datos ficticios y neutros, conforme al protocolo de la Tabla 4.
   console.log('Recorrido del ciclo');
-  const alta = await webhook('lead/nuevo', {
+  const alta = await webhook('lead-nuevo', {
     cuerpo: {
       nombre: 'Cliente Demo Traza',
       email: EMAIL,

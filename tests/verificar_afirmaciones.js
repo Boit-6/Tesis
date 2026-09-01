@@ -196,7 +196,7 @@ function medirCualitativas() {
   const salidasDe = (n) => ((wf.connections[n] || {}).main || []).flat().filter(Boolean).map((c) => c.node);
 
   const captacion = wf.nodes.find((n) => n.type === 'n8n-nodes-base.webhook' &&
-    (n.parameters || {}).path === 'lead/nuevo');
+    (n.parameters || {}).path === 'lead-nuevo');
   const cadena = captacion ? cadenaDesde(wf, captacion.name) : [];
   const pos = (nombre) => cadena.indexOf(nombre);
 
@@ -267,8 +267,8 @@ function medirCualitativas() {
       id: 'captacion-sin-auth-de-origen',
       seccion: 'Tabla 11 (S1)',
       afirma: 'el webhook de captación sigue sin autenticación de origen (deuda declarada)',
-      ok: authDe('lead/nuevo') === null,
-      detalle: 'lead/nuevo → ' + (authDe('lead/nuevo') || 'sin autenticación'),
+      ok: authDe('lead-nuevo') === null,
+      detalle: 'lead-nuevo → ' + (authDe('lead-nuevo') || 'sin autenticación'),
     },
     {
       id: 'pago-confirmado-exige-token',

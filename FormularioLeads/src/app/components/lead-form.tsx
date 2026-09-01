@@ -3,7 +3,7 @@
 import {useRef, useState} from "react";
 
 const N8N_BASE = process.env.NEXT_PUBLIC_N8N_BASE;
-const WEBHOOK_URL = `${N8N_BASE}/webhook/lead/nuevo`;
+const WEBHOOK_URL = `${N8N_BASE}/webhook/lead-nuevo`;
 
 const SERVICIOS = [
   "Desarrollo Web",
