@@ -2008,7 +2008,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const e = $input.first().json;\nconst ex = e.execution || {};\nconst msg = (ex.error && ex.error.message) || 'desconocido';\nconst nodo = ex.lastNodeExecuted || 'desconocido';\nconst wf = (e.workflow && e.workflow.name) || 'desconocido';\nreturn [{ json: { wf_origen: wf, evento: 'ERROR_CRITICO', nivel: 'ERROR', detalle: 'Nodo: ' + nodo, error_msg: String(msg).substring(0, 300) } }];"
+        "jsCode": "const e = $input.first().json;\nconst ex = e.execution || {};\nconst msg = (ex.error && ex.error.message) || 'desconocido';\nconst nodo = ex.lastNodeExecuted || 'desconocido';\nconst wf = (e.workflow && e.workflow.name) || 'desconocido';\n// Enmascara cualquier UUID (accept_token, pago_token, mp_payment_id, etc.)\n// que pudiera colarse en el mensaje de un error de Postgres o de\n// validación, para que un token de aceptación nunca quede en claro en la\n// tabla de auditoría (Tabla 11, remanente de S3): sólo quedan los primeros\n// 8 caracteres + …\nconst enmascarar = (s) => String(s).replace(\n  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,\n  (m) => m.slice(0, 8) + '…',\n);\nreturn [{ json: { wf_origen: wf, evento: 'ERROR_CRITICO', nivel: 'ERROR', detalle: enmascarar('Nodo: ' + nodo), error_msg: enmascarar(String(msg).substring(0, 300)) } }];"
       },
       "id": "5bbc81f2-82c8-4e1a-8845-72aa4fb1a9b9",
       "name": "Code - Formatear Error",
@@ -4043,6 +4043,507 @@
         1950,
         17530
       ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst headers = item.headers || {};\nconst body = item.body || {};\nconst xff = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '');\nconst ip = (xff.split(',')[0] || '').trim() || 'ip-desconocida';\n// Clave de rate limit: el email que el propio interesado declaró en el\n// formulario si vino con la petición; si no, la IP de origen.\nconst email = String(body.email || '').toLowerCase().trim();\nconst claveLimite = email || ip;\nreturn [{ json: { ...item, claveLimite, ruta: 'lead/nuevo' } }];"
+      },
+      "id": "1b94196a-7bef-4483-8597-74e7c86d0fed",
+      "name": "Code - Clave Rate Limit (Nuevo Lead)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        150,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT count(*)::int AS intentos\nFROM rate_limit_log\nWHERE ip_o_clave = $1\n  AND ruta = $2\n  AND creado_en > now() - interval '1 minute';",
+        "options": {
+          "queryReplacement": "={{ [$json.claveLimite, $json.ruta] }}"
+        }
+      },
+      "id": "71e576cf-9de5-48cd-ac54-db5d0088da9e",
+      "name": "Postgres - Rate Limit (Nuevo Lead)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        420,
+        -160
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Code - Clave Rate Limit (Nuevo Lead)').item.json;\nconst intentos = $input.first().json.intentos;\nreturn [{ json: { ...original, intentos } }];"
+      },
+      "id": "56067107-bd99-40ed-bf64-55e48bc4138d",
+      "name": "Code - Rate Limit Resultado (Nuevo Lead)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        690,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ratelimit-excedido-Nuevo Lead",
+              "leftValue": "={{ $json.intentos }}",
+              "rightValue": 5,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "af704817-5dda-4b70-8971-6cfab25b1c28",
+      "name": "IF - Rate Limit Excedido (Nuevo Lead)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        960,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO logs (workflow, evento, nivel, detalle)\nVALUES ('lead_intake', 'rate_limit_excedido', 'WARN', $1);",
+        "options": {
+          "queryReplacement": "={{ ['clave=' + $json.claveLimite + ' ruta=' + $json.ruta + ' intentos=' + $json.intentos] }}"
+        }
+      },
+      "id": "05654d86-ec4d-4f0f-a3cf-c8380259c900",
+      "name": "Postgres - Log Rate Limit (Nuevo Lead)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1230,
+        -160
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst headers = item.headers || {};\nconst xff = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '');\nconst claveLimite = (xff.split(',')[0] || '').trim() || 'ip-desconocida';\nreturn [{ json: { ...item, claveLimite, ruta: 'lead-propuesta' } }];"
+      },
+      "id": "6f7fe2c4-fbcd-40bd-96e5-c62a7e9acf2a",
+      "name": "Code - Clave Rate Limit (Ver Propuesta)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        150,
+        2140
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT count(*)::int AS intentos\nFROM rate_limit_log\nWHERE ip_o_clave = $1\n  AND ruta = $2\n  AND creado_en > now() - interval '5 minutes';",
+        "options": {
+          "queryReplacement": "={{ [$json.claveLimite, $json.ruta] }}"
+        }
+      },
+      "id": "f8fc6e06-0533-4308-b760-5983c66d6bdc",
+      "name": "Postgres - Rate Limit (Ver Propuesta)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        420,
+        2140
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Code - Clave Rate Limit (Ver Propuesta)').item.json;\nconst intentos = $input.first().json.intentos;\nreturn [{ json: { ...original, intentos } }];"
+      },
+      "id": "9fe3df8f-8d2b-497a-815d-c1a1b1b7f190",
+      "name": "Code - Rate Limit Resultado (Ver Propuesta)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        690,
+        2140
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ratelimit-excedido-Ver Propuesta",
+              "leftValue": "={{ $json.intentos }}",
+              "rightValue": 30,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "767313fa-259d-493d-8e58-93937e1a49cb",
+      "name": "IF - Rate Limit Excedido (Ver Propuesta)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        960,
+        2140
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"ok\": false, \"status\": \"rate_limit\", \"mensaje\": \"Demasiados intentos. Probá de nuevo en unos minutos.\" }",
+        "options": {
+          "responseCode": 429
+        }
+      },
+      "id": "eed86fe1-e0b9-4741-a728-2490ba5e2272",
+      "name": "Respond - Rate Limit (Ver Propuesta)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1230,
+        2140
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst headers = item.headers || {};\nconst xff = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '');\nconst claveLimite = (xff.split(',')[0] || '').trim() || 'ip-desconocida';\nreturn [{ json: { ...item, claveLimite, ruta: 'lead-acepta' } }];"
+      },
+      "id": "8b9024cd-fd8f-4217-a2d6-8ae0b51cf3e0",
+      "name": "Code - Clave Rate Limit (Lead Acepta)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        150,
+        990
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT count(*)::int AS intentos\nFROM rate_limit_log\nWHERE ip_o_clave = $1\n  AND ruta = $2\n  AND creado_en > now() - interval '5 minutes';",
+        "options": {
+          "queryReplacement": "={{ [$json.claveLimite, $json.ruta] }}"
+        }
+      },
+      "id": "614cd80b-5b40-42a6-84db-ee3253204d7f",
+      "name": "Postgres - Rate Limit (Lead Acepta)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        420,
+        990
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Code - Clave Rate Limit (Lead Acepta)').item.json;\nconst intentos = $input.first().json.intentos;\nreturn [{ json: { ...original, intentos } }];"
+      },
+      "id": "910b3ca4-7e69-46d2-aa73-3fbdb8746553",
+      "name": "Code - Rate Limit Resultado (Lead Acepta)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        690,
+        990
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ratelimit-excedido-Lead Acepta",
+              "leftValue": "={{ $json.intentos }}",
+              "rightValue": 10,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5978f23f-bfb5-49fc-b6d0-fa54ca1ec855",
+      "name": "IF - Rate Limit Excedido (Lead Acepta)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        960,
+        990
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"ok\": false, \"status\": \"rate_limit\", \"mensaje\": \"Demasiados intentos. Probá de nuevo en unos minutos.\" }",
+        "options": {
+          "responseCode": 429
+        }
+      },
+      "id": "160d3c96-6392-484a-8751-31776f9c791a",
+      "name": "Respond - Rate Limit (Lead Acepta)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1230,
+        990
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst headers = item.headers || {};\nconst xff = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '');\nconst claveLimite = (xff.split(',')[0] || '').trim() || 'ip-desconocida';\nreturn [{ json: { ...item, claveLimite, ruta: 'lead-rechaza' } }];"
+      },
+      "id": "ee13169a-35ad-410d-b996-d9addd2bbcba",
+      "name": "Code - Clave Rate Limit (Rechazar Propuesta)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        150,
+        3290
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT count(*)::int AS intentos\nFROM rate_limit_log\nWHERE ip_o_clave = $1\n  AND ruta = $2\n  AND creado_en > now() - interval '5 minutes';",
+        "options": {
+          "queryReplacement": "={{ [$json.claveLimite, $json.ruta] }}"
+        }
+      },
+      "id": "3460ccc4-a2bf-4c54-8690-7fc06160ca60",
+      "name": "Postgres - Rate Limit (Rechazar Propuesta)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        420,
+        3290
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Code - Clave Rate Limit (Rechazar Propuesta)').item.json;\nconst intentos = $input.first().json.intentos;\nreturn [{ json: { ...original, intentos } }];"
+      },
+      "id": "c6315ec9-fa44-4af4-9af0-9f21f43ec354",
+      "name": "Code - Rate Limit Resultado (Rechazar Propuesta)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        690,
+        3290
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ratelimit-excedido-Rechazar Propuesta",
+              "leftValue": "={{ $json.intentos }}",
+              "rightValue": 10,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b1adf063-55f9-4dbe-9ba0-75e18309708b",
+      "name": "IF - Rate Limit Excedido (Rechazar Propuesta)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        960,
+        3290
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"ok\": false, \"status\": \"rate_limit\", \"mensaje\": \"Demasiados intentos. Probá de nuevo en unos minutos.\" }",
+        "options": {
+          "responseCode": 429
+        }
+      },
+      "id": "84f06427-402f-48fc-b3fc-f5ed2ad8d919",
+      "name": "Respond - Rate Limit (Rechazar Propuesta)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1230,
+        3290
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nconst headers = item.headers || {};\nconst xff = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '');\nconst claveLimite = (xff.split(',')[0] || '').trim() || 'ip-desconocida';\nreturn [{ json: { ...item, claveLimite, ruta: 'lead-modifica' } }];"
+      },
+      "id": "c09501e5-c780-4d34-817d-6c3dbf624d45",
+      "name": "Code - Clave Rate Limit (Pedir Cambios)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        150,
+        4440
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT count(*)::int AS intentos\nFROM rate_limit_log\nWHERE ip_o_clave = $1\n  AND ruta = $2\n  AND creado_en > now() - interval '5 minutes';",
+        "options": {
+          "queryReplacement": "={{ [$json.claveLimite, $json.ruta] }}"
+        }
+      },
+      "id": "6e082a0b-7d0c-4959-8d98-bd84092d769e",
+      "name": "Postgres - Rate Limit (Pedir Cambios)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        420,
+        4440
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const original = $('Code - Clave Rate Limit (Pedir Cambios)').item.json;\nconst intentos = $input.first().json.intentos;\nreturn [{ json: { ...original, intentos } }];"
+      },
+      "id": "ef556950-402e-4b18-9254-3360cec7888d",
+      "name": "Code - Rate Limit Resultado (Pedir Cambios)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        690,
+        4440
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ratelimit-excedido-Pedir Cambios",
+              "leftValue": "={{ $json.intentos }}",
+              "rightValue": 10,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a8df62ea-ea08-4156-bbd0-34f363e3ebe6",
+      "name": "IF - Rate Limit Excedido (Pedir Cambios)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        960,
+        4440
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"ok\": false, \"status\": \"rate_limit\", \"mensaje\": \"Demasiados intentos. Probá de nuevo en unos minutos.\" }",
+        "options": {
+          "responseCode": 429
+        }
+      },
+      "id": "b9097e9d-b249-47d4-a697-35623a41722a",
+      "name": "Respond - Rate Limit (Pedir Cambios)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1230,
+        4440
+      ]
     }
   ],
   "connections": {
@@ -4155,7 +4656,7 @@
       "main": [
         [
           {
-            "node": "Code - Normalizar Lead",
+            "node": "Code - Clave Rate Limit (Nuevo Lead)",
             "type": "main",
             "index": 0
           }
@@ -4266,7 +4767,7 @@
       "main": [
         [
           {
-            "node": "Code - Validar Token",
+            "node": "Code - Clave Rate Limit (Lead Acepta)",
             "type": "main",
             "index": 0
           }
@@ -4697,7 +5198,7 @@
       "main": [
         [
           {
-            "node": "Code - Leer Query",
+            "node": "Code - Clave Rate Limit (Ver Propuesta)",
             "type": "main",
             "index": 0
           }
@@ -4752,7 +5253,7 @@
       "main": [
         [
           {
-            "node": "Code - Leer Rechazo",
+            "node": "Code - Clave Rate Limit (Rechazar Propuesta)",
             "type": "main",
             "index": 0
           }
@@ -4813,7 +5314,7 @@
       "main": [
         [
           {
-            "node": "Code - Leer Modifica",
+            "node": "Code - Clave Rate Limit (Pedir Cambios)",
             "type": "main",
             "index": 0
           }
@@ -5449,6 +5950,261 @@
         [
           {
             "node": "Telegram - Factura Reconciliada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Clave Rate Limit (Nuevo Lead)": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Rate Limit (Nuevo Lead)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Rate Limit (Nuevo Lead)": {
+      "main": [
+        [
+          {
+            "node": "Code - Rate Limit Resultado (Nuevo Lead)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Rate Limit Resultado (Nuevo Lead)": {
+      "main": [
+        [
+          {
+            "node": "IF - Rate Limit Excedido (Nuevo Lead)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Rate Limit Excedido (Nuevo Lead)": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Log Rate Limit (Nuevo Lead)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Normalizar Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Clave Rate Limit (Ver Propuesta)": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Rate Limit (Ver Propuesta)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Rate Limit (Ver Propuesta)": {
+      "main": [
+        [
+          {
+            "node": "Code - Rate Limit Resultado (Ver Propuesta)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Rate Limit Resultado (Ver Propuesta)": {
+      "main": [
+        [
+          {
+            "node": "IF - Rate Limit Excedido (Ver Propuesta)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Rate Limit Excedido (Ver Propuesta)": {
+      "main": [
+        [
+          {
+            "node": "Respond - Rate Limit (Ver Propuesta)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Leer Query",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Clave Rate Limit (Lead Acepta)": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Rate Limit (Lead Acepta)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Rate Limit (Lead Acepta)": {
+      "main": [
+        [
+          {
+            "node": "Code - Rate Limit Resultado (Lead Acepta)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Rate Limit Resultado (Lead Acepta)": {
+      "main": [
+        [
+          {
+            "node": "IF - Rate Limit Excedido (Lead Acepta)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Rate Limit Excedido (Lead Acepta)": {
+      "main": [
+        [
+          {
+            "node": "Respond - Rate Limit (Lead Acepta)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Validar Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Clave Rate Limit (Rechazar Propuesta)": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Rate Limit (Rechazar Propuesta)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Rate Limit (Rechazar Propuesta)": {
+      "main": [
+        [
+          {
+            "node": "Code - Rate Limit Resultado (Rechazar Propuesta)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Rate Limit Resultado (Rechazar Propuesta)": {
+      "main": [
+        [
+          {
+            "node": "IF - Rate Limit Excedido (Rechazar Propuesta)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Rate Limit Excedido (Rechazar Propuesta)": {
+      "main": [
+        [
+          {
+            "node": "Respond - Rate Limit (Rechazar Propuesta)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Leer Rechazo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Clave Rate Limit (Pedir Cambios)": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Rate Limit (Pedir Cambios)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Rate Limit (Pedir Cambios)": {
+      "main": [
+        [
+          {
+            "node": "Code - Rate Limit Resultado (Pedir Cambios)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Rate Limit Resultado (Pedir Cambios)": {
+      "main": [
+        [
+          {
+            "node": "IF - Rate Limit Excedido (Pedir Cambios)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Rate Limit Excedido (Pedir Cambios)": {
+      "main": [
+        [
+          {
+            "node": "Respond - Rate Limit (Pedir Cambios)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Leer Modifica",
             "type": "main",
             "index": 0
           }
