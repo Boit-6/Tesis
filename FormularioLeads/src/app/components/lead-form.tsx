@@ -2,6 +2,8 @@
 
 import {useRef, useState} from "react";
 
+import Link from "next/link";
+
 const N8N_BASE = process.env.NEXT_PUBLIC_N8N_BASE;
 const WEBHOOK_URL = `${N8N_BASE}/webhook/lead/nuevo`;
 
@@ -28,6 +30,7 @@ interface FormData {
   presupuesto: number;
   descripcion: string;
   urgencia: string;
+  consentimiento: boolean;
 }
 
 const INITIAL_FORM: FormData = {
@@ -38,6 +41,7 @@ const INITIAL_FORM: FormData = {
   presupuesto: 1000,
   descripcion: "",
   urgencia: "",
+  consentimiento: false,
 };
 
 const PRESUPUESTO_MIN = 100;
@@ -58,6 +62,8 @@ function validate(data: FormData): string | null {
   if (!data.servicio) return "Debés seleccionar un servicio.";
   if (data.descripcion.trim().length < 20)
     return "La descripción debe tener al menos 20 caracteres.";
+  if (!data.consentimiento)
+    return "Debés aceptar la Política de Privacidad para poder enviar el formulario.";
 
   return null;
 }
@@ -103,10 +109,11 @@ export default function LeadForm() {
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   ) {
     const {name, value, type} = e.target;
+    const checked = type === "checkbox" ? (e.target as HTMLInputElement).checked : undefined;
 
     setFormData((prev) => ({
       ...prev,
-      [name]: type === "range" ? Number(value) : value,
+      [name]: type === "checkbox" ? checked : type === "range" ? Number(value) : value,
     }));
   }
 
@@ -391,6 +398,31 @@ export default function LeadForm() {
         >
           {descripcionLength} / 20 mín.
         </p>
+      </section>
+
+      {/* Consentimiento — art. 6 y arts. 11/12 de la Ley 25.326 */}
+      <section className="border-rule-soft border-t px-8 py-7 sm:px-10">
+        <label className="flex cursor-pointer items-start gap-3 text-[13px] leading-relaxed">
+          <input
+            checked={formData.consentimiento}
+            className="border-rule accent-ochre mt-0.5 size-4 shrink-0 cursor-pointer"
+            name="consentimiento"
+            type="checkbox"
+            onChange={handleChange}
+          />
+          <span className="text-ink-soft">
+            He leído y acepto el tratamiento de mis datos personales, incluida su transferencia
+            internacional a los prestadores mencionados, conforme a la{" "}
+            <Link
+              className="text-ochre hover:text-ochre-deep underline underline-offset-2"
+              href="/privacidad"
+              target="_blank"
+            >
+              Política de Privacidad
+            </Link>
+            . <span className="text-ochre">*</span>
+          </span>
+        </label>
       </section>
 
       <div className="px-8 pb-9 sm:px-10">

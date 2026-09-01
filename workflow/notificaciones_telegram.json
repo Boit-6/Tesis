@@ -1,0 +1,109 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "mensaje",
+              "type": "string"
+            },
+            {
+              "name": "nivel",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "4f241090-c976-4ae1-a0ee-315c59277177",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Punto único donde se decide a qué chat de Telegram va cada aviso.\n// Es la razón de ser de este subflujo: hoy, mandar los avisos 'critico' a un\n// chat distinto del operativo exige tocar cada nodo Telegram uno por uno; con\n// este subflujo alcanza con cambiar esta pieza para que todos los llamadores\n// que declaren nivel:'critico' se beneficien sin que el flujo principal sepa\n// nada de esta decisión.\nconst entrada = $input.first().json;\nconst nivel = entrada.nivel || 'info';\nconst chatId = nivel === 'critico'\n  ? ($env.TELEGRAM_CHAT_ID_CRITICO || $env.TELEGRAM_CHAT_ID)\n  : $env.TELEGRAM_CHAT_ID;\n\nreturn [{ json: { mensaje: entrada.mensaje, nivel, chatId } }];"
+      },
+      "id": "c70ac408-65e5-4bf7-b9f9-2649ffbbd53c",
+      "name": "Code - Resolver Canal",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "={{ $json.mensaje }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "c7e3fc43-b611-4a9f-8c30-8d746d166b0e",
+      "name": "Telegram - Enviar",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        680,
+        300
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "Zv2UC716Fxh6BCDs",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## Subflujo — Notificaciones Telegram\n\nPrueba de concepto de la capa de abstracción de notificaciones descripta en\n`docs/diseno-capa-notificaciones.md`.\n\n**Entrada** (vía Execute Workflow Trigger): `{ mensaje, nivel }`.\n\n**Uso desde el flujo principal**: un nodo `Execute Workflow` que apunte a este\narchivo, en vez de un nodo `Telegram` nativo repetido en cada punto de aviso.\n\n**Migrados desde `crm_postgres.json`** (2026-09-01): `Telegram - Lead\nRechazado`, `Telegram - Pedido Cambios`, `Telegram - Cancelado Panel`. Los\nrestantes 12 nodos Telegram del flujo principal siguen llamando directo al\nnodo nativo; migrarlos es trabajo futuro (ver el documento de diseño, §3).\n\n⚠️ No se pudo levantar una instancia real de n8n para confirmar en runtime\nque el nodo `Execute Workflow` del flujo principal resuelve correctamente\neste archivo, ni que el Trigger recibe los campos con la forma esperada.\nDiseño implementado en el JSON, pendiente de verificación real.",
+        "height": 300,
+        "width": 460
+      },
+      "id": "87ade334-c511-481b-adbd-8fb5a3c44be4",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        220,
+        -60
+      ]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [
+        [
+          {
+            "node": "Code - Resolver Canal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Resolver Canal": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Enviar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "bea37f06ff1c2a1e135d6224b61f722cce348a1b052cf3d98c41d84663a427e1"
+  }
+}
