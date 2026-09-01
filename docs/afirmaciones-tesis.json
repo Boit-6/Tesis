@@ -16,40 +16,40 @@
       "descripcion": "Nodos totales del workflow del CRM (§4.1, Anexo B)",
       "medida": "crm.total",
       "valor_tesis": 144,
-      "delta_documentado": 34,
-      "nota": "El 27-ago-2026 se cerraron las deudas S5 y S6 de la Tabla 11, que sumaron 13 nodos: la deduplicación por correo en la captación aportó 2 (IF - Lead Nuevo? y No-op - Lead Duplicado; el INSERT del lead se reescribió como inserción condicional, sin nodo nuevo), y el proceso de reconciliación de facturas —RAMA 9— aportó 11 (cron, consulta de ACEPTADO sin factura, dos nodos Code, la llamada a MercadoPago, el INSERT condicional, el IF, el UPDATE del lead, el aviso de Telegram, el No-op y la nota del lienzo). El enganche con el módulo de tickets sumó 2 nodos (Code + HTTP). El cobro real con MercadoPago (RAMA 8) sumó 11 más: 3 en la aceptación (generar la preferencia y resolver el link de pago) y 8 en la notificación de pago (leer, verificar contra la API de MP y marcar cobrado). Ver docs/modulo-tickets.md §6 y docs/modulo-pagos.md. Se sumó el nodo Gmail - Acuse Lead Frio (24-ago-2026): los leads COLD no recibían ningún correo —sólo se generaba un aviso interno por Telegram— mientras el formulario les prometía respuesta en menos de 24 horas. Cuelga en paralelo de la salida negativa de IF - Es HOT o WARM?, de modo que una falla del aviso interno no bloquea el correo al cliente. El 24-ago-2026 se sumaron 7 nodos más para que el profesional fije los términos antes de que salga la propuesta (webhook propuesta-enviar, lectura y validación del precio, UPDATE condicional de los términos, IF, dos respuestas y el aviso de Telegram 'propuesta por enviar'). Hasta entonces la propuesta salía sola con el importe que el interesado había elegido en el formulario, y ese mismo importe se facturaba."
+      "delta_documentado": 50,
+      "nota": "El 27-ago-2026 se cerraron las deudas S5 y S6 de la Tabla 11, que sumaron 13 nodos: la deduplicación por correo en la captación aportó 2 (IF - Lead Nuevo? y No-op - Lead Duplicado; el INSERT del lead se reescribió como inserción condicional, sin nodo nuevo), y el proceso de reconciliación de facturas —RAMA 9— aportó 11 (cron, consulta de ACEPTADO sin factura, dos nodos Code, la llamada a MercadoPago, el INSERT condicional, el IF, el UPDATE del lead, el aviso de Telegram, el No-op y la nota del lienzo). El enganche con el módulo de tickets sumó 2 nodos (Code + HTTP). El cobro real con MercadoPago (RAMA 8) sumó 11 más: 3 en la aceptación (generar la preferencia y resolver el link de pago) y 8 en la notificación de pago (leer, verificar contra la API de MP y marcar cobrado). Ver docs/modulo-tickets.md §6 y docs/modulo-pagos.md. Se sumó el nodo Gmail - Acuse Lead Frio (24-ago-2026): los leads COLD no recibían ningún correo —sólo se generaba un aviso interno por Telegram— mientras el formulario les prometía respuesta en menos de 24 horas. Cuelga en paralelo de la salida negativa de IF - Es HOT o WARM?, de modo que una falla del aviso interno no bloquea el correo al cliente. El 24-ago-2026 se sumaron 7 nodos más para que el profesional fije los términos antes de que salga la propuesta (webhook propuesta-enviar, lectura y validación del precio, UPDATE condicional de los términos, IF, dos respuestas y el aviso de Telegram 'propuesta por enviar'). Hasta entonces la propuesta salía sola con el importe que el interesado había elegido en el formulario, y ese mismo importe se facturaba. El 01-sep-2026 se sumaron 16 nodos más (ver docs/roadmap-mejoras.md): la RAMA 10 —cron de propuestas pendientes— aportó 5 (cron, consulta, Code, Telegram y la nota del lienzo); la transición VENCIDA sumó 3 dentro de la RAMA 4 (UPDATE condicional, Code de resumen y Telegram, sin nota nueva porque reutiliza la de esa rama); y el webhook `factura-anular` (transición ANULADA) sumó 8 (webhook, Code de lectura, UPDATE condicional, IF, dos respuestas, Telegram y la nota del lienzo)."
     },
     {
       "id": "crm-nodos-funcionales",
       "descripcion": "Nodos funcionales del CRM, sin contar las notas (§4.1, §4.3)",
       "medida": "crm.funcionales",
       "valor_tesis": 128,
-      "delta_documentado": 33,
-      "nota": "El cierre de S5 y S6 del 27-ago-2026 aportó 12 nodos funcionales (2 de la deduplicación y 10 de la rama de reconciliación); el decimotercero es la nota del lienzo de esa rama, que no es funcional. Idem: los 13 nodos nuevos (2 de tickets + 11 de MercadoPago) son todos funcionales; no se agregó ninguna nota nueva al canvas. Se sumó el nodo Gmail - Acuse Lead Frio (24-ago-2026): los leads COLD no recibían ningún correo —sólo se generaba un aviso interno por Telegram— mientras el formulario les prometía respuesta en menos de 24 horas. Cuelga en paralelo de la salida negativa de IF - Es HOT o WARM?, de modo que una falla del aviso interno no bloquea el correo al cliente. El 24-ago-2026 se sumaron 7 nodos más para que el profesional fije los términos antes de que salga la propuesta (webhook propuesta-enviar, lectura y validación del precio, UPDATE condicional de los términos, IF, dos respuestas y el aviso de Telegram 'propuesta por enviar'). Hasta entonces la propuesta salía sola con el importe que el interesado había elegido en el formulario, y ese mismo importe se facturaba."
+      "delta_documentado": 47,
+      "nota": "El cierre de S5 y S6 del 27-ago-2026 aportó 12 nodos funcionales (2 de la deduplicación y 10 de la rama de reconciliación); el decimotercero es la nota del lienzo de esa rama, que no es funcional. Idem: los 13 nodos nuevos (2 de tickets + 11 de MercadoPago) son todos funcionales; no se agregó ninguna nota nueva al canvas. Se sumó el nodo Gmail - Acuse Lead Frio (24-ago-2026): los leads COLD no recibían ningún correo —sólo se generaba un aviso interno por Telegram— mientras el formulario les prometía respuesta en menos de 24 horas. Cuelga en paralelo de la salida negativa de IF - Es HOT o WARM?, de modo que una falla del aviso interno no bloquea el correo al cliente. El 24-ago-2026 se sumaron 7 nodos más para que el profesional fije los términos antes de que salga la propuesta (webhook propuesta-enviar, lectura y validación del precio, UPDATE condicional de los términos, IF, dos respuestas y el aviso de Telegram 'propuesta por enviar'). Hasta entonces la propuesta salía sola con el importe que el interesado había elegido en el formulario, y ese mismo importe se facturaba. El 01-sep-2026 se sumaron 14 nodos funcionales: 4 de la RAMA 10 (propuestas pendientes), 3 de la transición VENCIDA y 7 del webhook `factura-anular` (transición ANULADA); ver `crm-notas` por las 2 notas de lienzo que acompañan a estos cambios."
     },
     {
       "id": "crm-notas",
       "descripcion": "Notas de documentación en el canvas del CRM",
       "medida": "crm.notas",
       "valor_tesis": 16,
-      "delta_documentado": 1,
-      "nota": "La rama de reconciliación de facturas (RAMA 9, 27-ago-2026) trae su propia nota, como todas las demás ramas del lienzo."
+      "delta_documentado": 3,
+      "nota": "La rama de reconciliación de facturas (RAMA 9, 27-ago-2026) trae su propia nota, como todas las demás ramas del lienzo. El 01-sep-2026 se sumaron 2 notas más: la de la RAMA 10 (propuestas pendientes) y la del webhook `factura-anular` (dashboard); la transición VENCIDA no trae nota propia porque se documentó dentro de la nota ya existente de la RAMA 4."
     },
     {
       "id": "crm-webhooks",
       "descripcion": "Webhooks del CRM (Tabla 8)",
       "medida": "crm.webhooks",
       "valor_tesis": 11,
-      "delta_documentado": 2,
-      "nota": "Nuevo webhook POST /mp/notificacion (RAMA 8): recibe la notificación de pago real de MercadoPago. El webhook GET /pago-confirmado original se conserva sin cambios como modo de desarrollo sin credenciales. Y el webhook POST /propuesta-enviar (24-ago-2026), que el tablero usa para fijar precio, plazo y alcance y disparar el envío."
+      "delta_documentado": 3,
+      "nota": "Nuevo webhook POST /mp/notificacion (RAMA 8): recibe la notificación de pago real de MercadoPago. El webhook GET /pago-confirmado original se conserva sin cambios como modo de desarrollo sin credenciales. Y el webhook POST /propuesta-enviar (24-ago-2026), que el tablero usa para fijar precio, plazo y alcance y disparar el envío. El 01-sep-2026 se sumó POST /factura-anular (Header Auth), que cierra la transición ANULADA del enum `pago_estado` (§4.8, Cap. 8 punto 7)."
     },
     {
       "id": "crm-crons",
       "descripcion": "Procesos programados del CRM (§4.3)",
       "medida": "crm.crons",
       "valor_tesis": 3,
-      "delta_documentado": 1,
-      "nota": "Cuarto proceso programado (27-ago-2026): la reconciliación de facturas cada 30 minutos, que cierra la deuda S5 —leads en ACEPTADO sin factura asociada— con un reintento idempotente. Reflejado en el .docx el mismo día."
+      "delta_documentado": 2,
+      "nota": "Cuarto proceso programado (27-ago-2026): la reconciliación de facturas cada 30 minutos, que cierra la deuda S5 —leads en ACEPTADO sin factura asociada— con un reintento idempotente. Reflejado en el .docx el mismo día. Quinto proceso programado (01-sep-2026): el recordatorio de propuestas pendientes (RAMA 10, cada 2 horas en horario laboral L-V), que mitiga el riesgo declarado en §4.3.1 y §4.9 de un lead HOT/WARM calificado que nadie vuelve a insistir. Ver docs/roadmap-mejoras.md."
     },
     {
       "id": "db-tablas",

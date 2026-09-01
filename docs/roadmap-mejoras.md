@@ -2,6 +2,21 @@
 
 Backlog original en `mejoras.md` (raíz). Este documento detalla el análisis y el plan.
 
+## ✅ Hecho (2026-09-01)
+
+- **Recordatorio de propuestas pendientes (RAMA 10):** nuevo cron `🔔 Cron -
+  Propuestas Pendientes` que insiste por Telegram, cada 2 horas en horario laboral,
+  cuando un lead HOT/WARM queda en `NUEVO` sin que el profesional le fije precio,
+  plazo y alcance (riesgo declarado en §4.3.1 y §4.9). Ver
+  `docs/propuestas-pendientes-y-transiciones-factura.md`.
+- **Transiciones `VENCIDA` y `ANULADA` de facturas (§4.8, Cap. 8 punto 7):** el
+  enum `pago_estado` las preveía y ningún nodo las escribía. `VENCIDA` ahora se
+  aplica automáticamente dentro de `🟠 Cron - Recordatorios Pago 10AM`; `ANULADA`
+  se dispara a mano desde el panel (`POST /factura-anular`, con botón nuevo en el
+  tablero). El indicador "Facturas vencidas" de la Tabla 8 se rehizo para contar
+  `estado_pago = 'VENCIDA'` en vez de inferirlo de `PENDIENTE` + fecha. Ver el
+  mismo documento.
+
 ## ✅ Hecho (2026-07-01)
 
 - **#2 — Botones aceptar / pedir cambios / rechazar** en la página de aceptación.

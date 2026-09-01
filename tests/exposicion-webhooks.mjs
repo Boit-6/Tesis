@@ -8,7 +8,7 @@
 // resultados no tenía escenario que las ejercitara. Este script las convierte
 // de riesgo enunciado en riesgo observado.
 //
-// Qué hace. Invoca los trece webhooks desde un cliente que NO es un navegador
+// Qué hace. Invoca los catorce webhooks desde un cliente que NO es un navegador
 // —Node, sin cabecera Origin— y registra cuáles responden 403 por falta de
 // credencial y cuáles atienden la petición igual. El resultado es la tabla que
 // el Capítulo 5 puede citar.
@@ -43,7 +43,8 @@ const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 const INEXISTENTE = 'LD-0000000000000-NOEX';
 const TOKEN_FALSO = '00000000-0000-4000-8000-000000000000';
 
-// Los trece webhooks de la Tabla 10, con lo que el documento afirma de cada uno.
+// Los catorce webhooks de la Tabla 10, con lo que el documento afirma de cada uno.
+// (factura-anular, 01-sep-2026, cierra la transición ANULADA de §4.8 / Cap. 8 punto 7).
 const WEBHOOKS = [
   {ruta: 'lead/nuevo', metodo: 'POST', esperado: 'sin auth', grupo: 'público',
     cuerpo: null /* se completa abajo: es el único que crea algo */},
@@ -71,6 +72,8 @@ const WEBHOOKS = [
     cuerpo: {lead_id: INEXISTENTE}},
   {ruta: 'cambio-rechazar', metodo: 'POST', esperado: 'Header Auth', grupo: 'panel',
     cuerpo: {lead_id: INEXISTENTE}},
+  {ruta: 'factura-anular', metodo: 'POST', esperado: 'Header Auth', grupo: 'panel',
+    cuerpo: {factura_id: 'FAC-0000-0000'}},
 ];
 
 const sufijo = Date.now();
@@ -164,7 +167,7 @@ const panelRechazado = panel.filter((f) => f.rechazado);
 const pasarela = filas.filter((f) => f.grupo === 'pasarela');
 
 console.log('\nMedición');
-console.log(`  · ${sinAuth.length} de 13 webhooks atendieron a un cliente sin credencial y sin navegador.`);
+console.log(`  · ${sinAuth.length} de ${WEBHOOKS.length} webhooks atendieron a un cliente sin credencial y sin navegador.`);
 console.log(`  · ${panelRechazado.length} de ${panel.length} webhooks del panel interno respondieron 403.`);
 for (const f of pasarela) {
   console.log(`  · ${f.ruta}: notificación SIN firma → ${
@@ -211,7 +214,9 @@ if (leadCreado) {
 // dirección —si se cierra una deuda y el documento no se entera, o si se abre
 // una nueva—.
 const esperadoSinAuth = 6;
-const esperadoPanel = 6;
+// 01-sep-2026: se sumó el webhook del panel factura-anular (cierra la
+// transición ANULADA, §4.8 / Cap. 8 punto 7), de 6 a 7 con Header Auth.
+const esperadoPanel = 7;
 const s1Coincide = sinAuth.length === esperadoSinAuth && panelRechazado.length === esperadoPanel;
 
 console.log(`\nResultado S1: ${s1Coincide ? 'el reparto coincide con la Tabla 11' : 'EL REPARTO CAMBIÓ respecto de la Tabla 11'}`);
