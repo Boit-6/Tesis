@@ -2271,27 +2271,47 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=❌ <b>Propuesta RECHAZADA</b>\nCliente: {{ $json.nombre }}\nLead: {{ $json.lead_id }}",
-        "additionalFields": {
-          "parse_mode": "HTML"
-        }
+        "source": "localFile",
+        "workflowPath": "workflow/notificaciones_telegram.json",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "mensaje": "=❌ <b>Propuesta RECHAZADA</b>\nCliente: {{ $json.nombre }}\nLead: {{ $json.lead_id }}",
+            "nivel": "aviso"
+          },
+          "matchingColumns": [
+            "mensaje",
+            "nivel"
+          ],
+          "schema": [
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
       },
       "id": "f1a20005-0000-4005-8005-bb0000000005",
       "name": "Telegram - Lead Rechazado",
-      "type": "n8n-nodes-base.telegram",
+      "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         1350,
         3550
       ],
-      "webhookId": "f1a20005-0000-4005-8005-bb0000000005",
-      "credentials": {
-        "telegramApi": {
-          "id": "Zv2UC716Fxh6BCDs",
-          "name": "Telegram account"
-        }
-      },
       "onError": "continueRegularOutput"
     },
     {
@@ -2452,27 +2472,47 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=✏️ <b>Pedido de CAMBIOS</b>\nCliente: {{ $json.nombre }}\nLead: {{ $json.lead_id }}\n\n\"{{ $('Code - Leer Modifica').item.json.mensaje }}\"",
-        "additionalFields": {
-          "parse_mode": "HTML"
-        }
+        "source": "localFile",
+        "workflowPath": "workflow/notificaciones_telegram.json",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "mensaje": "=✏️ <b>Pedido de CAMBIOS</b>\nCliente: {{ $json.nombre }}\nLead: {{ $json.lead_id }}\n\n\"{{ $('Code - Leer Modifica').item.json.mensaje }}\"",
+            "nivel": "aviso"
+          },
+          "matchingColumns": [
+            "mensaje",
+            "nivel"
+          ],
+          "schema": [
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
       },
       "id": "f1a20016-0000-4016-8016-bb0000000016",
       "name": "Telegram - Pedido Cambios",
-      "type": "n8n-nodes-base.telegram",
+      "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         1350,
         4880
       ],
-      "webhookId": "f1a20016-0000-4016-8016-bb0000000016",
-      "credentials": {
-        "telegramApi": {
-          "id": "Zv2UC716Fxh6BCDs",
-          "name": "Telegram account"
-        }
-      },
       "onError": "continueRegularOutput"
     },
     {
@@ -2848,27 +2888,47 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=🚫 <b>Pedido CANCELADO desde el panel</b>\nCliente: {{ $json.nombre }}\nLead: {{ $json.lead_id }}",
-        "additionalFields": {
-          "parse_mode": "HTML"
-        }
+        "source": "localFile",
+        "workflowPath": "workflow/notificaciones_telegram.json",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "mensaje": "=🚫 <b>Pedido CANCELADO desde el panel</b>\nCliente: {{ $json.nombre }}\nLead: {{ $json.lead_id }}",
+            "nivel": "aviso"
+          },
+          "matchingColumns": [
+            "mensaje",
+            "nivel"
+          ],
+          "schema": [
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
       },
       "id": "f1a20045-0000-4045-8045-ee0000000045",
       "name": "Telegram - Cancelado Panel",
-      "type": "n8n-nodes-base.telegram",
+      "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         1350,
         7180
       ],
-      "webhookId": "tg-cancel",
-      "credentials": {
-        "telegramApi": {
-          "id": "Zv2UC716Fxh6BCDs",
-          "name": "Telegram account"
-        }
-      },
       "onError": "continueRegularOutput"
     },
     {
