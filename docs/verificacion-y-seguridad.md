@@ -286,20 +286,106 @@ correcto—; corregida la contraseña, un alta de lead disparada contra el
 webhook real (`POST /webhook/lead/nuevo`) se persistió en `leads` sin error.
 La instancia real de n8n escribe hoy con `n8n_writer`, no con `service_role`.
 
+### 5.3.1 Rate limiting básico en los cinco webhooks públicos (01-sep-2026, S1 parcial)
+
+Los cinco webhooks sin autenticación de origen (`lead/nuevo`, `lead-propuesta`,
+`lead-acepta`, `lead-rechaza`, `lead-modifica`) no admiten un secreto
+compartido por el motivo ya expuesto en 5.2: los invoca el navegador de un
+tercero. La mitigación que la Tabla 11 recomienda para ese caso es limitar el
+abuso, no autenticar el origen. Se agregó dentro del propio flujo, delante de
+cada uno de los cinco:
+
+1. **`Code - Clave Rate Limit (...)`**: calcula la clave de conteo — el email
+   declarado en el propio formulario si vino (`lead/nuevo`), o si no la IP de
+   origen (`headers['x-forwarded-for']` / `x-real-ip`) para los otros cuatro.
+2. **`Postgres - Rate Limit (...)`**: en una sola sentencia (`WITH ... INSERT
+   ... RETURNING ... SELECT count(*)`), registra el intento en la tabla nueva
+   `rate_limit_log` (§7) y cuenta cuántos hubo desde esa clave y esa ruta en la
+   ventana reciente.
+3. **`Code - Rate Limit Resultado (...)`**: recompone el item original (el
+   nodo Postgres devuelve sólo las columnas de su consulta) con el conteo,
+   para que los nodos de siempre —`Code - Normalizar Lead`, `Code - Leer
+   Query`, etc.— seguían recibiendo `body`/`query`/`headers` intactos.
+4. **`IF - Rate Limit Excedido (...)`**: corta la cadena si el conteo superó
+   el umbral.
+5. Nodo terminal: **`Respond - Rate Limit (...)`** con `429` para
+   `lead-propuesta`, `lead-acepta`, `lead-rechaza` y `lead-modifica` (los
+   cuatro usan `responseMode: responseNode`, así que hay un `Respond` real que
+   reemplazar); y **`Postgres - Log Rate Limit (Nuevo Lead)`** para `lead/nuevo`.
+
+Umbrales: 5 intentos por minuto por clave en `lead/nuevo` (la mayor superficie
+de abuso, según la propia tesis); 30 cada 5 minutos en `lead-propuesta` (GET de
+lectura, tolera más); 10 cada 5 minutos en `lead-acepta`/`lead-rechaza`/
+`lead-modifica`.
+
+**Por qué `lead/nuevo` no devuelve 429.** Es el único de los cinco sin
+`responseMode: responseNode`: responde de inmediato al recibir la petición
+(ack genérico), antes de que corra el resto del flujo, y no hay ningún nodo
+`Respond` en su rama para reemplazar por uno de 429. Lo que sí logra la
+mitigación ahí es cortar el procesamiento interno —no se normaliza, no se
+puntúa, no se persiste el lead, no salen avisos— y queda una fila en `logs`
+(`evento = 'rate_limit_excedido'`, `nivel = 'WARN'`). Devolver un 429 real
+para esta ruta exigiría convertirla a `responseNode` con un `Respond` en cada
+rama terminal (éxito, duplicado, HOT/WARM, COLD), una reestructuración mayor
+que no se hizo acá — ver el caveat de verificación al final de esta sección.
+
+**No verificado en vivo.** Este cambio se hizo sin una instancia de n8n
+levantada: se comprobó que el JSON es válido, que los nodos nuevos quedan
+insertados en el grafo de conexiones (ningún nodo huérfano) y que las 41
+consultas Postgres del flujo pasan `npm run test:parametros` (arreglo de
+parámetros, sin interpolación). Lo que falta comprobar contra una instancia
+real: que `WITH ... INSERT ... RETURNING ... SELECT` compile tal cual contra
+`rate_limit_log`, que el índice `idx_rate_limit_clave_ruta_fecha` se use, y que
+el 429 llegue efectivamente al navegador en los cuatro webhooks que sí pueden
+devolverlo.
+
+### 5.3.2 Enmascarado del accept_token en la tabla de auditoría (01-sep-2026, S3 remanente)
+
+El `accept_token` viaja en la query string (`/aceptar/[leadId]?token=...`) y
+podía terminar en claro en `logs` si algún nodo llegaba a persistir el mensaje
+de un error que lo mencionara. Auditados los cuatro nodos que insertan en
+`logs` (`Postgres - Log Propuesta`, `Postgres - Log Aceptado`, `Postgres - Log
+Cierre`, `Postgres - Log Error`): los tres primeros escriben literales
+estáticos (`'Propuesta enviada correctamente'`, etc.), ninguno vuelca el
+token, una URL completa ni el objeto de query params/headers sin filtrar. El
+cuarto, `Postgres - Log Error`, es el único que persiste texto dinámico
+(`error.message`, truncado a 300 caracteres) y es el punto de paso de
+cualquier error no controlado de los 203 nodos del flujo — incluida una futura
+validación que, por descuido, interpolara el token en su mensaje.
+
+Se endureció `Code - Formatear Error` (el nodo que arma la fila antes del
+INSERT) para enmascarar ahí, de forma genérica, cualquier UUID que aparezca en
+`detalle` o `error_msg` — no sólo `accept_token`, también `pago_token`,
+`mp_payment_id` o cualquier otro identificador con esa forma — dejando sólo
+los primeros 8 caracteres seguidos de `…`. Revisado también
+`FormularioLeads/src/proxy.ts` y el resto del server-side de Next.js (rutas
+`api/crm/[accion]` y `auth/*`): ninguno loguea `req.url` ni los query params de
+una ruta con `token=`; los `console.error` de la página de aceptación
+(`aceptar-propuesta.tsx`) corren en el navegador del cliente, no en logs de
+servidor, y sólo registran el propio `Error` de red, no la URL.
+
 ### 5.4 Qué sigue abierto
 
-- **Rate limiting / captcha en el formulario público y en los cuatro webhooks
-  protegidos por accept_token.** Hoy nada impide inundar `lead-nuevo` con
-  altas falsas, ni invocar `lead-acepta`/`lead-rechaza`/`lead-modifica`/
-  `lead-propuesta` sin ser un navegador si se conoce (o se fuerza por fuerza
-  bruta) un token válido. Es la mitigación que corresponde a esos cinco
-  endpoints en lugar de un secreto compartido, y queda como trabajo futuro.
+- **Rate limiting real, verificado en vivo.** El 01-sep-2026 se implementó
+  rate limiting (§5.3.1) delante de los cinco webhooks públicos sin
+  autenticación de origen (`lead-nuevo`, `lead-propuesta`, `lead-acepta`,
+  `lead-rechaza`, `lead-modifica`), como mitigación de S1 en lugar de un
+  secreto compartido. Lo que falta es verificarlo contra una instancia de n8n
+  corriendo: confirmar que la consulta a `rate_limit_log` compile tal cual
+  contra Postgres real y que el 429 llegue efectivamente al navegador en los
+  cuatro webhooks que usan `responseNode`. Para `lead/nuevo` puntualmente,
+  falta además la reestructuración a `responseNode` si se quiere que también
+  devuelva 429 en vez de sólo cortar el procesamiento interno y dejar
+  constancia en `logs` (hoy responde con el ack inmediato por defecto).
 - **El token viaja en la query string** del `GET /lead-propuesta` (y, desde el
   31-ago-2026, también `pago_token` en el `GET /webhook/pago-confirmado`), con
-  lo que puede quedar en logs de intermediarios. La vigencia de `accept_token`
+  lo que puede quedar en logs de intermediarios (proxies, CDN, el servidor de
+  n8n) fuera del control de este repositorio. La vigencia de `accept_token`
   acota esa ventana; `pago_token` no vence —vive tanto como la factura— porque
   su rol es identificar el recurso ante quien ya lo recibió por el único canal
   legítimo (el PDF adjunto), no autorizar una acción repetible en el tiempo.
+  Lo que sí se cerró el 01-sep-2026 (5.3.2) es que ese token no se propague,
+  además, a la propia tabla de auditoría de la aplicación.
 
 ---
 

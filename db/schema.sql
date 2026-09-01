@@ -150,6 +150,33 @@ CREATE TABLE IF NOT EXISTS profiles (
   creado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Registro de invocaciones por IP/clave y ruta, para el rate limiting básico
+-- de los cinco webhooks públicos que no admiten autenticación de origen
+-- (Tabla 11, S1: lead/nuevo, lead-propuesta, lead-acepta, lead-rechaza,
+-- lead-modifica — los invoca el navegador de un tercero, así que no puede
+-- llevar un secreto compartido sin exponerlo). Cada invocación de esas rutas
+-- inserta una fila acá antes de seguir; el propio nodo Postgres cuenta cuántas
+-- hubo desde la misma clave en la ventana reciente y corta la cadena si se
+-- pasó del umbral (ver workflow/crm_postgres.json, nodos «Postgres - Rate
+-- Limit (...)» y docs/verificacion-y-seguridad.md §5.3.1).
+-- `ip_o_clave` es la IP de origen para los cuatro webhooks de token, y el
+-- email declarado en el propio formulario (si vino) para `lead/nuevo`.
+CREATE TABLE IF NOT EXISTS rate_limit_log (
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  ip_o_clave  TEXT NOT NULL,
+  ruta        TEXT NOT NULL,
+  creado_en   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Limpieza periódica (pendiente, documentada y no implementada): esta tabla
+-- crece sin techo, igual que `logs`. No hay un cron dedicado a purgarla; se
+-- podría sumar `DELETE FROM rate_limit_log WHERE creado_en < now() - interval
+-- '7 days';` al cron ♻️ Cron - Reconciliar Facturas (RAMA 9, cada 30 minutos)
+-- o a uno propio. No se implementó acá porque `n8n_writer` está deliberadamente
+-- sin privilegio de DELETE (ningún nodo del flujo borra filas hoy — ver 5.1
+-- más abajo) y sumarle uno solo para esta tabla rompería esa invariante sin
+-- necesidad real a la escala del MVP.
+
 -- =====================================================================
 -- Migraciones para bases YA creadas (idempotentes; no afectan a una base
 -- nueva, donde las definiciones de arriba ya incluyen estas columnas/valores)
@@ -247,6 +274,12 @@ CREATE INDEX IF NOT EXISTS idx_facturas_venc      ON facturas(estado_pago, fecha
 -- `lead_id` ya es UNIQUE, pero el índice parcial permite resolver la validación
 -- de vigencia sin tocar la tabla.
 CREATE INDEX IF NOT EXISTS idx_leads_token_venc   ON leads(accept_token, token_expira_en);
+
+-- `rate_limit_log`: cada webhook protegido cuenta "cuántas filas con esta
+-- clave y esta ruta en los últimos N minutos", que es exactamente lo que el
+-- índice compuesto resuelve sin recorrer la tabla entera.
+CREATE INDEX IF NOT EXISTS idx_rate_limit_clave_ruta_fecha
+  ON rate_limit_log(ip_o_clave, ruta, creado_en);
 
 -- Nota de alcance: a la escala del MVP (decenas de filas) estos índices no
 -- cambian los tiempos de forma observable. Se agregan porque las consultas que
@@ -393,11 +426,12 @@ WHERE f.estado_pago = 'PENDIENTE';
 
 -- 1) Habilitar RLS en todas las tablas de negocio. Con RLS activa y sin
 --    política aplicable, el acceso queda denegado por defecto.
-ALTER TABLE leads         ENABLE ROW LEVEL SECURITY;
-ALTER TABLE facturas      ENABLE ROW LEVEL SECURITY;
-ALTER TABLE seguimientos  ENABLE ROW LEVEL SECURITY;
-ALTER TABLE logs          ENABLE ROW LEVEL SECURITY;
-ALTER TABLE profiles      ENABLE ROW LEVEL SECURITY;
+ALTER TABLE leads           ENABLE ROW LEVEL SECURITY;
+ALTER TABLE facturas        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE seguimientos    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE logs            ENABLE ROW LEVEL SECURITY;
+ALTER TABLE profiles        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rate_limit_log  ENABLE ROW LEVEL SECURITY;
 
 -- 2) Políticas de LECTURA sobre las tablas que alimentan el tablero.
 --    No alcanza con `authenticated`: se exige además `profiles.role =
@@ -446,7 +480,7 @@ GRANT SELECT ON metrics_mensuales, facturas_pendientes TO authenticated;
 --    autoalojado del docker-compose) NO, y BYPASSRLS solo evade la RLS, no
 --    otorga el privilegio de tabla. Se conceden explícitamente para que
 --    funcione en ambos entornos.
-GRANT SELECT, INSERT, UPDATE, DELETE ON leads, facturas, seguimientos, logs, profiles TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON leads, facturas, seguimientos, logs, profiles, rate_limit_log TO service_role;
 GRANT SELECT ON metrics_mensuales, facturas_pendientes TO service_role;
 
 -- Nota: la `service_role` posee además BYPASSRLS, por lo que sus escrituras
@@ -468,6 +502,10 @@ EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 GRANT USAGE ON SCHEMA public TO n8n_writer;
 GRANT SELECT, INSERT, UPDATE ON leads, facturas, seguimientos, logs TO n8n_writer;
+-- `rate_limit_log` es sólo de lectura+escritura de una fila por invocación
+-- (registrar el intento y contar los recientes): nunca se actualiza una fila
+-- ya escrita, así que no lleva UPDATE.
+GRANT SELECT, INSERT ON rate_limit_log TO n8n_writer;
 GRANT SELECT ON metrics_mensuales, facturas_pendientes TO n8n_writer;
 REVOKE ALL ON profiles FROM n8n_writer;
 
@@ -493,6 +531,10 @@ DROP POLICY IF EXISTS logs_rw_n8n_writer ON logs;
 CREATE POLICY logs_rw_n8n_writer ON logs
   FOR ALL TO n8n_writer USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS rate_limit_log_rw_n8n_writer ON rate_limit_log;
+CREATE POLICY rate_limit_log_rw_n8n_writer ON rate_limit_log
+  FOR ALL TO n8n_writer USING (true) WITH CHECK (true);
+
 -- Paso operativo pendiente, fuera del alcance de este script porque no debe
 -- versionar contraseñas: en el proyecto de Supabase real, dar LOGIN y una
 -- contraseña a `n8n_writer` (`ALTER ROLE n8n_writer WITH LOGIN PASSWORD
@@ -504,7 +546,7 @@ CREATE POLICY logs_rw_n8n_writer ON logs
 -- 6) El rol público (`anon`) no debe leer las tablas de negocio ni las
 --    vistas. Se revoca explícitamente por si el default privilege de la
 --    plataforma lo hubiera otorgado.
-REVOKE ALL ON leads, facturas, seguimientos, logs, profiles FROM anon;
+REVOKE ALL ON leads, facturas, seguimientos, logs, profiles, rate_limit_log FROM anon;
 REVOKE ALL ON metrics_mensuales, facturas_pendientes FROM anon;
 
 -- 7) Realtime: el tablero se suscribe a los cambios de `leads`
