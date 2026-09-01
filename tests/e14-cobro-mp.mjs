@@ -130,7 +130,7 @@ async function main() {
 
   // ── 1. Lead real, por el webhook público ────────────────────────────────
   console.log('1. Alta del lead por el webhook público de captación');
-  const alta = await webhook('lead/nuevo', {
+  const alta = await webhook('lead-nuevo', {
     cuerpo: {
       nombre: 'Cliente Demo E14', email: EMAIL, telefono: '+54 261 555 0114',
       servicio: 'Desarrollo Web', presupuesto: 5000, urgencia: 'alta',

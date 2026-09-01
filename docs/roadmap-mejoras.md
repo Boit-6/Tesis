@@ -52,7 +52,7 @@ Objetivo: muchos freelancers, cada uno con SUS datos, sin acceso a n8n (usan das
 
 **Fase 2 — Captación asociada a un usuario:**
 - Cada freelancer necesita su form: `…/f/{userSlug}` o un "link de captación" que genere desde el dashboard.
-- El webhook `lead/nuevo` recibe `owner_id` y lo guarda en el lead.
+- El webhook `lead-nuevo` recibe `owner_id` y lo guarda en el lead.
 
 **Fase 3 — Notificaciones por usuario (lo difícil):**
 - Hoy n8n tiene UNA credencial de Gmail y UN chat de Telegram. Para multi-usuario:

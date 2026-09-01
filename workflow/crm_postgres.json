@@ -619,7 +619,7 @@
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "lead/nuevo",
+        "path": "lead-nuevo",
         "options": {
           "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
         }
@@ -1016,9 +1016,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM leads WHERE lead_id = $1 AND accept_token = $2::uuid AND (token_expira_en IS NULL OR token_expira_en > now()) LIMIT 1;",
+        "query": "SELECT * FROM leads WHERE lead_id = $1 LIMIT 1;",
         "options": {
-          "queryReplacement": "={{ [$json.lead_id, $json.token] }}"
+          "queryReplacement": "={{ [$json.lead_id] }}"
         }
       },
       "id": "abdc0ec4-456e-403a-965c-05b4d7d01a2a",
@@ -1039,6 +1039,19 @@
     },
     {
       "parameters": {
+        "jsCode": "// §4.3.2: antes esta rama sólo distinguía \"válido\" de \"ya utilizado\", y ese\n// segundo cajón mezclaba cuatro desenlaces distintos (token ya usado, lead\n// expirado/PERDIDO, token rotado por reenvío, token inexistente). Ahora la\n// consulta anterior trae el lead SOLO por lead_id (sin filtrar por token ni\n// vigencia) para poder clasificar el motivo con estas columnas.\nconst fila = $input.first().json || {};\nconst enviado = $('Code - Validar Token').first().json || {};\nconst leadId = fila.lead_id || enviado.lead_id;\nconst tokenEnviado = enviado.token;\nconst encontrado = !!fila.lead_id;\nconst estado = fila.estado;\nconst tokenCoincide = encontrado && fila.accept_token != null &&\n  String(fila.accept_token) === String(tokenEnviado);\nconst tokenVencido = tokenCoincide && !!fila.token_expira_en &&\n  new Date(fila.token_expira_en) <= new Date();\n\nlet categoria;\nif (!encontrado) {\n  // lead_id inexistente: no hay nada que clasificar.\n  categoria = 'invalido';\n} else if (estado === 'PERDIDO' || tokenVencido) {\n  // el lead agotó los seguimientos (PERDIDO) o el token venció por tiempo\n  // antes de que el cron llegara a marcarlo: en los dos casos la oportunidad\n  // ya no está vigente, aunque el enlace nunca se haya \"usado\".\n  categoria = 'expirado';\n} else if (!tokenCoincide && estado !== 'NUEVO') {\n  // el lead existe y ya tuvo una propuesta, pero el token que llegó no es el\n  // vigente: la propuesta se reenvió (pedido de cambios o seguimiento) y\n  // accept_token rotó (ver docs §5.1.1).\n  categoria = 'rotado';\n} else if (tokenCoincide && (estado === 'ACEPTADO' || estado === 'FACTURADO')) {\n  // caso legítimo: este mismo token ya disparó la aceptación antes.\n  categoria = 'ya_procesado';\n} else if (tokenCoincide && (estado === 'PROPUESTA_ENVIADA' || estado === 'EN_SEGUIMIENTO')) {\n  categoria = 'valido';\n} else {\n  categoria = 'invalido';\n}\n\nreturn [{ json: Object.assign({}, fila, { lead_id: leadId, token: tokenEnviado, categoria }) }];"
+      },
+      "id": "e2a1c001-0001-4a01-9a01-cc0000000001",
+      "name": "Code - Clasificar Aceptacion",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        900,
+        1250
+      ]
+    },
+    {
+      "parameters": {
         "conditions": {
           "options": {
             "caseSensitive": true,
@@ -1047,16 +1060,101 @@
           },
           "conditions": [
             {
-              "leftValue": "={{ $json.estado }}",
-              "rightValue": "PROPUESTA_ENVIADA",
+              "leftValue": "={{ $json.categoria }}",
+              "rightValue": "invalido",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e2a1c001-0002-4a02-9a02-cc0000000002",
+      "name": "IF - Lead Encontrado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        1250
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.categoria }}",
+              "rightValue": "expirado",
               "operator": {
                 "type": "string",
                 "operation": "equals"
               }
-            },
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e2a1c001-0003-4a03-9a03-cc0000000003",
+      "name": "IF - Oportunidad Vencida?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        1050
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
             {
-              "leftValue": "={{ $json.estado }}",
-              "rightValue": "EN_SEGUIMIENTO",
+              "leftValue": "={{ $json.categoria }}",
+              "rightValue": "rotado",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e2a1c001-0004-4a04-9a04-cc0000000004",
+      "name": "IF - Token Rotado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.categoria }}",
+              "rightValue": "valido",
               "operator": {
                 "type": "string",
                 "operation": "equals"
@@ -1103,7 +1201,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "{ \"status\": \"ya_procesado\", \"mensaje\": \"Este enlace ya fue usado o no es válido.\" }",
+        "responseBody": "{ \"status\": \"ya_procesado\", \"motivo\": \"token_usado\", \"mensaje\": \"Esta propuesta ya fue aceptada anteriormente. Ya deberías tener la factura en tu email.\" }",
         "options": {
           "responseCode": 200
         }
@@ -1115,6 +1213,57 @@
       "position": [
         1350,
         1610
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"invalido\", \"motivo\": \"invalido\", \"mensaje\": \"Enlace no válido: no encontramos esta propuesta. Verificá el enlace o pedinos que te lo reenviemos.\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "e2a1c001-0005-4a05-9a05-cc0000000005",
+      "name": "Respond - Enlace Invalido",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1350,
+        950
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"ya_procesado\", \"motivo\": \"expirado\", \"mensaje\": \"Esta oportunidad ya no está vigente: se agotaron los seguimientos y la propuesta caducó. Escribinos si todavía te interesa y coordinamos una nueva.\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "e2a1c001-0006-4a06-9a06-cc0000000006",
+      "name": "Respond - Oportunidad Vencida",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1350,
+        1100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"ya_procesado\", \"motivo\": \"rotado\", \"mensaje\": \"Este enlace ya no es válido: se generó una versión más reciente de la propuesta. Revisá tu email por el último correo que te enviamos.\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "e2a1c001-0007-4a07-9a07-cc0000000007",
+      "name": "Respond - Enlace Desactualizado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1350,
+        1250
       ]
     },
     {
@@ -2122,9 +2271,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM leads WHERE lead_id = $1 AND accept_token::text = $2 AND (token_expira_en IS NULL OR token_expira_en > now()) LIMIT 1;",
+        "query": "SELECT * FROM leads WHERE lead_id = $1 LIMIT 1;",
         "options": {
-          "queryReplacement": "={{ [$json.lead_id, $json.token] }}"
+          "queryReplacement": "={{ [$json.lead_id] }}"
         }
       },
       "id": "e1a2b3c4-0003-4f03-8a03-aa0000000003",
@@ -2145,7 +2294,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const rows = $input.all();\nconst r = rows.length ? rows[0].json : null;\nif (!r || !r.lead_id) {\n  return [{ json: { status: 'invalido', mensaje: 'Enlace no válido o vencido.' } }];\n}\nconst activos = ['PROPUESTA_ENVIADA', 'EN_SEGUIMIENTO'];\nif (!activos.includes(r.estado)) {\n  return [{ json: { status: 'ya_procesado', mensaje: 'Este enlace ya fue usado.' } }];\n}\n// La pagina de aceptacion mostraba solo nombre, servicio y presupuesto, es\n// decir los tres datos que el propio cliente habia cargado en el formulario:\n// aceptaba una propuesta que esa pantalla no le mostraba. Se devuelven los\n// terminos que fijo el profesional, que son los que la propuesta compromete.\nconst precio = Number(r.precio_propuesto) > 0 ? Number(r.precio_propuesto) : Number(r.presupuesto) || 0;\nconst plazo = String(r.plazo_propuesto || '').trim() || ((r.urgencia === 'alta') ? '3-5 dias habiles' : '1-2 semanas');\nreturn [{ json: { status: 'ok', lead: {\n  nombre: r.nombre,\n  servicio: r.servicio,\n  presupuesto: Number(r.presupuesto),\n  precio: precio,\n  plazo: plazo,\n  alcance: String(r.alcance_propuesto || '').trim(),\n} } }];"
+        "jsCode": "// §4.3.2: la misma ambigüedad de /lead-acepta existía acá, que es lo que\n// carga la pantalla ANTES de que el cliente llegue a tocar 'Aceptar'. La\n// consulta anterior trae el lead SOLO por lead_id (sin filtrar por token ni\n// vigencia) para poder distinguir el motivo con estas columnas.\nconst rows = $input.all();\nconst r = rows.length ? rows[0].json : null;\nconst enviado = $('Code - Leer Query').first().json || {};\nconst tokenEnviado = enviado.token;\n\nif (!r || !r.lead_id) {\n  return [{ json: { status: 'invalido', motivo: 'invalido', mensaje: 'Enlace no válido o vencido.' } }];\n}\n\nconst tokenCoincide = r.accept_token != null && String(r.accept_token) === String(tokenEnviado);\nconst tokenVencido = tokenCoincide && !!r.token_expira_en && new Date(r.token_expira_en) <= new Date();\n\nif (r.estado === 'PERDIDO' || tokenVencido) {\n  return [{ json: { status: 'ya_procesado', motivo: 'expirado', mensaje: 'Esta oportunidad ya no está vigente: se agotaron los seguimientos y la propuesta caducó. Escribinos si todavía te interesa y coordinamos una nueva.' } }];\n}\n\nif (!tokenCoincide && r.estado !== 'NUEVO') {\n  return [{ json: { status: 'ya_procesado', motivo: 'rotado', mensaje: 'Este enlace ya no es válido: se generó una versión más reciente de la propuesta. Revisá tu email por el último correo que te enviamos.' } }];\n}\n\nif (tokenCoincide && (r.estado === 'ACEPTADO' || r.estado === 'FACTURADO')) {\n  return [{ json: { status: 'ya_procesado', motivo: 'token_usado', mensaje: 'Esta propuesta ya fue aceptada anteriormente. Ya deberías tener la factura en tu email.' } }];\n}\n\nconst activos = ['PROPUESTA_ENVIADA', 'EN_SEGUIMIENTO'];\nif (!tokenCoincide || !activos.includes(r.estado)) {\n  return [{ json: { status: 'invalido', motivo: 'invalido', mensaje: 'Enlace no válido o vencido.' } }];\n}\n// La pagina de aceptacion mostraba solo nombre, servicio y presupuesto, es\n// decir los tres datos que el propio cliente habia cargado en el formulario:\n// aceptaba una propuesta que esa pantalla no le mostraba. Se devuelven los\n// terminos que fijo el profesional, que son los que la propuesta compromete.\nconst precio = Number(r.precio_propuesto) > 0 ? Number(r.precio_propuesto) : Number(r.presupuesto) || 0;\nconst plazo = String(r.plazo_propuesto || '').trim() || ((r.urgencia === 'alta') ? '3-5 dias habiles' : '1-2 semanas');\nreturn [{ json: { status: 'ok', lead: {\n  nombre: r.nombre,\n  servicio: r.servicio,\n  presupuesto: Number(r.presupuesto),\n  precio: precio,\n  plazo: plazo,\n  alcance: String(r.alcance_propuesto || '').trim(),\n} } }];"
       },
       "id": "e1a2b3c4-0004-4f04-8a04-aa0000000004",
       "name": "Code - Armar Respuesta",
@@ -4672,6 +4821,71 @@
     },
     "Postgres - Buscar Lead (token)": {
       "main": [
+        [
+          {
+            "node": "Code - Clasificar Aceptacion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Clasificar Aceptacion": {
+      "main": [
+        [
+          {
+            "node": "IF - Lead Encontrado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Lead Encontrado?": {
+      "main": [
+        [
+          {
+            "node": "IF - Oportunidad Vencida?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Enlace Invalido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Oportunidad Vencida?": {
+      "main": [
+        [
+          {
+            "node": "Respond - Oportunidad Vencida",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF - Token Rotado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Token Rotado?": {
+      "main": [
+        [
+          {
+            "node": "Respond - Enlace Desactualizado",
+            "type": "main",
+            "index": 0
+          }
+        ],
         [
           {
             "node": "IF - Lead Valido?",

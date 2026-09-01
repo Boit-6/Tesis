@@ -41,11 +41,11 @@ El sistema está desacoplado en tres capas con responsabilidades claras:
 
 > El front es público y **nunca** muta la base directo: habla con n8n por HTTP. n8n concentra la lógica y es el único que escribe en las tablas de negocio. El dashboard lee con la anon key bajo sesión (nunca la service key). Cada capa se cambia sin romper las otras.
 
-La orquestación tiene **13 webhooks** y **4 procesos programados** (más logging y manejo de errores global). El flujo exportado tiene **161 nodos funcionales** (178 en total, incluidas 17 notas de documentación):
+La orquestación tiene **13 webhooks** y **4 procesos programados** (más logging y manejo de errores global). El flujo exportado tiene **168 nodos funcionales** (185 en total, incluidas 17 notas de documentación):
 
 | Disparador | Proceso | Qué hace |
 |---|---|---|
-| Webhook `lead/nuevo` | Captación + scoring + propuesta | Normaliza, califica (score/tier) y guarda; si es HOT/WARM manda propuesta + card en Notion |
+| Webhook `lead-nuevo` | Captación + scoring + propuesta | Normaliza, califica (score/tier) y guarda; si es HOT/WARM manda propuesta + card en Notion |
 | Webhook `lead-propuesta` (GET) | Lectura de propuesta | Devuelve datos para la página de aceptación (solo lectura) |
 | Webhook `lead-acepta` | Aceptación (atómica) | Valida token → `UPDATE ... WHERE estado IN (...)` → factura PDF → email |
 | Webhook `lead-rechaza` | Rechazo | Marca el lead como PERDIDO |

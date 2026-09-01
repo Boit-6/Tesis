@@ -201,7 +201,7 @@ try {
   // se solapan. Cada una abre su propia transacción y, bajo READ COMMITTED,
   // ninguna ve la fila que la otra todavía no commiteó, de modo que el
   // `WHERE NOT EXISTS` por sí solo las deja pasar a las dos. Se comprobó
-  // contra el sistema vivo: dos POST a /webhook/lead/nuevo separados por 150 ms
+  // contra el sistema vivo: dos POST a /webhook/lead-nuevo separados por 150 ms
   // insertaban dos leads. Lo que cierra la carrera es el cerrojo consultivo
   // `pg_try_advisory_xact_lock` sobre el correo, que sólo una de las dos
   // transacciones consigue.

@@ -13,6 +13,12 @@ const HEADERS = {
 };
 
 type ApiStatus = "ok" | "ya_procesado" | "invalido";
+// Motivo fino detrás de un status "ya_procesado" (o "invalido"). Campo
+// aditivo y retrocompatible: un backend viejo que sólo manda `status` sigue
+// funcionando igual (ver docs/verificacion-y-seguridad.md §5.1.2 y §4.3.2).
+// Antes las cuatro situaciones de abajo devolvían el mismo status
+// "ya_procesado" con el mismo cartel genérico "enlace ya utilizado".
+type ApiMotivo = "token_usado" | "expirado" | "rotado" | "invalido";
 // resultados finales por acción + estados de UI
 type Estado =
   | "cargando"
@@ -23,6 +29,8 @@ type Estado =
   | "rechazado"
   | "modificado"
   | "ya_procesado"
+  | "expirado"
+  | "rotado"
   | "invalido"
   | "error";
 
@@ -40,6 +48,7 @@ interface LeadInfo {
 
 interface ApiResponse {
   status?: ApiStatus;
+  motivo?: ApiMotivo;
   mensaje?: string;
   lead?: LeadInfo;
 }
@@ -77,12 +86,20 @@ function Icono({children}: {children: ReactNode}) {
   );
 }
 
-function isApiStatus(value: unknown): value is ApiStatus {
-  return value === "ok" || value === "ya_procesado" || value === "invalido";
+// Resuelve el Estado de UI a partir de una respuesta que NO fue "ok". El
+// `motivo` (si vino) desambigua los cuatro desenlaces de §4.3.2; si no vino
+// (backend viejo, o una respuesta de lead-rechaza/lead-modifica que nunca lo
+// manda), se cae al bucket que ya existía por `status`.
+function resolverEstadoFalla(json: ApiResponse): Estado {
+  if (json.motivo === "expirado") return "expirado";
+  if (json.motivo === "rotado") return "rotado";
+  if (json.status === "ya_procesado") return "ya_procesado";
+
+  return "invalido";
 }
 
 function buildContent(
-  estado: "aceptado" | "rechazado" | "modificado" | "ya_procesado" | "invalido" | "error",
+  estado: "aceptado" | "rechazado" | "modificado" | "ya_procesado" | "expirado" | "rotado" | "invalido" | "error",
   mensaje?: string,
 ): StatusContent {
   switch (estado) {
@@ -132,7 +149,31 @@ function buildContent(
         ),
         accent: "text-muted",
         title: "Enlace ya usado",
-        message: mensaje ?? "Este enlace ya fue usado.",
+        message: mensaje ?? "Esta propuesta ya fue aceptada anteriormente.",
+      };
+    case "expirado":
+      return {
+        icon: (
+          <Icono>
+            <circle cx="12" cy="12" r="9" />
+            <path d="M12 7.5V12l3 2" />
+          </Icono>
+        ),
+        accent: "text-muted",
+        title: "Oportunidad vencida",
+        message: mensaje ?? "Esta oportunidad ya no está vigente.",
+      };
+    case "rotado":
+      return {
+        icon: (
+          <Icono>
+            <path d="M4 12a8 8 0 1 0 2.3-5.6" />
+            <path d="M4 4v5h5" />
+          </Icono>
+        ),
+        accent: "text-muted",
+        title: "Enlace desactualizado",
+        message: mensaje ?? "Se generó una versión más reciente de esta propuesta.",
       };
     case "invalido":
       return {
@@ -365,10 +406,8 @@ export default function AceptarPropuesta({leadId, token}: {leadId: string; token
         if (json.status === "ok") {
           setLead(json.lead ?? null);
           setEstado("confirmar");
-        } else if (isApiStatus(json.status)) {
-          setEstado(json.status);
         } else {
-          setEstado("invalido");
+          setEstado(resolverEstadoFalla(json));
         }
       } catch (err) {
         if (controller.signal.aborted) return;
@@ -405,7 +444,7 @@ export default function AceptarPropuesta({leadId, token}: {leadId: string; token
       const json: ApiResponse = await response.json();
 
       setMensaje(json.mensaje);
-      setEstado(json.status === "ok" ? exito : isApiStatus(json.status) ? json.status : "invalido");
+      setEstado(json.status === "ok" ? exito : resolverEstadoFalla(json));
     } catch (err) {
       console.error(err);
       setEstado("error");

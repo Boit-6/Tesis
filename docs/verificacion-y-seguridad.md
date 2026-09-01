@@ -142,6 +142,64 @@ Queda declarado, sin resolver, un caso límite: si el cron procesa varios leads
 en una corrida y el envío de Gmail falla para uno de ellos, su token ya rotó
 en la base aunque el correo con el token nuevo nunca haya salido.
 
+### 5.1.2 Los cuatro desenlaces de un enlace no vigente, diferenciados (01-sep-2026)
+
+§4.3.2 documentaba, como deuda, que `POST /lead-acepta` (y el `GET
+/lead-propuesta` que carga la pantalla antes de que el cliente llegue a tocar
+«Aceptar») devolvían el mismo cartel genérico «este enlace ya fue usado» para
+cuatro situaciones distintas:
+
+1. El token ya se usó de verdad (aceptación legítima anterior con este mismo
+   token).
+2. El lead expiró: pasó a `PERDIDO` por agotar los tres seguimientos.
+3. El token rotó porque la propuesta se reenvió (§5.1.1) — el enlace que se
+   clickeó ya no es el vigente, aunque nunca se haya usado.
+4. El `lead_id`/token no corresponde a ningún lead.
+
+La consulta que traía el lead filtraba por `lead_id`, `accept_token` y
+vigencia a la vez (`... AND accept_token = $2::uuid AND (token_expira_en IS
+NULL OR token_expira_en > now())`), así que un token que no matcheaba —por la
+razón que fuera— simplemente no devolvía fila, y las cuatro situaciones eran
+indistinguibles para el nodo siguiente.
+
+Se separaron las dos responsabilidades: la consulta ahora trae el lead sólo
+por `lead_id` (`Postgres - Buscar Lead (token)` en `/lead-acepta`, `Postgres -
+Buscar Propuesta` en `/lead-propuesta`), y un nodo Code nuevo (`Code -
+Clasificar Aceptacion` — en `/lead-propuesta` la misma lógica vive dentro de
+`Code - Armar Respuesta`, que ya era Code) compara en JavaScript el token
+recibido contra `accept_token` y revisa `estado` y `token_expira_en` para
+decidir una `categoria`: `invalido` (no se encontró el lead), `expirado`
+(`estado = 'PERDIDO'`, o el mismo token venció por tiempo antes de que el cron
+llegara a marcarlo `PERDIDO`), `rotado` (el token no coincide con el vigente y
+el lead ya pasó de `NUEVO`), `ya_procesado` (el token coincide y el lead ya
+está `ACEPTADO`/`FACTURADO`) o `valido` (el token coincide y el lead sigue en
+`PROPUESTA_ENVIADA`/`EN_SEGUIMIENTO`). Tres nodos IF encadenados bifurcan por
+esa `categoria` hacia tres respuestas nuevas —`Respond - Enlace Invalido`,
+`Respond - Oportunidad Vencida`, `Respond - Enlace Desactualizado`— antes de
+llegar al `IF - Lead Valido?` original, que ahora sólo tiene que distinguir
+`valido` de `ya_procesado`.
+
+**Contrato de respuesta, retrocompatible.** El campo `status` sigue mandando
+únicamente `ok` / `ya_procesado` / `invalido`, exactamente los tres valores
+que ya existían: un cliente HTTP viejo que sólo mira `status` se comporta
+igual que antes. Se agregó un campo aditivo, `motivo`
+(`token_usado`/`expirado`/`rotado`/`invalido`), que el frontend usa para
+elegir el título y el ícono específicos cuando está presente, y cae al
+comportamiento anterior si no lo está. `mensaje` ya viajaba en la respuesta
+desde antes y ahora trae el texto específico de cada categoría en vez del
+genérico «este enlace ya fue usado».
+
+`FormularioLeads/src/app/aceptar/[leadId]/aceptar-propuesta.tsx` agrega los
+estados de UI `expirado` y `rotado` (antes cualquier `status` no reconocido
+caía a `invalido`) y una función `resolverEstadoFalla` que lee `motivo` antes
+que `status`.
+
+No cambia la garantía de atomicidad de §4.3.2/RNF2: la transición a `ACEPTADO`
+sigue siendo el mismo `UPDATE ... WHERE estado IN ('PROPUESTA_ENVIADA',
+'EN_SEGUIMIENTO')` de siempre (`tests/verificar_afirmaciones.js`,
+`aceptacion-condicional-atomica`); lo que cambia es sólo el diagnóstico que se
+arma ANTES de intentarlo.
+
 ### 5.2 Credencial en los webhooks del panel
 
 Los webhooks que dispara el panel interno (`trabajo-estado`, `lead-cancelar`,
@@ -154,7 +212,7 @@ por `/api/crm/[accion]`, un route handler de Next.js que revalida sesión + rol
 `admin` y agrega el header del lado del servidor.
 
 **Por qué no se hizo lo mismo con el resto.** El formulario público
-(`lead/nuevo`) y los enlaces del cliente (`lead-acepta`, `lead-rechaza`,
+(`lead-nuevo`) y los enlaces del cliente (`lead-acepta`, `lead-rechaza`,
 `lead-modifica`, `lead-propuesta`) no pueden llevar un secreto: los ejecuta el
 navegador de un tercero y quedaría expuesto en el código. Esos siguen
 protegidos por el token UUID —ahora con vencimiento— que es el mecanismo
@@ -231,7 +289,7 @@ La instancia real de n8n escribe hoy con `n8n_writer`, no con `service_role`.
 ### 5.4 Qué sigue abierto
 
 - **Rate limiting / captcha en el formulario público y en los cuatro webhooks
-  protegidos por accept_token.** Hoy nada impide inundar `lead/nuevo` con
+  protegidos por accept_token.** Hoy nada impide inundar `lead-nuevo` con
   altas falsas, ni invocar `lead-acepta`/`lead-rechaza`/`lead-modifica`/
   `lead-propuesta` sin ser un navegador si se conoce (o se fuerza por fuerza
   bruta) un token válido. Es la mitigación que corresponde a esos cinco

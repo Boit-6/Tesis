@@ -46,7 +46,7 @@ const TOKEN_FALSO = '00000000-0000-4000-8000-000000000000';
 // Los catorce webhooks de la Tabla 10, con lo que el documento afirma de cada uno.
 // (factura-anular, 01-sep-2026, cierra la transición ANULADA de §4.8 / Cap. 8 punto 7).
 const WEBHOOKS = [
-  {ruta: 'lead/nuevo', metodo: 'POST', esperado: 'sin auth', grupo: 'público',
+  {ruta: 'lead-nuevo', metodo: 'POST', esperado: 'sin auth', grupo: 'público',
     cuerpo: null /* se completa abajo: es el único que crea algo */},
   {ruta: 'lead-propuesta', metodo: 'GET', esperado: 'sin auth', grupo: 'público',
     query: `?lead_id=${INEXISTENTE}&token=${TOKEN_FALSO}`},

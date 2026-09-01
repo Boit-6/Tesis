@@ -12,9 +12,9 @@ flowchart TB
         F4["Tablero de control<br/>/dashboard (protegido)"]
     end
 
-    subgraph N8N["② Capa de orquestación — n8n · 161 nodos funcionales (178 con notas)"]
+    subgraph N8N["② Capa de orquestación — n8n · 168 nodos funcionales (185 con notas)"]
         direction LR
-        WH["13 webhooks<br/>POST /lead/nuevo · POST /lead-acepta<br/>POST /propuesta-enviar · POST /mp/notificacion<br/>POST /proyecto-cerrado · …"]
+        WH["13 webhooks<br/>POST /lead-nuevo · POST /lead-acepta<br/>POST /propuesta-enviar · POST /mp/notificacion<br/>POST /proyecto-cerrado · …"]
         LG["Lógica de negocio<br/>normalización · scoring (HOT/WARM/COLD)<br/>propuesta · factura · cobro · cierre"]
         CR["4 procesos programados (cron)<br/>seguimiento · recordatorios<br/>métricas · reconciliación de facturas"]
     end
