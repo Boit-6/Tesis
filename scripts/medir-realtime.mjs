@@ -28,6 +28,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { abrirBitacora } from '../tests/bitacora.mjs';
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ENV = path.join(RAIZ, 'FormularioLeads', '.env.local');
@@ -67,11 +68,21 @@ const arg = (nombre) => {
   return i >= 0 ? process.argv[i + 1] : undefined;
 };
 
-const N = Number(arg('n') ?? 5);
+// El método del §3.7 fija veinte repeticiones para el escenario E7, y es esa
+// muestra —no una exploratoria más chica— la que acredita el RNF6. Por eso el
+// valor por omisión es 20: una corrida sin argumentos ya es la acreditante.
+const N = Number(arg('n') ?? 20);
 if (!Number.isInteger(N) || N < 1) {
   console.error('--n debe ser un entero positivo.');
   process.exit(2);
 }
+
+const bitacora = abrirBitacora('evidencia-realtime.md', 'Medición de propagación al tablero (E7, RNF6)', {
+  Instrumento: '`npm run test:realtime` (scripts/medir-realtime.mjs)',
+  Repeticiones: `${N}${N === 20 ? ' (las que fija el método del §3.7)' : ' — **no es la muestra acreditante**, que son 20'}`,
+  Umbral: `${UMBRAL_MS} ms (RNF6)`,
+  Magnitud: 'intervalo entre la confirmación de la escritura y la recepción del evento en el cliente; no incluye el repintado de la interfaz',
+});
 
 const env = leerEnv(ENV);
 const URL_BASE = env.NEXT_PUBLIC_SUPABASE_URL;
@@ -193,13 +204,34 @@ const p95 = percentil(latencias, 95);
 console.log('\n' + '='.repeat(52));
 console.log(`Eventos recibidos : ${latencias.length} de ${N}`);
 if (latencias.length) {
-  console.log(`Latencias (ms)    : ${[...latencias].sort((a, b) => a - b).join(', ')}`);
-  console.log(`Máxima            : ${max} ms`);
-  console.log(`p95               : ${p95} ms  (${(p95 / 1000).toFixed(2)} s)`);
+  // Los siete estadísticos que reproduce la Tabla 26 de la tesis, calculados
+  // acá para que la tabla se transcriba de la salida y no se recomponga a mano.
+  const orden = [...latencias].sort((a, b) => a - b);
+  const media = latencias.reduce((a, b) => a + b, 0) / latencias.length;
+  const mediana = orden.length % 2
+    ? orden[(orden.length - 1) / 2]
+    : (orden[orden.length / 2 - 1] + orden[orden.length / 2]) / 2;
+  const desvio = Math.sqrt(
+    latencias.reduce((a, b) => a + (b - media) ** 2, 0) / latencias.length,
+  );
+  const seg = (ms) => (ms / 1000).toFixed(2);
+
+  console.log(`Latencias (ms)    : ${orden.join(', ')}`);
+  console.log(`Mínimo            : ${orden[0]} ms  (${seg(orden[0])} s)`);
+  console.log(`Media             : ${media.toFixed(0)} ms  (${seg(media)} s)`);
+  console.log(`Mediana           : ${mediana.toFixed(0)} ms  (${seg(mediana)} s)`);
+  console.log(`p95               : ${p95} ms  (${seg(p95)} s)`);
+  console.log(`Máxima            : ${max} ms  (${seg(max)} s)`);
+  console.log(`Desvío estándar   : ${desvio.toFixed(0)} ms  (${seg(desvio)} s)`);
+  if (latencias.length === 20) {
+    console.log('Nota              : con n = 20 el p95 se resuelve en el penúltimo valor');
+    console.log('                    ordenado, contiguo al máximo (§5.2, nota de la Tabla 26).');
+  }
 }
 console.log(`Umbral RNF6       : ${UMBRAL_MS} ms`);
 const cumple = latencias.length === N && max !== null && max < UMBRAL_MS;
 console.log(`Resultado         : ${cumple ? 'CUMPLE' : 'NO CUMPLE'}`);
 console.log('='.repeat(52));
 
+bitacora.cerrar(cumple ? 0 : 1);
 process.exit(cumple ? 0 : 1);

@@ -150,6 +150,26 @@ try {
     console.log('  · el envío no completó (credencial de correo); se reconstruye hasta donde llegó');
   }
 
+  // El estado PROPUESTA_ENVIADA lo escribe `Postgres - Estado Propuesta
+  // Enviada`, que está a mitad de la cadena; la fila de auditoría la escribe
+  // `Postgres - Log Propuesta`, que va al final, después de los viajes de ida y
+  // vuelta a Notion y a Telegram. Sincronizar sólo contra el estado dejaba una
+  // carrera: la reconstrucción leía `logs` unos dos segundos antes de que la
+  // fila aterrizara y daba por no auditado un envío que sí se auditaba (y, de
+  // paso, la limpieza corría antes que el INSERT y dejaba la fila huérfana).
+  // Se espera, por eso, a que el rastro de auditoría esté efectivamente escrito.
+  if (avanzo) {
+    try {
+      await esperarHasta('el envío deje su rastro en el registro de auditoría', async () => {
+        const r = await rest(`logs?lead_id=eq.${leadId}&select=id&limit=1`);
+
+        return r.length ? r : null;
+      }, {timeout: 20000});
+    } catch {
+      console.log('  · la cadena no llegó a escribir la auditoría dentro del tiempo previsto');
+    }
+  }
+
   // 3) RECONSTRUCCIÓN. A partir de aquí sólo se lee la base: ni una consulta
   //    más a n8n. Es la prueba de que el estado es reconstruible con lo que el
   //    sistema persiste, y no con lo que el motor recuerda.

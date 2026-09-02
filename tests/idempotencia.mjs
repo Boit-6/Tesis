@@ -25,11 +25,25 @@ import {execFile, execFileSync, execSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
+import {abrirBitacora} from './bitacora.mjs';
 
 const aqui = path.dirname(fileURLToPath(import.meta.url));
 const raiz = path.join(aqui, '..');
 const CONTENEDOR = 'crm-idem-test';
-const IMAGEN = 'postgres:16-alpine';
+// Misma mayor que la instancia real, por el mismo motivo que en
+// tests/verificar_rls.mjs: las consultas corren bajo `n8n_writer`, un rol
+// sujeto a RLS, y la semántica de las políticas depende de la versión. (El
+// esquema exige 15 o superior: ver la nota de aquel archivo.)
+const IMAGEN = (() => {
+  const i = process.argv.indexOf('--imagen');
+
+  return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : 'postgres:15-alpine';
+})();
+const bitacora = abrirBitacora('evidencia-idempotencia.md', 'Verificación de idempotencia (S5 y S6)', {
+  Instrumento: '`npm run test:idempotencia` (tests/idempotencia.mjs)',
+  'Imagen de PostgreSQL': `\`${IMAGEN}\``,
+  Requisitos: 'RNF2 · deudas S5 y S6 de la Tabla 22',
+});
 
 const sh = (cmd) => execSync(cmd, {encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe']});
 const limpiar = () => {
@@ -332,4 +346,5 @@ try {
   limpiar();
 }
 
+bitacora.cerrar(codigoSalida);
 process.exit(codigoSalida);

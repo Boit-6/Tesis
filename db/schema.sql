@@ -389,9 +389,9 @@ ALTER TABLE profiles      ENABLE ROW LEVEL SECURITY;
 -- 2) Políticas de LECTURA sobre las tablas que alimentan el tablero.
 --    No alcanza con `authenticated`: se exige además `profiles.role =
 --    'admin'` (la subconsulta puede leer la propia fila por la política
---    profiles_select_own de más abajo). No se crean políticas de
---    escritura: la inserción/actualización la hace n8n con la
---    service_role (evade RLS).
+--    profiles_select_own de más abajo). Las políticas de ESCRITURA de
+--    n8n se definen aparte, en la sección 5.1, sobre el rol acotado
+--    `n8n_writer` (sin BYPASSRLS). Cierra S4 de la Tabla 11.
 DROP POLICY IF EXISTS leads_select_authenticated ON leads;
 CREATE POLICY leads_select_authenticated ON leads
   FOR SELECT TO authenticated

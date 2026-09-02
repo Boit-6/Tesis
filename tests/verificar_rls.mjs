@@ -15,12 +15,33 @@ import {execFileSync, execSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
+import {abrirBitacora} from './bitacora.mjs';
 
 const aqui = path.dirname(fileURLToPath(import.meta.url));
 const raiz = path.join(aqui, '..');
 const CONTENEDOR = 'crm-rls-test';
-const IMAGEN = 'postgres:16-alpine';
+// La versión mayor de PostgreSQL decide la semántica de las políticas, de modo
+// que la corrida acreditante debe usar la misma mayor que la instancia real.
+//
+// Esa exigencia dejó al descubierto un error de la Tabla 12: declaraba
+// PostgreSQL 14.17, pero `db/schema.sql` NO se puede aplicar sobre una 14. Las
+// vistas `metrics_mensuales` y `facturas_pendientes` se declaran
+// `WITH (security_invoker = true)`, y esa opción de vista existe recién desde
+// PostgreSQL 15: una 14 aborta con `ERROR: unrecognized parameter
+// "security_invoker"` antes de llegar a las políticas. Como ambas vistas sí
+// existen en el proyecto de Supabase, la instancia real es 15 o superior.
+// Contrastable con:  node tests/verificar_rls.mjs --imagen postgres:14-alpine
+const IMAGEN = (() => {
+  const i = process.argv.indexOf('--imagen');
+
+  return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : 'postgres:15-alpine';
+})();
 const dejarVivo = process.argv.includes('--dejar-vivo');
+const bitacora = abrirBitacora('evidencia-rls.md', 'Verificación de seguridad a nivel de fila (RLS)', {
+  Instrumento: '`npm run test:rls` (tests/verificar_rls.mjs)',
+  'Imagen de PostgreSQL': `\`${IMAGEN}\``,
+  Requisitos: 'RNF1, RNF2 · deuda S4 de la Tabla 22',
+});
 
 const sh = (cmd, opciones = {}) =>
   execSync(cmd, {encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], ...opciones});
@@ -164,4 +185,5 @@ try {
   }
 }
 
+bitacora.cerrar(codigoSalida);
 process.exit(codigoSalida);
