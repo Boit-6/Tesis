@@ -5,10 +5,10 @@
 
 | Campo | Valor |
 |---|---|
-| Marca temporal (UTC) | 2026-09-02T17:42:56.378Z |
-| Duración | 13.4 s |
-| Commit | `d1abe08b5cf896f986b92f646c44719755f88661` (d1abe08) |
-| Árbol de trabajo | con 6 archivo(s) sin registrar |
+| Marca temporal (UTC) | 2026-09-02T17:48:56.750Z |
+| Duración | 14.1 s |
+| Commit | `177bc9c866be0192d58dde29b56eb7da95c3f045` (177bc9c) |
+| Árbol de trabajo | con 1 archivo(s) sin registrar |
 | Node.js | v24.18.0 |
 | Plataforma | win32 x64 |
 | Instrumento | `npm run test:idempotencia` (tests/idempotencia.mjs) |

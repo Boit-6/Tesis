@@ -58,7 +58,14 @@ export function abrirBitacora(archivo, titulo, metadatos = {}) {
     process.stderr.write = original.stderr;
 
     const fin = new Date();
-    const sucio = git('status --porcelain', '');
+    // El estado que interesa registrar es el del artefacto, no el de la salida
+    // de esta misma corrida: cada ejecución reescribe su propio
+    // `docs/evidencia-*.md`, de modo que contarlos daría el árbol por sucio
+    // siempre y volvería inútil el dato. Se los descuenta.
+    const sucio = git('status --porcelain', '')
+      .split('\n')
+      .filter((l) => l.trim() && !/\sdocs\/evidencia-[\w-]+\.md$/.test(l))
+      .join('\n');
     const cab = [
       `# ${titulo}`,
       '',
