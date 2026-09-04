@@ -229,7 +229,8 @@ tesis/
 │   │   ├── api/tickets/               # Proxy server-side hacia el módulo de tickets
 │   │   ├── login/ · register/ · auth/ # Autenticación (Supabase)
 │   │   └── lib/supabase/              # Clientes (client / server / middleware)
-│   └── tesis.docx             # Documento de la tesis (Anexo A con las Figuras 1–18)
+│   ├── tesis.docx             # Documento de la tesis, versión final (Anexo A con las Figuras 1–18)
+│   └── Informe-Trabajo-Final.pdf  # El mismo documento en PDF: es la versión entregada
 ├── .github/workflows/ci.yml   # CI: pruebas del artefacto + RLS + lint/typecheck/build
 ├── .env.example               # Variables del entorno de n8n (CRM + tickets)
 ├── package.json               # Scripts de prueba de la raíz (npm test)
