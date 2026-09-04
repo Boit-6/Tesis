@@ -21,7 +21,8 @@
     "test:trazabilidad": "node tests/trazabilidad.mjs",
     "test:exposicion": "node tests/exposicion-webhooks.mjs",
     "test:e14-stripe": "node tests/adaptador-stripe-e14.mjs",
-    "setup:tickets": "node scripts/setup-notion-tickets.mjs"
+    "setup:tickets": "node scripts/setup-notion-tickets.mjs",
+    "test:programados": "node tests/procesos-programados.mjs"
   },
   "comentarioScripts": {
     "test": "Suite offline: no necesita n8n, ni base, ni credenciales. Es la que corre en CI.",

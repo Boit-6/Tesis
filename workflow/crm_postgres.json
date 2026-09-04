@@ -563,7 +563,7 @@
     {
       "parameters": {
         "method": "PATCH",
-        "url": "=https://api.notion.com/v1/pages/{{ $('Code - Preparar Follow-up').all()[$itemIndex].json.card_id }}",
+        "url": "=https://api.notion.com/v1/pages/{{ $('Code - Preparar Follow-up').item.json.card_id }}",
         "authentication": "predefinedCredentialType",
         "nodeCredentialType": "notionApi",
         "sendHeaders": true,
@@ -1486,7 +1486,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE leads SET seguimientos = seguimientos + 1, fecha_ultimo_seguimiento = now(), estado = 'EN_SEGUIMIENTO' WHERE lead_id = $1;",
+        "query": "UPDATE leads SET seguimientos = seguimientos + 1, fecha_ultimo_seguimiento = now(), estado = 'EN_SEGUIMIENTO' WHERE lead_id = $1 RETURNING *;",
         "options": {
           "queryReplacement": "={{ [$('Code - Preparar Follow-up').item.json.lead_id] }}"
         }
@@ -1517,7 +1517,7 @@
           },
           "conditions": [
             {
-              "leftValue": "={{ $('Code - Preparar Follow-up').all()[$itemIndex].json.es_ultimo }}",
+              "leftValue": "={{ $json.seguimientos >= 3 }}",
               "rightValue": "",
               "operator": {
                 "type": "boolean",
@@ -1543,7 +1543,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE leads SET estado = 'PERDIDO' WHERE lead_id = $1;",
+        "query": "UPDATE leads SET estado = 'PERDIDO' WHERE lead_id = $1 RETURNING *;",
         "options": {
           "queryReplacement": "={{ [$('Code - Preparar Follow-up').item.json.lead_id] }}"
         }
@@ -1577,7 +1577,7 @@
     {
       "parameters": {
         "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=📉 <b>Lead PERDIDO</b>\nCliente: {{ $('Code - Preparar Follow-up').all()[$itemIndex].json.nombre }}\nScore: {{ $('Code - Preparar Follow-up').all()[$itemIndex].json.score }}\n3 seguimientos sin respuesta",
+        "text": "=📉 <b>Lead PERDIDO</b>\nCliente: {{ $('Code - Preparar Follow-up').item.json.nombre }}\nScore: {{ $('Code - Preparar Follow-up').item.json.score }}\n3 seguimientos sin respuesta",
         "additionalFields": {
           "appendAttribution": false,
           "parse_mode": "HTML"
@@ -1682,7 +1682,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE facturas SET recordatorios_enviados = recordatorios_enviados + 1 WHERE factura_id = $1;",
+        "query": "UPDATE facturas SET recordatorios_enviados = recordatorios_enviados + 1 WHERE factura_id = $1 RETURNING *;",
         "options": {
           "queryReplacement": "={{ [$('Code - Filtrar Vencimientos').item.json.factura_id] }}"
         }
@@ -1712,7 +1712,7 @@
           },
           "conditions": [
             {
-              "leftValue": "={{ $('Code - Filtrar Vencimientos').all()[$itemIndex].json.nivel_urgencia }}",
+              "leftValue": "={{ $('Code - Filtrar Vencimientos').item.json.nivel_urgencia }}",
               "rightValue": "URGENTE",
               "operator": {
                 "type": "string",
@@ -1736,7 +1736,7 @@
     {
       "parameters": {
         "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=🔴 <b>PAGO URGENTE</b>\nCliente: {{ $('Code - Filtrar Vencimientos').all()[$itemIndex].json.cliente }}\nFactura: {{ $('Code - Filtrar Vencimientos').all()[$itemIndex].json.factura_id }}\nMonto: ${{ $('Code - Filtrar Vencimientos').all()[$itemIndex].json.monto }} USD",
+        "text": "=🔴 <b>PAGO URGENTE</b>\nCliente: {{ $('Code - Filtrar Vencimientos').item.json.cliente }}\nFactura: {{ $('Code - Filtrar Vencimientos').item.json.factura_id }}\nMonto: ${{ $('Code - Filtrar Vencimientos').item.json.monto }} USD",
         "additionalFields": {
           "appendAttribution": false,
           "parse_mode": "HTML"
