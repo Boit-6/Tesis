@@ -19,7 +19,21 @@ import path from 'node:path';
 const aqui = path.dirname(fileURLToPath(import.meta.url));
 const raiz = path.join(aqui, '..');
 const CONTENEDOR = 'crm-rls-test';
-const IMAGEN = 'postgres:16-alpine';
+// La versión mayor del motor no se acredita por la ficha del proveedor sino por
+// una restricción del propio esquema: `metrics_mensuales` y `facturas_pendientes`
+// se declaran `WITH (security_invoker = true)`, y esa opción de vista existe
+// recién desde PostgreSQL 15. Una 14 aborta con `ERROR: unrecognized parameter
+// "security_invoker"` antes de llegar a las políticas.
+// Contrastable con:  npm run test:rls --imagen postgres:14-alpine
+const IMAGEN = (() => {
+  const args = process.argv.slice(2);
+  const i = args.indexOf('--imagen');
+  if (i !== -1 && args[i + 1]) return args[i + 1];
+  // En la forma que cita la Tabla 13 (`npm run test:rls --imagen postgres:14-alpine`)
+  // npm se queda con `--imagen` como config suya y reenvía sólo el valor suelto,
+  // así que se lo acepta también por posición.
+  return args.find((a) => /^[\w./-]+:[\w.-]+$/.test(a)) || 'postgres:16-alpine';
+})();
 const dejarVivo = process.argv.includes('--dejar-vivo');
 
 const sh = (cmd, opciones = {}) =>

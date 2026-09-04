@@ -45,7 +45,18 @@ credenciales, porque **no simula nada**.
 Supabase (los roles `anon` / `authenticated` / `service_role`, el esquema `auth`
 y la función `auth.uid()`), aplica **`db/schema.sql` tal cual está en el
 repositorio** —dos veces, para comprobar que es idempotente— y después intenta,
-rol por rol, todo lo que el modelo de seguridad promete impedir.
+rol por rol, todo lo que el modelo de seguridad promete impedir. La salida queda
+archivada en `docs/evidencia-rls.md`.
+
+La imagen se puede cambiar: `npm run test:rls --imagen postgres:14-alpine`. Es
+el contraste que acredita la versión del motor en la Tabla 13 del informe, y su
+resultado esperado es **rojo**: `db/schema.sql` declara las vistas
+`metrics_mensuales` y `facturas_pendientes` `WITH (security_invoker = true)`,
+opción que PostgreSQL incorporó recién en la 15, así que una 14 aborta con
+`ERROR: unrecognized parameter "security_invoker"` antes de crear política
+alguna. Como ambas vistas existen en el proyecto de Supabase, la instancia real
+es 15 o superior. Esa corrida no se versiona, justamente porque falla a
+propósito: la evidencia archivada es siempre la de la imagen por defecto.
 
 Los 33 casos cubren:
 
