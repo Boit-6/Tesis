@@ -1,23 +1,18 @@
 import Link from "next/link";
-import {redirect} from "next/navigation";
 
 import TicketsBoard from "./tickets-board";
 
-import {createClient} from "@/lib/supabase/server";
+import {getAdminUser} from "@/lib/auth";
+
+// Sin esto, Next.js puede prerenderizar esta página como estática: si
+// createClient() devuelve null (env vars de Supabase ausentes en build), la
+// verificación de sesión nunca llega a llamar cookies() y no hay ninguna
+// señal que fuerce el render dinámico. El gate de admin tiene que correr en
+// cada request, no una sola vez al buildear.
+export const dynamic = "force-dynamic";
 
 export default async function TicketsPage() {
-  const supabase = await createClient();
-  const {
-    data: {user},
-  } = supabase ? await supabase.auth.getUser() : {data: {user: null}};
-
-  if (!user) redirect("/login");
-
-  const {data: profile} = supabase
-    ? await supabase.from("profiles").select("role").eq("id", user.id).single()
-    : {data: null};
-
-  if (profile?.role !== "admin") redirect("/");
+  await getAdminUser();
 
   return (
     <main className="mx-auto w-full max-w-6xl px-6 pt-8 pb-20 sm:px-10">

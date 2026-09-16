@@ -1,6 +1,6 @@
 import {NextResponse} from "next/server";
 
-import {createClient} from "@/lib/supabase/server";
+import {getAdminStatus} from "@/lib/auth";
 
 // Base de n8n para llamadas server-side. Se prefiere N8N_BASE (privada) y se cae
 // a la pública que ya usa el resto del dashboard.
@@ -42,28 +42,21 @@ export interface TicketsResponse {
 }
 
 // Compuerta de rol: los route handlers no pasan por el gate de /dashboard, así
-// que cada uno revalida sesión + rol admin por su cuenta.
+// que cada uno revalida sesión + rol admin por su cuenta (núcleo compartido
+// con las páginas del panel en @/lib/auth).
 export async function requireAdmin() {
-  const supabase = await createClient();
+  const {user, esAdmin, supabaseDisponible} = await getAdminStatus();
 
-  if (!supabase) {
+  if (!supabaseDisponible) {
     return NextResponse.json(
       {ok: false, error: "Faltan las variables de Supabase en el servidor."},
       {status: 500},
     );
   }
 
-  const {
-    data: {user},
-  } = await supabase.auth.getUser();
-
   if (!user) return NextResponse.json({ok: false, error: "No autenticado."}, {status: 401});
 
-  const {data: profile} = await supabase.from("profiles").select("role").eq("id", user.id).single();
-
-  if (profile?.role !== "admin") {
-    return NextResponse.json({ok: false, error: "Requiere rol admin."}, {status: 403});
-  }
+  if (!esAdmin) return NextResponse.json({ok: false, error: "Requiere rol admin."}, {status: 403});
 
   return null;
 }
@@ -75,17 +68,33 @@ export async function llamarTickets(
 ): Promise<NextResponse> {
   if (!N8N_BASE) {
     return NextResponse.json(
-      {ok: false, error: "Falta N8N_BASE / NEXT_PUBLIC_N8N_BASE en el servidor."},
+      {
+        ok: false,
+        error: "Falta N8N_BASE / NEXT_PUBLIC_N8N_BASE en el servidor.",
+      },
       {status: 500},
+    );
+  }
+
+  // Sin la key, el módulo de tickets queda abierto del otro lado (ver
+  // autorizado() en tickets_notion.json): mejor no mandar la mutación que
+  // mandarla sin credencial.
+  if (!TICKETS_API_KEY) {
+    return NextResponse.json(
+      {ok: false, error: "Falta TICKETS_API_KEY en el servidor."},
+      {status: 503},
     );
   }
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    "ngrok-skip-browser-warning": "true",
+    "x-api-key": TICKETS_API_KEY,
   };
 
-  if (TICKETS_API_KEY) headers["x-api-key"] = TICKETS_API_KEY;
+  // El aviso de ngrok solo aparece detrás de un túnel de desarrollo.
+  if (process.env.NODE_ENV === "development") {
+    headers["ngrok-skip-browser-warning"] = "true";
+  }
 
   try {
     const res = await fetch(`${N8N_BASE}/webhook/${ruta}`, {
@@ -113,7 +122,10 @@ export async function llamarTickets(
     console.error(err);
 
     return NextResponse.json(
-      {ok: false, error: "No se pudo contactar a n8n. ¿Está levantado y publicado el workflow?"},
+      {
+        ok: false,
+        error: "No se pudo contactar a n8n. ¿Está levantado y publicado el workflow?",
+      },
       {status: 502},
     );
   }
