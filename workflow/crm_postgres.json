@@ -636,7 +636,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json.body || {};\nconst capitalizar = (s) => s.replace(/\\S+/gu, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());\nconst nombre = capitalizar((item.nombre || '').trim().replace(/\\s+/g, ' '));\nconst email = (item.email || '').toLowerCase().trim();\nconst presupuesto = parseInt(item.presupuesto) || 0;\nconst urg = ['alta', 'media', 'baja'];\nconst urgencia = urg.includes((item.urgencia || '').toLowerCase()) ? item.urgencia.toLowerCase() : 'media';\nconst svcMap = { 'desarrollo web':'desarrollo_web','e-commerce':'ecommerce','ecommerce':'ecommerce','app móvil':'app_movil','app movil':'app_movil','app_movil':'app_movil','diseño ux/ui':'diseno_ui','diseno ux/ui':'diseno_ui','marketing digital':'marketing','seo / posicionamiento':'seo','seo/posicionamiento':'seo','automatización de procesos':'automatizacion','automatizacion de procesos':'automatizacion','automatizacion':'automatizacion','consultoría':'consultoria','consultoria':'consultoria','otro':'consultoria','soporte':'soporte','desarrollo_web':'desarrollo_web','diseno_ui':'diseno_ui','marketing':'marketing','seo':'seo' };\nconst servicio = svcMap[(item.servicio || '').toLowerCase().trim()] || 'consultoria';\nconst errores = [];\nif (!email.includes('@')) errores.push('email invalido');\nif (nombre.length < 2) errores.push('nombre muy corto');\nif (presupuesto <= 0) errores.push('presupuesto invalido');\nif (errores.length) throw new Error('Validacion fallida: ' + errores.join(', '));\nconst ts = Date.now();\nconst rand = Math.random().toString(36).substring(2, 6).toUpperCase();\nreturn [{ json: { lead_id: 'LD-' + ts + '-' + rand, nombre, email, presupuesto, urgencia, servicio, telefono: (item.telefono || '').trim(), descripcion: (item.descripcion || '').trim().substring(0, 2000), fuente: item.fuente || 'webhook' } }];"
+        "jsCode": "const item = $input.first().json.body || {};\nconst capitalizar = (s) => s.replace(/\\S+/gu, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());\nconst nombre = capitalizar((item.nombre || '').trim().replace(/\\s+/g, ' '));\nconst email = (item.email || '').toLowerCase().trim();\nfunction parsearImporte(valor) {\n  if (typeof valor === 'number') return Number.isFinite(valor) ? valor : NaN;\n  if (typeof valor !== 'string') return NaN;\n  const limpio = valor.trim().replace(/^[^0-9.,-]+/, '');\n  if (!/^-?[0-9]+([.,][0-9]+)?$|^-?[0-9]{1,3}([.,][0-9]{3})*([.,][0-9]+)?$/.test(limpio)) return NaN;\n  const sep = Math.max(limpio.lastIndexOf(','), limpio.lastIndexOf('.'));\n  const normalizado = sep === -1 ? limpio : limpio.slice(0, sep).replace(/[.,]/g, '') + '.' + limpio.slice(sep + 1);\n  const n = Number(normalizado);\n  return Number.isFinite(n) ? n : NaN;\n}\nconst presupuesto = parsearImporte(item.presupuesto);\nconst urg = ['alta', 'media', 'baja'];\nconst urgencia = urg.includes((item.urgencia || '').toLowerCase()) ? item.urgencia.toLowerCase() : 'media';\nconst svcMap = { 'desarrollo web':'desarrollo_web','e-commerce':'ecommerce','ecommerce':'ecommerce','app móvil':'app_movil','app movil':'app_movil','app_movil':'app_movil','diseño ux/ui':'diseno_ui','diseno ux/ui':'diseno_ui','marketing digital':'marketing','seo / posicionamiento':'seo','seo/posicionamiento':'seo','automatización de procesos':'automatizacion','automatizacion de procesos':'automatizacion','automatizacion':'automatizacion','consultoría':'consultoria','consultoria':'consultoria','otro':'consultoria','soporte':'soporte','desarrollo_web':'desarrollo_web','diseno_ui':'diseno_ui','marketing':'marketing','seo':'seo' };\nconst servicio = svcMap[(item.servicio || '').toLowerCase().trim()] || 'consultoria';\nconst errores = [];\nif (!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email)) errores.push('email invalido');\nif (nombre.length < 2) errores.push('nombre muy corto');\nif (!Number.isFinite(presupuesto) || presupuesto <= 0) errores.push('presupuesto invalido');\nif (errores.length) throw new Error('Validacion fallida: ' + errores.join(', '));\nconst ts = Date.now();\nconst azar = () => {\n  try {\n    return require('crypto').randomBytes(5).toString('hex').toUpperCase();\n  } catch (e) {\n    return Math.random().toString(36).substring(2, 10).toUpperCase();\n  }\n};\nreturn [{ json: { lead_id: 'LD-' + ts + '-' + azar(), nombre, email, presupuesto, urgencia, servicio, telefono: (item.telefono || '').trim(), descripcion: (item.descripcion || '').trim().substring(0, 2000), fuente: item.fuente || 'webhook' } }];"
       },
       "id": "1a0698a2-bfce-4254-99e8-87cce4909c32",
       "name": "Code - Normalizar Lead",
@@ -673,7 +673,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Calificación del lead. Los pesos y los umbrales de tier NO son constantes\n// de código: salen de variables de entorno, de modo que el criterio de\n// calificación se puede recalibrar sin tocar el workflow (§6, cuestión 3 del\n// dictamen). Los defaults reproducen exactamente la Tabla 4 de la tesis.\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n// \"umbral:puntos,umbral:puntos\" evaluado de mayor a menor.\nconst tramos = (clave, porDefecto) => leerEnv(clave, porDefecto)\n  .split(',')\n  .map((p) => p.split(':'))\n  .map(([k, v]) => [Number(k), Number(v)])\n  .filter(([k, v]) => Number.isFinite(k) && Number.isFinite(v))\n  .sort((a, b) => b[0] - a[0]);\n// \"clave:puntos,clave:puntos\"\nconst tabla = (clave, porDefecto) => Object.fromEntries(\n  leerEnv(clave, porDefecto)\n    .split(',')\n    .map((p) => p.split(':'))\n    .filter((p) => p.length === 2)\n    .map(([k, v]) => [String(k).trim(), Number(v)])\n);\n\nconst l = $input.first().json;\nlet score = 0;\n\nconst presupuesto = parseInt(l.presupuesto) || 0;\nfor (const [minimo, puntos] of tramos('SCORING_PRESUPUESTO', '5000:40,2000:30,1000:20,300:10')) {\n  if (presupuesto >= minimo) { score += puntos; break; }\n}\n\nconst porUrgencia = tabla('SCORING_URGENCIA', 'alta:30,media:15,baja:5');\nscore += porUrgencia[l.urgencia] !== undefined ? porUrgencia[l.urgencia] : Number(leerEnv('SCORING_URGENCIA_DEFAULT', '5'));\n\nconst porServicio = tabla('SCORING_SERVICIO', 'desarrollo_web:20,ecommerce:20,app_movil:18,automatizacion:18,marketing:15,seo:15,diseno_ui:15,consultoria:12,soporte:5');\nscore += porServicio[l.servicio] !== undefined ? porServicio[l.servicio] : Number(leerEnv('SCORING_SERVICIO_DEFAULT', '8'));\n\nif (l.telefono && l.telefono.length > 6) score += Number(leerEnv('SCORING_BONUS_TELEFONO', '5'));\nif (l.descripcion && l.descripcion.length > 50) score += Number(leerEnv('SCORING_BONUS_DESCRIPCION', '5'));\n\nconst umbralHot = Number(leerEnv('SCORING_UMBRAL_HOT', '70'));\nconst umbralWarm = Number(leerEnv('SCORING_UMBRAL_WARM', '40'));\nconst tier = score >= umbralHot ? 'HOT' : score >= umbralWarm ? 'WARM' : 'COLD';\n\nreturn [{ json: Object.assign({}, l, { score: score, tier: tier }) }];"
+        "jsCode": "// Calificación del lead. Los pesos y los umbrales de tier NO son constantes\n// de código: salen de variables de entorno, de modo que el criterio de\n// calificación se puede recalibrar sin tocar el workflow (§6, cuestión 3 del\n// dictamen). Los defaults reproducen exactamente la Tabla 4 de la tesis.\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n// \"umbral:puntos,umbral:puntos\" evaluado de mayor a menor.\nconst tramos = (clave, porDefecto) => leerEnv(clave, porDefecto)\n  .split(',')\n  .map((p) => p.split(':'))\n  .map(([k, v]) => [Number(k), Number(v)])\n  .filter(([k, v]) => Number.isFinite(k) && Number.isFinite(v))\n  .sort((a, b) => b[0] - a[0]);\n// \"clave:puntos,clave:puntos\"\nconst tabla = (clave, porDefecto) => Object.fromEntries(\n  leerEnv(clave, porDefecto)\n    .split(',')\n    .map((p) => p.split(':'))\n    .filter((p) => p.length === 2)\n    .map(([k, v]) => [String(k).trim(), Number(v)])\n);\n\nconst l = $input.first().json;\nlet score = 0;\n\nfunction parsearImporte(valor) {\n  if (typeof valor === 'number') return Number.isFinite(valor) ? valor : NaN;\n  if (typeof valor !== 'string') return NaN;\n  const limpio = valor.trim().replace(/^[^0-9.,-]+/, '');\n  if (!/^-?[0-9]+([.,][0-9]+)?$|^-?[0-9]{1,3}([.,][0-9]{3})*([.,][0-9]+)?$/.test(limpio)) return NaN;\n  const sep = Math.max(limpio.lastIndexOf(','), limpio.lastIndexOf('.'));\n  const normalizado = sep === -1 ? limpio : limpio.slice(0, sep).replace(/[.,]/g, '') + '.' + limpio.slice(sep + 1);\n  const n = Number(normalizado);\n  return Number.isFinite(n) ? n : NaN;\n}\nconst presupuestoParsed = parsearImporte(l.presupuesto);\nconst presupuesto = Number.isFinite(presupuestoParsed) ? presupuestoParsed : 0;\nfor (const [minimo, puntos] of tramos('SCORING_PRESUPUESTO', '5000:40,2000:30,1000:20,300:10')) {\n  if (presupuesto >= minimo) { score += puntos; break; }\n}\n\nconst porUrgencia = tabla('SCORING_URGENCIA', 'alta:30,media:15,baja:5');\nscore += porUrgencia[l.urgencia] !== undefined ? porUrgencia[l.urgencia] : Number(leerEnv('SCORING_URGENCIA_DEFAULT', '5'));\n\nconst porServicio = tabla('SCORING_SERVICIO', 'desarrollo_web:20,ecommerce:20,app_movil:18,automatizacion:18,marketing:15,seo:15,diseno_ui:15,consultoria:12,soporte:5');\nscore += porServicio[l.servicio] !== undefined ? porServicio[l.servicio] : Number(leerEnv('SCORING_SERVICIO_DEFAULT', '8'));\n\nif (l.telefono && l.telefono.length > 6) score += Number(leerEnv('SCORING_BONUS_TELEFONO', '5'));\nif (l.descripcion && l.descripcion.length > 50) score += Number(leerEnv('SCORING_BONUS_DESCRIPCION', '5'));\n\nconst umbralHot = Number(leerEnv('SCORING_UMBRAL_HOT', '70'));\nconst umbralWarm = Number(leerEnv('SCORING_UMBRAL_WARM', '40'));\nconst tier = score >= umbralHot ? 'HOT' : score >= umbralWarm ? 'WARM' : 'COLD';\n\nreturn [{ json: Object.assign({}, l, { score: score, tier: tier }) }];"
       },
       "id": "1888b7c6-aa9a-4c4a-958a-5b11f32fbfc9",
       "name": "Code - Scoring",
@@ -1610,7 +1610,8 @@
             "lead_id": "={{ $('Code - Preparar Follow-up').item.json.lead_id }}",
             "numero": "={{ $('Code - Preparar Follow-up').item.json.num_seg }}",
             "canal": "email",
-            "asunto": "={{ $('Code - Preparar Follow-up').item.json.email_subject }}"
+            "asunto": "={{ $('Code - Preparar Follow-up').item.json.email_subject }}",
+            "cuerpo": "={{ $('Code - Preparar Follow-up').item.json.email_body }}"
           },
           "matchingColumns": [],
           "schema": []
@@ -1792,7 +1793,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const items = $input.all();\nconst out = [];\nfor (const it of items) {\n  const f = it.json;\n  const dias = parseInt(f.dias_al_vencimiento);\n  let nivel, asunto, cuerpo;\n  if (dias >= 1 && dias <= 3) { nivel = 'RECORDATORIO'; asunto = 'Recordatorio: Factura ' + f.factura_id + ' vence en ' + dias + ' dia(s)'; cuerpo = '<p>Hola <b>' + f.cliente + '</b>, tu factura <b>' + f.factura_id + '</b> por $' + f.monto + ' USD vence en ' + dias + ' dia(s).</p>'; }\n  else if (dias === 0) { nivel = 'HOY'; asunto = 'Tu factura ' + f.factura_id + ' vence HOY'; cuerpo = '<p>Hola <b>' + f.cliente + '</b>, la factura <b>' + f.factura_id + '</b> vence hoy. Agradezco el pago a la brevedad.</p>'; }\n  else if (dias < 0 && dias >= -3) { nivel = 'VENCIDA'; asunto = 'Factura ' + f.factura_id + ' vencida'; cuerpo = '<p>Hola <b>' + f.cliente + '</b>, la factura <b>' + f.factura_id + '</b> esta vencida hace ' + Math.abs(dias) + ' dia(s).</p>'; }\n  else if (dias < -3) { nivel = 'URGENTE'; asunto = 'URGENTE: Factura ' + f.factura_id; cuerpo = '<p>Hola <b>' + f.cliente + '</b>, la factura lleva ' + Math.abs(dias) + ' dias vencida. Es necesario regularizarla.</p>'; }\n  else continue;\n  // Todos los avisos ofrecen cómo pagar: reclamar un cobro sin dar el enlace\n  // obliga al cliente a rescatar el correo original de la factura.\n  if (f.pay_url) {\n    cuerpo += \"<div style='text-align:center;margin:26px 0 0'><a href='\" + f.pay_url + \"' \" +\n      \"style='display:inline-block;background:#fbbf24;color:#111827;padding:14px 34px;\" +\n      \"border-radius:8px;text-decoration:none;font-weight:800;font-size:15px'>Pagar la factura</a></div>\";\n  }\n  out.push({ json: Object.assign({}, f, { nivel_urgencia: nivel, email_asunto: asunto, email_cuerpo: cuerpo, dias_al_vencimiento: dias }) });\n}\nreturn out;"
+        "jsCode": "const items = $input.all();\nconst out = [];\nfor (const it of items) {\n  const f = it.json;\n  const dias = parseInt(f.dias_al_vencimiento);\n  let nivel, asunto, cuerpo;\n  if (dias >= 1 && dias <= 3) { nivel = 'RECORDATORIO'; asunto = 'Recordatorio: Factura ' + f.factura_id + ' vence en ' + dias + ' dia(s)'; cuerpo = '<p>Hola <b>' + f.cliente + '</b>, tu factura <b>' + f.factura_id + '</b> por $' + f.monto + ' ' + (f.moneda || 'ARS') + ' vence en ' + dias + ' dia(s).</p>'; }\n  else if (dias === 0) { nivel = 'HOY'; asunto = 'Tu factura ' + f.factura_id + ' vence HOY'; cuerpo = '<p>Hola <b>' + f.cliente + '</b>, la factura <b>' + f.factura_id + '</b> vence hoy. Agradezco el pago a la brevedad.</p>'; }\n  else if (dias < 0 && dias >= -3) { nivel = 'VENCIDA'; asunto = 'Factura ' + f.factura_id + ' vencida'; cuerpo = '<p>Hola <b>' + f.cliente + '</b>, la factura <b>' + f.factura_id + '</b> esta vencida hace ' + Math.abs(dias) + ' dia(s).</p>'; }\n  else if (dias < -3) { nivel = 'URGENTE'; asunto = 'URGENTE: Factura ' + f.factura_id; cuerpo = '<p>Hola <b>' + f.cliente + '</b>, la factura lleva ' + Math.abs(dias) + ' dias vencida. Es necesario regularizarla.</p>'; }\n  else continue;\n  // Todos los avisos ofrecen cómo pagar: reclamar un cobro sin dar el enlace\n  // obliga al cliente a rescatar el correo original de la factura.\n  if (f.pay_url) {\n    cuerpo += \"<div style='text-align:center;margin:26px 0 0'><a href='\" + f.pay_url + \"' \" +\n      \"style='display:inline-block;background:#fbbf24;color:#111827;padding:14px 34px;\" +\n      \"border-radius:8px;text-decoration:none;font-weight:800;font-size:15px'>Pagar la factura</a></div>\";\n  }\n  out.push({ json: Object.assign({}, f, { nivel_urgencia: nivel, email_asunto: asunto, email_cuerpo: cuerpo, dias_al_vencimiento: dias }) });\n}\nreturn out;"
       },
       "id": "732eed6e-8d1f-4901-96a1-0d72d0232cab",
       "name": "Code - Filtrar Vencimientos",
@@ -2366,7 +2367,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE leads SET estado = 'PERDIDO' WHERE lead_id = $1 AND accept_token::text = $2 AND estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO') AND (token_expira_en IS NULL OR token_expira_en > now()) RETURNING *;",
+        "query": "UPDATE leads SET estado = 'PERDIDO' WHERE lead_id = $1 AND accept_token = $2::uuid AND estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO') AND (token_expira_en IS NULL OR token_expira_en > now()) RETURNING *;",
         "options": {
           "queryReplacement": "={{ [$json.lead_id, $json.token] }}"
         }
@@ -2532,7 +2533,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE leads SET estado = 'EN_SEGUIMIENTO' WHERE lead_id = $1 AND accept_token::text = $2 AND estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO') AND (token_expira_en IS NULL OR token_expira_en > now()) RETURNING *;",
+        "query": "UPDATE leads SET estado = 'EN_SEGUIMIENTO' WHERE lead_id = $1 AND accept_token = $2::uuid AND estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO') AND (token_expira_en IS NULL OR token_expira_en > now()) RETURNING *;",
         "options": {
           "queryReplacement": "={{ [$json.lead_id, $json.token] }}"
         }
@@ -4581,7 +4582,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nconst headers = item.headers || {};\nconst body = item.body || {};\nconst xff = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '');\nconst ip = (xff.split(',')[0] || '').trim() || 'ip-desconocida';\n// Clave de rate limit: el email que el propio interesado declaró en el\n// formulario si vino con la petición; si no, la IP de origen.\nconst email = String(body.email || '').toLowerCase().trim();\nconst claveLimite = email || ip;\nreturn [{ json: { ...item, claveLimite, ruta: 'lead/nuevo' } }];"
+        "jsCode": "const item = $input.first().json;\nconst headers = item.headers || {};\nconst xff = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '');\n// Clave de rate limit: la IP de origen. Antes se usaba el email declarado en\n// el formulario cuando venía en la petición, pero ese dato lo controla quien\n// llama —alcanza con rotarlo para esquivar el límite por completo, incluso\n// para mandar el email de tier HOT a casillas de terceros—, así que se\n// unifica con el resto de las rutas de este workflow, que ya limitan por IP.\nconst claveLimite = (xff.split(',')[0] || '').trim() || 'ip-desconocida';\nreturn [{ json: { ...item, claveLimite, ruta: 'lead/nuevo' } }];"
       },
       "id": "1b94196a-7bef-4483-8597-74e7c86d0fed",
       "name": "Code - Clave Rate Limit (Nuevo Lead)",
@@ -4595,7 +4596,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT count(*)::int AS intentos\nFROM rate_limit_log\nWHERE ip_o_clave = $1\n  AND ruta = $2\n  AND creado_en > now() - interval '1 minute';",
+        "query": "WITH previo AS (\n  SELECT count(*)::int AS cnt\n  FROM rate_limit_log\n  WHERE ip_o_clave = $1\n    AND ruta = $2\n    AND creado_en > now() - interval '1 minute'\n), intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT (SELECT cnt FROM previo) + 1 AS intentos;",
         "options": {
           "queryReplacement": "={{ [$json.claveLimite, $json.ruta] }}"
         }
@@ -4700,7 +4701,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT count(*)::int AS intentos\nFROM rate_limit_log\nWHERE ip_o_clave = $1\n  AND ruta = $2\n  AND creado_en > now() - interval '5 minutes';",
+        "query": "WITH previo AS (\n  SELECT count(*)::int AS cnt\n  FROM rate_limit_log\n  WHERE ip_o_clave = $1\n    AND ruta = $2\n    AND creado_en > now() - interval '5 minutes'\n), intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT (SELECT cnt FROM previo) + 1 AS intentos;",
         "options": {
           "queryReplacement": "={{ [$json.claveLimite, $json.ruta] }}"
         }
@@ -4799,7 +4800,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT count(*)::int AS intentos\nFROM rate_limit_log\nWHERE ip_o_clave = $1\n  AND ruta = $2\n  AND creado_en > now() - interval '5 minutes';",
+        "query": "WITH previo AS (\n  SELECT count(*)::int AS cnt\n  FROM rate_limit_log\n  WHERE ip_o_clave = $1\n    AND ruta = $2\n    AND creado_en > now() - interval '5 minutes'\n), intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT (SELECT cnt FROM previo) + 1 AS intentos;",
         "options": {
           "queryReplacement": "={{ [$json.claveLimite, $json.ruta] }}"
         }
@@ -4898,7 +4899,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT count(*)::int AS intentos\nFROM rate_limit_log\nWHERE ip_o_clave = $1\n  AND ruta = $2\n  AND creado_en > now() - interval '5 minutes';",
+        "query": "WITH previo AS (\n  SELECT count(*)::int AS cnt\n  FROM rate_limit_log\n  WHERE ip_o_clave = $1\n    AND ruta = $2\n    AND creado_en > now() - interval '5 minutes'\n), intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT (SELECT cnt FROM previo) + 1 AS intentos;",
         "options": {
           "queryReplacement": "={{ [$json.claveLimite, $json.ruta] }}"
         }
@@ -4997,7 +4998,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT count(*)::int AS intentos\nFROM rate_limit_log\nWHERE ip_o_clave = $1\n  AND ruta = $2\n  AND creado_en > now() - interval '5 minutes';",
+        "query": "WITH previo AS (\n  SELECT count(*)::int AS cnt\n  FROM rate_limit_log\n  WHERE ip_o_clave = $1\n    AND ruta = $2\n    AND creado_en > now() - interval '5 minutes'\n), intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT (SELECT cnt FROM previo) + 1 AS intentos;",
         "options": {
           "queryReplacement": "={{ [$json.claveLimite, $json.ruta] }}"
         }
