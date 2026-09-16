@@ -12,6 +12,23 @@ const inputClass =
 
 const labelClass = "mb-2 block text-[10px] tracking-[0.16em] text-faint uppercase";
 
+// Evita el open redirect: un prefijo tipo `startsWith("/")` no alcanza porque
+// `/\evil.com` también empieza con "/" y los navegadores normalizan `\` a `/`
+// al resolver la URL, terminando en `https://evil.com`. Resolver con `URL` y
+// comparar el origin explícitamente cierra ese bypass.
+function redirectSeguro(valor: string | null): string {
+  if (!valor) return "/dashboard";
+  try {
+    const resuelta = new URL(valor, window.location.origin);
+
+    return resuelta.origin === window.location.origin
+      ? resuelta.pathname + resuelta.search + resuelta.hash
+      : "/dashboard";
+  } catch {
+    return "/dashboard";
+  }
+}
+
 export default function LoginForm() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -42,7 +59,7 @@ export default function LoginForm() {
 
       const redirectTo = new URLSearchParams(window.location.search).get("redirectTo");
 
-      router.push(redirectTo || "/dashboard");
+      router.push(redirectSeguro(redirectTo));
       router.refresh();
     } catch (err) {
       setError(translateAuthError(err, "No pudimos iniciar sesión."));
