@@ -110,7 +110,7 @@ function TicketCard({
         >
           →
         </button>
-        {ticket.url && (
+        {ticket.url && /^https:\/\//i.test(ticket.url) && (
           <a
             className="ease text-mist hover:text-ochre ml-auto text-[10px] transition duration-200"
             href={ticket.url}
@@ -141,7 +141,9 @@ export default function TicketsBoard() {
       setError(null);
 
       // abiertos=false trae también los cerrados: el tablero muestra la columna HECHO.
-      const res = await fetch("/api/tickets?abiertos=false&limite=100", {cache: "no-store"});
+      const res = await fetch("/api/tickets?abiertos=false&limite=100", {
+        cache: "no-store",
+      });
       const json = (await res.json()) as TicketsResponse & {error?: string};
 
       if (!res.ok || !json.ok) throw new Error(json.error ?? `Error ${res.status}`);

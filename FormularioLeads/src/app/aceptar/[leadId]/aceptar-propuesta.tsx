@@ -1,15 +1,16 @@
 "use client";
 
-import {type ReactNode, useEffect, useState} from "react";
+import {type ReactNode, useEffect, useRef, useState} from "react";
 
 const N8N_BASE = process.env.NEXT_PUBLIC_N8N_BASE;
 // Dirección a la que se invita a escribir cuando el enlace ya no sirve. Las
 // pantallas de error decían "escribinos" sin decir dónde: en la página que
 // cierra la venta, un callejón sin salida.
 const CONTACTO = process.env.NEXT_PUBLIC_EMAIL_CONTACTO;
-const HEADERS = {
+// El aviso de ngrok solo aparece detrás de un túnel de desarrollo.
+const HEADERS: Record<string, string> = {
   "Content-Type": "application/json",
-  "ngrok-skip-browser-warning": "true",
+  ...(process.env.NODE_ENV === "development" ? {"ngrok-skip-browser-warning": "true"} : {}),
 };
 
 type ApiStatus = "ok" | "ya_procesado" | "invalido";
@@ -99,7 +100,15 @@ function resolverEstadoFalla(json: ApiResponse): Estado {
 }
 
 function buildContent(
-  estado: "aceptado" | "rechazado" | "modificado" | "ya_procesado" | "expirado" | "rotado" | "invalido" | "error",
+  estado:
+    | "aceptado"
+    | "rechazado"
+    | "modificado"
+    | "ya_procesado"
+    | "expirado"
+    | "rotado"
+    | "invalido"
+    | "error",
   mensaje?: string,
 ): StatusContent {
   switch (estado) {
@@ -204,10 +213,26 @@ function buildContent(
 }
 
 function StatusView({accent, icon, title, message}: StatusContent) {
+  // El resultado (aceptado/rechazado/error/expirado/...) reemplaza toda la
+  // pantalla sin que haya un elemento previo al que quede el foco: sin esto,
+  // un lector de pantalla no anuncia el desenlace de la acción que se acaba
+  // de disparar.
+  const headingRef = useRef<HTMLHeadingElement>(null);
+
+  useEffect(() => {
+    headingRef.current?.focus();
+  }, []);
+
   return (
     <div className={cardClass}>
       <span className={accent}>{icon}</span>
-      <h2 className="text-ink font-serif text-[32px] leading-none tracking-tight">{title}</h2>
+      <h2
+        ref={headingRef}
+        className="text-ink font-serif text-[32px] leading-none tracking-tight outline-none"
+        tabIndex={-1}
+      >
+        {title}
+      </h2>
       <p className="text-muted max-w-sm text-[14.5px] leading-relaxed">{message}</p>
       {CONTACTO ? (
         <p className="text-faint max-w-sm text-[13px] leading-relaxed">
@@ -396,12 +421,18 @@ export default function AceptarPropuesta({leadId, token}: {leadId: string; token
         )}&token=${encodeURIComponent(token)}`;
         const response = await fetch(url, {
           signal: controller.signal,
-          headers: {"ngrok-skip-browser-warning": "true"},
+          headers:
+            process.env.NODE_ENV === "development"
+              ? {"ngrok-skip-browser-warning": "true"}
+              : undefined,
         });
 
         if (!response.ok) throw new Error(`Error del servidor: ${response.status}`);
 
-        const json: ApiResponse = await response.json();
+        // Si n8n responde HTML/vacío en vez de JSON (rama cortada antes del
+        // nodo Respond), no tiene que verse como un error de red: se cae al
+        // motivo "invalido" en vez de a la pantalla de reintento.
+        const json: ApiResponse = await response.json().catch(() => ({}));
 
         if (json.status === "ok") {
           setLead(json.lead ?? null);
@@ -441,7 +472,7 @@ export default function AceptarPropuesta({leadId, token}: {leadId: string; token
 
       if (!response.ok) throw new Error(`Error del servidor: ${response.status}`);
 
-      const json: ApiResponse = await response.json();
+      const json: ApiResponse = await response.json().catch(() => ({}));
 
       setMensaje(json.mensaje);
       setEstado(json.status === "ok" ? exito : resolverEstadoFalla(json));

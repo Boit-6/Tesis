@@ -43,9 +43,19 @@ export async function POST(request: NextRequest, {params}: {params: Promise<{acc
 
   if (!N8N_BASE) {
     return NextResponse.json(
-      {ok: false, error: "Falta N8N_BASE / NEXT_PUBLIC_N8N_BASE en el servidor."},
+      {
+        ok: false,
+        error: "Falta N8N_BASE / NEXT_PUBLIC_N8N_BASE en el servidor.",
+      },
       {status: 500},
     );
+  }
+
+  // Sin la credencial, este proxy es exactamente lo que la nota de arriba
+  // dice que ya no puede pasar: mandar la mutación sin ella la deja abierta
+  // del lado de n8n. Mejor no mandarla.
+  if (!PANEL_TOKEN) {
+    return NextResponse.json({ok: false, error: "Configuración incompleta"}, {status: 503});
   }
 
   let body: unknown;
@@ -58,10 +68,13 @@ export async function POST(request: NextRequest, {params}: {params: Promise<{acc
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    "ngrok-skip-browser-warning": "true",
+    [PANEL_HEADER]: PANEL_TOKEN,
   };
 
-  if (PANEL_TOKEN) headers[PANEL_HEADER] = PANEL_TOKEN;
+  // El aviso de ngrok solo aparece detrás de un túnel de desarrollo.
+  if (process.env.NODE_ENV === "development") {
+    headers["ngrok-skip-browser-warning"] = "true";
+  }
 
   try {
     const res = await fetch(`${N8N_BASE}/webhook/${ruta}`, {
@@ -75,7 +88,10 @@ export async function POST(request: NextRequest, {params}: {params: Promise<{acc
 
     if (res.status === 403) {
       return NextResponse.json(
-        {ok: false, error: "n8n rechazó la credencial del panel. Revisá CRM_PANEL_TOKEN."},
+        {
+          ok: false,
+          error: "n8n rechazó la credencial del panel. Revisá CRM_PANEL_TOKEN.",
+        },
         {status: 502},
       );
     }
