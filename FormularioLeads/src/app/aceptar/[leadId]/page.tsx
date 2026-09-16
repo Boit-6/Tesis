@@ -1,4 +1,10 @@
+import type {Metadata} from "next";
+
 import AceptarPropuesta from "./aceptar-propuesta";
+
+export const metadata: Metadata = {
+  robots: {index: false, follow: false},
+};
 
 export default async function AceptarPage({
   params,
