@@ -97,12 +97,17 @@ CREATE TABLE IF NOT EXISTS leads (
 CREATE TABLE IF NOT EXISTS facturas (
   id                     BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   factura_id             TEXT UNIQUE NOT NULL,
-  lead_id                TEXT NOT NULL REFERENCES leads(lead_id) ON DELETE CASCADE,
+  -- RESTRICT (no CASCADE): las facturas son el registro financiero/legal del
+  -- negocio. Un DELETE FROM leads (vía service_role, que evade RLS) no puede
+  -- llevarse puestas las facturas asociadas en silencio.
+  lead_id                TEXT NOT NULL REFERENCES leads(lead_id) ON DELETE RESTRICT,
   cliente                TEXT NOT NULL,
   email                  TEXT NOT NULL,
   servicio               servicio_tipo,
   monto                  NUMERIC(12,2) NOT NULL CHECK (monto >= 0),
-  moneda                 TEXT NOT NULL DEFAULT 'USD',
+  -- 'ARS', no 'USD': el workflow (MP_CURRENCY) siempre factura en pesos por
+  -- defecto. El default anterior no coincidía con lo que de hecho se escribe.
+  moneda                 TEXT NOT NULL DEFAULT 'ARS' CHECK (moneda IN ('ARS','USD')),
   estado_pago            pago_estado NOT NULL DEFAULT 'PENDIENTE',
   recordatorios_enviados INT NOT NULL DEFAULT 0,
   fecha_emision          TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -145,10 +150,25 @@ CREATE TABLE IF NOT EXISTS logs (
 -- Se completa sola vía trigger al registrarse (ver handle_new_user más abajo).
 CREATE TABLE IF NOT EXISTS profiles (
   id         UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  email      TEXT NOT NULL,
+  -- Supabase Auth admite registros solo-teléfono (email=NULL): antes esta
+  -- columna era NOT NULL y el INSERT del trigger handle_new_user() abortaba
+  -- para esos usuarios, dejando la cuenta sin fila en profiles.
+  email      TEXT,
   role       TEXT NOT NULL DEFAULT 'user' CHECK (role IN ('user','admin')),
   creado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Whitelist de admins editable sin tocar este archivo (antes era un string
+-- literal comparado en handle_new_user(), lo que además de forzar un cambio
+-- de schema para sumar un admin, era un vector de privilege escalation: quien
+-- sea que registrara esa dirección exacta se auto-promovía). Sin RLS propia:
+-- solo la consulta el trigger SECURITY DEFINER y se administra a mano vía
+-- service_role, igual que el resto de las tablas sin política para
+-- authenticated/anon.
+CREATE TABLE IF NOT EXISTS admin_emails (
+  email TEXT PRIMARY KEY
+);
+INSERT INTO admin_emails (email) VALUES ('admin@gmail.com') ON CONFLICT DO NOTHING;
 
 -- Registro de invocaciones por IP/clave y ruta, para el rate limiting básico
 -- de los cinco webhooks públicos que no admiten autenticación de origen
@@ -249,6 +269,26 @@ DO $$ BEGIN
     CHECK (precio_propuesto IS NULL OR precio_propuesto > 0) NOT VALID;
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
+-- profiles.email pasa a nullable (para bases ya creadas): Supabase Auth
+-- admite registros solo-teléfono y el trigger handle_new_user() los rechazaba.
+ALTER TABLE profiles ALTER COLUMN email DROP NOT NULL;
+
+-- facturas.lead_id pasa de CASCADE a RESTRICT (para bases ya creadas). El
+-- nombre de constraint es el que Postgres genera por defecto para una
+-- REFERENCES inline en la columna.
+ALTER TABLE facturas DROP CONSTRAINT IF EXISTS facturas_lead_id_fkey;
+ALTER TABLE facturas ADD CONSTRAINT facturas_lead_id_fkey
+  FOREIGN KEY (lead_id) REFERENCES leads(lead_id) ON DELETE RESTRICT;
+
+-- facturas.moneda pasa de default 'USD' a 'ARS' (para bases ya creadas), con
+-- el CHECK como NOT VALID para no exigirle a las filas existentes que ya lo
+-- cumplan (mismo criterio que chk_facturas_fechas y chk_facturas_comision).
+ALTER TABLE facturas ALTER COLUMN moneda SET DEFAULT 'ARS';
+DO $$ BEGIN
+  ALTER TABLE facturas ADD CONSTRAINT chk_facturas_moneda
+    CHECK (moneda IN ('ARS','USD')) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
 
 -- ---------------------------------------------------------------------
 -- Índices
@@ -270,16 +310,23 @@ CREATE INDEX IF NOT EXISTS idx_logs_nivel         ON logs(nivel) WHERE nivel IN 
 -- ordenando por vencimiento: el índice compuesto resuelve filtro y orden juntos.
 CREATE INDEX IF NOT EXISTS idx_facturas_venc      ON facturas(estado_pago, fecha_vencimiento);
 
--- La búsqueda por token es la ruta más caliente del flujo de aceptación.
--- `lead_id` ya es UNIQUE, pero el índice parcial permite resolver la validación
--- de vigencia sin tocar la tabla.
-CREATE INDEX IF NOT EXISTS idx_leads_token_venc   ON leads(accept_token, token_expira_en);
+-- El INSERT de leads (Postgres - Insert Lead) filtra por lower(email) +
+-- creado_en bajo el advisory lock de deduplicación: sin este índice funcional
+-- hace un seq scan completo en la ruta más caliente del webhook público.
+CREATE INDEX IF NOT EXISTS idx_leads_dedup ON leads (lower(email), creado_en);
 
 -- `rate_limit_log`: cada webhook protegido cuenta "cuántas filas con esta
 -- clave y esta ruta en los últimos N minutos", que es exactamente lo que el
 -- índice compuesto resuelve sin recorrer la tabla entera.
 CREATE INDEX IF NOT EXISTS idx_rate_limit_clave_ruta_fecha
   ON rate_limit_log(ip_o_clave, ruta, creado_en);
+
+-- idx_leads_token_venc (accept_token, token_expira_en) quedaba muerto: las
+-- consultas de aceptación filtran primero por lead_id (ya UNIQUE) y comparan
+-- accept_token::text = $2, y ese cast sobre la columna impide usar un índice
+-- btree plano sobre accept_token. Se dropea acá para bases ya creadas; no
+-- vuelve a declararse arriba.
+DROP INDEX IF EXISTS idx_leads_token_venc;
 
 -- Nota de alcance: a la escala del MVP (decenas de filas) estos índices no
 -- cambian los tiempos de forma observable. Se agregan porque las consultas que
@@ -302,9 +349,10 @@ CREATE TRIGGER trg_leads_updated
 
 -- ---------------------------------------------------------------------
 -- Trigger: crea el perfil (rol 'user' por defecto) al registrarse.
--- El único email whitelisteado como 'admin' es admin@gmail.com (usuario
--- de prueba). Para sumar otro admin, actualizar el CASE de acá o correr
--- un UPDATE puntual sobre `profiles` desde el SQL editor de Supabase.
+-- Se promueve a 'admin' si el email está en `admin_emails` (whitelist
+-- editable con un INSERT/DELETE puntual, sin tocar este archivo). Un email
+-- NULL (registro solo-teléfono) nunca matchea la whitelist: NULL = NULL no
+-- es true en SQL, así que cae a 'user' sin caso especial.
 -- `SECURITY DEFINER` es necesario porque el usuario recién registrado
 -- todavía no tiene fila en `profiles` desde la que autorizarse solo.
 -- ---------------------------------------------------------------------
@@ -315,7 +363,8 @@ BEGIN
   VALUES (
     NEW.id,
     NEW.email,
-    CASE WHEN NEW.email = 'admin@gmail.com' THEN 'admin' ELSE 'user' END
+    CASE WHEN EXISTS (SELECT 1 FROM public.admin_emails WHERE email = NEW.email)
+      THEN 'admin' ELSE 'user' END
   )
   ON CONFLICT (id) DO NOTHING;
 
@@ -329,9 +378,12 @@ CREATE TRIGGER on_auth_user_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
 -- Backfill: cuentas ya existentes (creadas antes de este trigger) también
--- necesitan su fila en `profiles`. Idempotente vía ON CONFLICT.
+-- necesitan su fila en `profiles`. Idempotente vía ON CONFLICT: una fila que
+-- ya existe (por ejemplo porque un admin real bajó de rol a mano) no se
+-- vuelve a tocar acá, así que re-aplicar el schema nunca re-promueve a nadie.
 INSERT INTO public.profiles (id, email, role)
-SELECT id, email, CASE WHEN email = 'admin@gmail.com' THEN 'admin' ELSE 'user' END
+SELECT id, email, CASE WHEN EXISTS (SELECT 1 FROM public.admin_emails a WHERE a.email = auth.users.email)
+  THEN 'admin' ELSE 'user' END
 FROM auth.users
 ON CONFLICT (id) DO NOTHING;
 
@@ -432,6 +484,20 @@ ALTER TABLE seguimientos    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE logs            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profiles        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rate_limit_log  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE admin_emails    ENABLE ROW LEVEL SECURITY;
+
+-- 1.1) FORCE: sin esto, el OWNER de la tabla evade la RLS igual que si
+--      tuviera BYPASSRLS (una tarea de backup o una migración conectada con
+--      el rol dueño de las tablas, no con service_role, se saltearía todas
+--      las políticas). No afecta a `service_role`: ese ya tiene BYPASSRLS
+--      explícito, que manda por sobre FORCE.
+ALTER TABLE leads           FORCE ROW LEVEL SECURITY;
+ALTER TABLE facturas        FORCE ROW LEVEL SECURITY;
+ALTER TABLE seguimientos    FORCE ROW LEVEL SECURITY;
+ALTER TABLE logs            FORCE ROW LEVEL SECURITY;
+ALTER TABLE profiles        FORCE ROW LEVEL SECURITY;
+ALTER TABLE rate_limit_log  FORCE ROW LEVEL SECURITY;
+ALTER TABLE admin_emails    FORCE ROW LEVEL SECURITY;
 
 -- 2) Políticas de LECTURA sobre las tablas que alimentan el tablero.
 --    No alcanza con `authenticated`: se exige además `profiles.role =
@@ -464,9 +530,12 @@ CREATE POLICY profiles_select_own ON profiles
 
 -- 3) `logs` (auditoría/errores) no tiene ninguna política para
 --    `authenticated`: `service_role` (que evade la RLS) y `n8n_writer`
---    (por la política `logs_rw_n8n_writer` de la sección 5.1) pueden
---    escribir y consultar, pero `authenticated` y `anon` no acceden. Es
---    intencional: la auditoría no se expone al tablero.
+--    (por las políticas `logs_{select,insert,update}_n8n_writer` de la
+--    sección 5.1) pueden escribir y consultar, pero `authenticated` y
+--    `anon` no acceden. Es intencional: la auditoría no se expone al
+--    tablero. `admin_emails` tampoco tiene política: solo la lee la función
+--    SECURITY DEFINER handle_new_user() y se administra a mano vía
+--    service_role.
 
 -- 4) Privilegios de tabla (GRANT). La RLS filtra filas, pero el rol
 --    igual necesita el privilegio SELECT sobre el objeto.
@@ -480,7 +549,7 @@ GRANT SELECT ON metrics_mensuales, facturas_pendientes TO authenticated;
 --    autoalojado del docker-compose) NO, y BYPASSRLS solo evade la RLS, no
 --    otorga el privilegio de tabla. Se conceden explícitamente para que
 --    funcione en ambos entornos.
-GRANT SELECT, INSERT, UPDATE, DELETE ON leads, facturas, seguimientos, logs, profiles, rate_limit_log TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON leads, facturas, seguimientos, logs, profiles, rate_limit_log, admin_emails TO service_role;
 GRANT SELECT ON metrics_mensuales, facturas_pendientes TO service_role;
 
 -- Nota: la `service_role` posee además BYPASSRLS, por lo que sus escrituras
@@ -508,6 +577,7 @@ GRANT SELECT, INSERT, UPDATE ON leads, facturas, seguimientos, logs TO n8n_write
 GRANT SELECT, INSERT ON rate_limit_log TO n8n_writer;
 GRANT SELECT ON metrics_mensuales, facturas_pendientes TO n8n_writer;
 REVOKE ALL ON profiles FROM n8n_writer;
+REVOKE ALL ON admin_emails FROM n8n_writer;
 
 -- Políticas de escritura de `n8n_writer`. No filtran filas (USING/WITH CHECK
 -- en true): a diferencia de las políticas de `authenticated`, el límite de
@@ -515,25 +585,64 @@ REVOKE ALL ON profiles FROM n8n_writer;
 -- resuelve el GRANT de arriba. Sin estas políticas, con RLS habilitada y sin
 -- BYPASSRLS, el rol no podría hacer nada aunque tuviera el GRANT: la RLS
 -- deniega por omisión toda operación sin una política permisiva.
+--
+-- Una política por comando (no `FOR ALL`) a propósito: `FOR ALL` alcanza
+-- también a DELETE a nivel de RLS, así que un GRANT DELETE futuro por error
+-- quedaría habilitado en silencio por esta política preexistente. Separando
+-- por comando, agregar DELETE requeriría además una policy nueva explícita.
 DROP POLICY IF EXISTS leads_rw_n8n_writer ON leads;
-CREATE POLICY leads_rw_n8n_writer ON leads
-  FOR ALL TO n8n_writer USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS leads_select_n8n_writer ON leads;
+CREATE POLICY leads_select_n8n_writer ON leads
+  FOR SELECT TO n8n_writer USING (true);
+DROP POLICY IF EXISTS leads_insert_n8n_writer ON leads;
+CREATE POLICY leads_insert_n8n_writer ON leads
+  FOR INSERT TO n8n_writer WITH CHECK (true);
+DROP POLICY IF EXISTS leads_update_n8n_writer ON leads;
+CREATE POLICY leads_update_n8n_writer ON leads
+  FOR UPDATE TO n8n_writer USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS facturas_rw_n8n_writer ON facturas;
-CREATE POLICY facturas_rw_n8n_writer ON facturas
-  FOR ALL TO n8n_writer USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS facturas_select_n8n_writer ON facturas;
+CREATE POLICY facturas_select_n8n_writer ON facturas
+  FOR SELECT TO n8n_writer USING (true);
+DROP POLICY IF EXISTS facturas_insert_n8n_writer ON facturas;
+CREATE POLICY facturas_insert_n8n_writer ON facturas
+  FOR INSERT TO n8n_writer WITH CHECK (true);
+DROP POLICY IF EXISTS facturas_update_n8n_writer ON facturas;
+CREATE POLICY facturas_update_n8n_writer ON facturas
+  FOR UPDATE TO n8n_writer USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS seguimientos_rw_n8n_writer ON seguimientos;
-CREATE POLICY seguimientos_rw_n8n_writer ON seguimientos
-  FOR ALL TO n8n_writer USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS seguimientos_select_n8n_writer ON seguimientos;
+CREATE POLICY seguimientos_select_n8n_writer ON seguimientos
+  FOR SELECT TO n8n_writer USING (true);
+DROP POLICY IF EXISTS seguimientos_insert_n8n_writer ON seguimientos;
+CREATE POLICY seguimientos_insert_n8n_writer ON seguimientos
+  FOR INSERT TO n8n_writer WITH CHECK (true);
+DROP POLICY IF EXISTS seguimientos_update_n8n_writer ON seguimientos;
+CREATE POLICY seguimientos_update_n8n_writer ON seguimientos
+  FOR UPDATE TO n8n_writer USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS logs_rw_n8n_writer ON logs;
-CREATE POLICY logs_rw_n8n_writer ON logs
-  FOR ALL TO n8n_writer USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS logs_select_n8n_writer ON logs;
+CREATE POLICY logs_select_n8n_writer ON logs
+  FOR SELECT TO n8n_writer USING (true);
+DROP POLICY IF EXISTS logs_insert_n8n_writer ON logs;
+CREATE POLICY logs_insert_n8n_writer ON logs
+  FOR INSERT TO n8n_writer WITH CHECK (true);
+DROP POLICY IF EXISTS logs_update_n8n_writer ON logs;
+CREATE POLICY logs_update_n8n_writer ON logs
+  FOR UPDATE TO n8n_writer USING (true) WITH CHECK (true);
 
+-- Sin policy de UPDATE: coincide con el GRANT de más arriba (SELECT, INSERT
+-- nomás) — nunca se actualiza una fila de rate_limit_log ya escrita.
 DROP POLICY IF EXISTS rate_limit_log_rw_n8n_writer ON rate_limit_log;
-CREATE POLICY rate_limit_log_rw_n8n_writer ON rate_limit_log
-  FOR ALL TO n8n_writer USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS rate_limit_log_select_n8n_writer ON rate_limit_log;
+CREATE POLICY rate_limit_log_select_n8n_writer ON rate_limit_log
+  FOR SELECT TO n8n_writer USING (true);
+DROP POLICY IF EXISTS rate_limit_log_insert_n8n_writer ON rate_limit_log;
+CREATE POLICY rate_limit_log_insert_n8n_writer ON rate_limit_log
+  FOR INSERT TO n8n_writer WITH CHECK (true);
 
 -- Paso operativo pendiente, fuera del alcance de este script porque no debe
 -- versionar contraseñas: en el proyecto de Supabase real, dar LOGIN y una
@@ -546,7 +655,7 @@ CREATE POLICY rate_limit_log_rw_n8n_writer ON rate_limit_log
 -- 6) El rol público (`anon`) no debe leer las tablas de negocio ni las
 --    vistas. Se revoca explícitamente por si el default privilege de la
 --    plataforma lo hubiera otorgado.
-REVOKE ALL ON leads, facturas, seguimientos, logs, profiles, rate_limit_log FROM anon;
+REVOKE ALL ON leads, facturas, seguimientos, logs, profiles, rate_limit_log, admin_emails FROM anon;
 REVOKE ALL ON metrics_mensuales, facturas_pendientes FROM anon;
 
 -- 7) Realtime: el tablero se suscribe a los cambios de `leads`
