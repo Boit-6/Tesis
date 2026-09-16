@@ -130,11 +130,15 @@ En n8n: importar [`workflow/crm_postgres.json`](workflow/crm_postgres.json), cre
 
 > Valores a editar a mano: `DATABASE_ID` de Notion, la URL del front, la URL pública de n8n (ngrok o dominio), la URL del Google Form de reseñas y el `chatId` de Telegram. Luego **publicar** el workflow.
 
+> ⚠️ **Checklist de importación** — 7 nodos de este workflow referencian la credencial `CRM - Header Auth (panel)` con `id: "REEMPLAZAR_AL_IMPORTAR"`. Si se publica el workflow sin re-vincularla, esos nodos quedan rotos o corriendo sin la verificación de esa credencial, según cómo resuelva n8n el ID inexistente. Antes de publicar: abrir cada nodo marcado en rojo por n8n al importar y reasignarle la credencial real.
+
 **4. Módulo de tickets** (opcional, el CRM funciona sin él):
 ```bash
 NOTION_TOKEN=secret_xxx NOTION_PARENT_PAGE_ID=<id> node scripts/setup-notion-tickets.mjs
 ```
 Pegar el `DATABASE_ID` que imprime en `NOTION_TICKETS_DATABASE_ID` del `.env`, importar [`workflow/tickets_notion.json`](workflow/tickets_notion.json) en n8n y publicarlo. Detalle en [`docs/modulo-tickets.md`](docs/modulo-tickets.md).
+
+> ⚠️ **Checklist de importación** — este workflow trae 8 nodos con credencial en `REEMPLAZAR_AL_IMPORTAR`: 6 usan `Notion account` y 2 usan `Telegram account`. Re-vincular ambas antes de publicar. Además, sin `TICKETS_API_KEY` configurada en el `.env` los webhooks del módulo quedan sin autenticar — no lo dejes vacío en producción.
 
 **5. Presentación (front):**
 ```bash

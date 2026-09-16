@@ -3,6 +3,9 @@ node_modules/
 .next/
 out/
 
+# Husky regenera este helper interno con el hook "prepare" en cada npm install
+.husky/_/
+
 # Variables de entorno y secretos — NUNCA al repo
 .env
 .env.local

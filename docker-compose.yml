@@ -64,6 +64,8 @@ services:
       # de las notificaciones de MercadoPago). Sin esto, el Code node no
       # puede acceder al módulo aunque MP_WEBHOOK_SECRET esté configurado.
       - NODE_FUNCTION_ALLOW_BUILTIN=crypto
+      # Apaga la telemetría de uso que n8n manda a sus propios servidores.
+      - N8N_DIAGNOSTICS_ENABLED=false
       # ── Cobro con MercadoPago (RAMA 8) ─────────────────────────────────────
       # Base de la API de MercadoPago. El default es el servicio real, de modo
       # que no cambia el comportamiento de producción. Se parametriza para poder
@@ -112,7 +114,10 @@ services:
       - TICKETS_PROPS=${TICKETS_PROPS:-{}}
       # Si se setea, los webhooks de tickets exigen el header x-api-key.
       - TICKETS_API_KEY=${TICKETS_API_KEY:-}
-      - TICKETS_CORS_ORIGINS=${TICKETS_CORS_ORIGINS:-*}
+      # Vacío = ningún origen permitido por defecto (fail-closed, F0.2). El
+      # propio workflow ya no cae a '*' cuando la variable no está seteada,
+      # pero antes este compose se la pasaba igual con ese valor.
+      - TICKETS_CORS_ORIGINS=${TICKETS_CORS_ORIGINS:-}
       # Chat de Telegram del módulo; si está vacío usa TELEGRAM_CHAT_ID.
       - TICKETS_TELEGRAM_CHAT_ID=${TICKETS_TELEGRAM_CHAT_ID:-}
       # Enganche del CRM con el módulo: al aceptarse una propuesta se siembran
@@ -126,14 +131,44 @@ services:
       - crm-net
     depends_on:
       - gotenberg
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '1.0'
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   gotenberg:
-    image: gotenberg/gotenberg:8
+    image: gotenberg/gotenberg:8.14.1
     container_name: gotenberg
     restart: unless-stopped
     # No expone puerto al host: solo n8n lo consume por la red interna.
     networks:
       - crm-net
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '2.0'
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 volumes:
   # Volumen preexistente con tus credenciales/workflows (creado fuera de este compose).

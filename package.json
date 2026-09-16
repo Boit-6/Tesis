@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "CRM freelance automatizado con n8n — trabajo final de tesis",
+  "packageManager": "npm@11.16.0",
   "scripts": {
     "test": "npm run test:humo && npm run test:scoring && npm run test:tickets && npm run test:parametros && npm run test:autherrores && npm run test:afirmaciones",
     "test:humo": "node tests/smoke_code_nodes.js",
@@ -21,7 +22,13 @@
     "test:trazabilidad": "node tests/trazabilidad.mjs",
     "test:exposicion": "node tests/exposicion-webhooks.mjs",
     "test:e14-stripe": "node tests/adaptador-stripe-e14.mjs",
-    "setup:tickets": "node scripts/setup-notion-tickets.mjs"
+    "setup:tickets": "node scripts/setup-notion-tickets.mjs",
+    "lint:front": "npm run lint --prefix FormularioLeads",
+    "typecheck:front": "npm run typecheck --prefix FormularioLeads",
+    "check": "npm test && npm run lint:front && npm run typecheck:front",
+    "dev:front": "npm run dev --prefix FormularioLeads",
+    "dev:infra": "docker compose up -d",
+    "prepare": "husky"
   },
   "comentarioScripts": {
     "test": "Suite offline: no necesita n8n, ni base, ni credenciales. Es la que corre en CI.",
@@ -34,6 +41,10 @@
     "test:escenarios": "Validación funcional de punta a punta: necesita n8n publicado y la base configurada (ver .env.example)."
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^17.5.1"
   }
 }
