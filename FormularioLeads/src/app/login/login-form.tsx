@@ -73,6 +73,7 @@ export default function LoginForm() {
       {error && (
         <div
           className="border-brick bg-brick/5 text-brick border-l-2 px-5 py-3.5 text-[13px]"
+          id="login-error"
           role="alert"
         >
           {error}
@@ -85,6 +86,8 @@ export default function LoginForm() {
         </label>
         <input
           required
+          aria-describedby={error ? "login-error" : undefined}
+          aria-invalid={!!error}
           autoComplete="email"
           className={inputClass}
           id="email"
@@ -102,6 +105,8 @@ export default function LoginForm() {
         </label>
         <input
           required
+          aria-describedby={error ? "login-error" : undefined}
+          aria-invalid={!!error}
           autoComplete="current-password"
           className={inputClass}
           id="password"

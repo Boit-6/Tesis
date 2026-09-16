@@ -117,6 +117,7 @@ export default function RegisterForm() {
       {error && (
         <div
           className="border-brick bg-brick/5 text-brick border-l-2 px-5 py-3.5 text-[13px]"
+          id="register-error"
           role="alert"
         >
           {error}
@@ -129,6 +130,8 @@ export default function RegisterForm() {
         </label>
         <input
           required
+          aria-describedby={error ? "register-error" : undefined}
+          aria-invalid={!!error}
           autoComplete="email"
           className={inputClass}
           id="email"
@@ -146,6 +149,8 @@ export default function RegisterForm() {
         </label>
         <input
           required
+          aria-describedby={error ? "register-error" : undefined}
+          aria-invalid={!!error}
           autoComplete="new-password"
           className={inputClass}
           id="password"
@@ -163,6 +168,8 @@ export default function RegisterForm() {
         </label>
         <input
           required
+          aria-describedby={error ? "register-error" : undefined}
+          aria-invalid={!!error}
           autoComplete="new-password"
           className={inputClass}
           id="confirmPassword"
