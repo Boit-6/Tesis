@@ -169,7 +169,7 @@ Alcance real de este trabajo, dentro de las limitaciones explicadas en la secci�
      contra una instancia real antes de tocarlas, dado que no se puede levantar n8n en este
      entorno.
    - `Telegram - Lead Frio`: es parte de una afirmación cualitativa verificada por
-     `tests/verificar_afirmaciones.js` (la rama fría debe generar aviso interno por Telegram y
+     `tests/verificar_afirmaciones.mjs` (la rama fría debe generar aviso interno por Telegram y
      acuse de recibo por Gmail, buscando las palabras "telegram"/"gmail" en los nombres de nodo
      de esa rama). No se tocó para no interferir con esa verificación durante esta prueba de
      concepto, aunque en rigor el mismo cambio (conservando el nombre del nodo) tampoco la

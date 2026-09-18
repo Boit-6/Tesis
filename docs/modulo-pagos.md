@@ -122,7 +122,7 @@ de punta a punta con una tarjeta de test antes de pasar a las de producción.
 
 ## 5. Pruebas
 
-`tests/smoke_code_nodes.js` ejecuta el JavaScript real de los nodos `Code`
+`tests/smoke_code_nodes.mjs` ejecuta el JavaScript real de los nodos `Code`
 nuevos (`Code - Generar ID Factura`, `Code - Resolver Link de Pago`, `Code -
 Leer Notificacion MP`, `Code - Procesar Pago MP`) con mocks de `$env`/`$input`.
 `tests/verificar_sql.mjs` compila la consulta de `Postgres - Marcar Cobrado

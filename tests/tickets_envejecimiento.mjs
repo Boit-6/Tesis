@@ -2,12 +2,14 @@
 // Ejecuta el JavaScript REAL del nodo "Code - Calcular Escaladas" (tal como
 // quedó en workflow/tickets_notion.json) contra páginas de Notion sintéticas,
 // y verifica que un ticket olvidado suba de prioridad y que uno atendido no.
-// Uso: node tests/tickets_envejecimiento.js
-const fs = require('fs');
-const path = require('path');
+// Uso: node tests/tickets_envejecimiento.mjs
+import {readFileSync} from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 
+const aqui = path.dirname(fileURLToPath(import.meta.url));
 const wf = JSON.parse(
-  fs.readFileSync(path.join(__dirname, '..', 'workflow', 'tickets_notion.json'), 'utf8'),
+  readFileSync(path.join(aqui, '..', 'workflow', 'tickets_notion.json'), 'utf8'),
 );
 
 function jsCodeDe(nombre) {

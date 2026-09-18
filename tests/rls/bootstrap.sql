@@ -21,9 +21,12 @@ GRANT USAGE ON SCHEMA public TO anon, authenticated, service_role;
 -- ── Esquema auth ───────────────────────────────────────────────────────────
 CREATE SCHEMA IF NOT EXISTS auth;
 
+-- `email` nullable: Supabase Auth admite registros solo-teléfono (email=NULL).
+-- La tabla real de Supabase también lo admite; si acá fuera NOT NULL no se
+-- podría probar el caso que motivó F1.2 (profiles.email dejó de ser NOT NULL).
 CREATE TABLE IF NOT EXISTS auth.users (
   id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email TEXT NOT NULL UNIQUE
+  email TEXT UNIQUE
 );
 
 -- Misma semántica que la de Supabase: lee el `sub` del JWT de la sesión.

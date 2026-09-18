@@ -3,12 +3,12 @@
 | campo | valor |
 | --- | --- |
 | comando | `node tests/idempotencia.mjs` |
-| marca temporal (UTC) | 2026-09-04T14:21:13.979Z |
-| commit | f6d500e7f651d32370f0f392a50840aba69ac28b |
-| commit (corto) | f6d500e |
-| arbol de trabajo | limpio |
+| marca temporal (UTC) | 2026-09-18T15:56:37.000Z |
+| commit | f5beedebccb8155858903a1b9352d2c51c5a7a3b |
+| commit (corto) | f5beede |
+| arbol de trabajo | CON CAMBIOS SIN CONFIRMAR |
 | codigo de salida | 0 |
-| duracion | 45.1 s |
+| duracion | 12.6 s |
 
 ## salida
 

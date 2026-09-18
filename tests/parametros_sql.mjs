@@ -26,12 +26,14 @@
 // Con la forma de arreglo (`={{ [a, b, c] }}`) n8n usa los valores tal cual, sin
 // partirlos ni filtrarlos. Por eso el artefacto la exige en todos los nodos.
 //
-// Uso: node tests/parametros_sql.js
-const fs = require('fs');
-const path = require('path');
+// Uso: node tests/parametros_sql.mjs
+import {readFileSync} from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 
-const wfDir = path.join(__dirname, '..', 'workflow');
-// Mismo criterio que en smoke_code_nodes.js y verificar_sql.mjs: los dos flujos
+const aqui = path.dirname(fileURLToPath(import.meta.url));
+const wfDir = path.join(aqui, '..', 'workflow');
+// Mismo criterio que en smoke_code_nodes.mjs y verificar_sql.mjs: los dos flujos
 // del artefacto nombrados uno por uno, para no barrer las copias de respaldo.
 const wfFiles = ['crm_postgres.json', 'tickets_notion.json'];
 
@@ -74,7 +76,7 @@ const problemas = [];
 let revisados = 0;
 
 for (const file of wfFiles) {
-  const wf = JSON.parse(fs.readFileSync(path.join(wfDir, file), 'utf8'));
+  const wf = JSON.parse(readFileSync(path.join(wfDir, file), 'utf8'));
   const nodos = wf.nodes.filter(
     (n) => n.type === 'n8n-nodes-base.postgres' && n.parameters?.operation === 'executeQuery',
   );

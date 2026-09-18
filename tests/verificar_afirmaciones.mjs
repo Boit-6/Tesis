@@ -9,12 +9,14 @@
 // Los cambios posteriores al corte documental se declaran ahí como
 // `delta_documentado` + `nota`: quedan explicados en vez de aparecer como falla.
 //
-// Uso: node tests/verificar_afirmaciones.js
-const fs = require('fs');
-const path = require('path');
+// Uso: node tests/verificar_afirmaciones.mjs
+import {readFileSync} from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 
-const raiz = path.join(__dirname, '..');
-const leer = (...p) => fs.readFileSync(path.join(raiz, ...p), 'utf8');
+const aqui = path.dirname(fileURLToPath(import.meta.url));
+const raiz = path.join(aqui, '..');
+const leer = (...p) => readFileSync(path.join(raiz, ...p), 'utf8');
 const leerWorkflow = (nombre) => JSON.parse(leer('workflow', nombre));
 
 // ── Mediciones sobre el artefacto ──────────────────────────────────────────

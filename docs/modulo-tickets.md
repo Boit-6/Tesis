@@ -235,11 +235,11 @@ TICKETS_API_KEY=                 # el mismo valor que en el .env de n8n
 ## 8. Pruebas
 
 ```bash
-node tests/tickets_envejecimiento.js   # la regla de escalada, con casos
-node tests/smoke_code_nodes.js         # todos los nodos Code de los dos workflows
+node tests/tickets_envejecimiento.mjs  # la regla de escalada, con casos
+node tests/smoke_code_nodes.mjs        # todos los nodos Code de los dos workflows
 ```
 
-`tickets_envejecimiento.js` ejecuta el JavaScript **real** del nodo
+`tickets_envejecimiento.mjs` ejecuta el JavaScript **real** del nodo
 `Code - Calcular Escaladas` (tal como está en el JSON del workflow) contra
 tickets sintéticos de distintas edades, y verifica que el olvidado suba, que el
 atendido no, que el que ya está en el tope no siga subiendo y que un tablero sin

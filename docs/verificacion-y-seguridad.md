@@ -17,10 +17,10 @@ más una captura, ahora hay además un comando.
 | Recomendación 5 — «reportar métricas mínimas del entorno controlado» | Opcional | Tiempos medidos por `tests/escenarios.mjs` + `FormularioLeads/scripts/medir-realtime.mjs` |
 | Cuestión 1 — ¿cómo evita la doble factura ante peticiones concurrentes? | — | Escenario `aceptacion-atomica`: dispara **dos aceptaciones en paralelo** y verifica que haya una sola factura |
 | Cuestión 2 — ¿la RLS está aplicada o sólo en el script? | — | `tests/verificar_rls.mjs`: 24 casos contra un PostgreSQL real |
-| Cuestión 3 — ¿sobre qué base se fijaron los umbrales de scoring? | — | Los umbrales son configurables (`SCORING_*`); `tests/scoring.js` prueba 9240 combinaciones |
+| Cuestión 3 — ¿sobre qué base se fijaron los umbrales de scoring? | — | Los umbrales son configurables (`SCORING_*`); `tests/scoring.mjs` prueba 9240 combinaciones |
 | Cuestión 4 — ¿qué mitigaciones tiene el token del enlace? | — | Vigencia temporal (`TOKEN_VIGENCIA_DIAS`), revalidada en la base |
 | Cuestión 5 — ¿cómo se aseguró la reproducibilidad de E1–E10? | — | La suite escribe `docs/evidencia-validacion.md` en cada corrida |
-| Deriva entre documento y código | — | `tests/verificar_afirmaciones.js` recalcula los números que afirma la tesis |
+| Deriva entre documento y código | — | `tests/verificar_afirmaciones.mjs` recalcula los números que afirma la tesis |
 
 ---
 
@@ -207,7 +207,7 @@ que `status`.
 
 No cambia la garantía de atomicidad de §4.3.2/RNF2: la transición a `ACEPTADO`
 sigue siendo el mismo `UPDATE ... WHERE estado IN ('PROPUESTA_ENVIADA',
-'EN_SEGUIMIENTO')` de siempre (`tests/verificar_afirmaciones.js`,
+'EN_SEGUIMIENTO')` de siempre (`tests/verificar_afirmaciones.mjs`,
 `aceptacion-condicional-atomica`); lo que cambia es sólo el diagnóstico que se
 arma ANTES de intentarlo.
 

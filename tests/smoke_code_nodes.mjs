@@ -1,16 +1,19 @@
 // Smoke test de los Code nodes de los workflows de workflow/*.json.
 // Ejecuta el JavaScript de cada nodo "Code" con datos de ejemplo y mocks de las
 // variables de n8n ($input, $, $json, $env), para detectar errores de runtime sin
-// necesidad de levantar n8n. Uso: node tests/smoke_code_nodes.js
-const fs = require('fs');
-const path = require('path');
+// necesidad de levantar n8n. Uso: node tests/smoke_code_nodes.mjs
+import {readFileSync} from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+
+const aqui = path.dirname(fileURLToPath(import.meta.url));
 
 // Los dos flujos del artefacto, nombrados uno por uno a propósito. Antes esto
 // era un `readdirSync` de `*.json`, que barría también las copias de respaldo
 // que quedan en el directorio (crm_postgres.backup-*.json): el test corría
 // sobre código viejo y el recuento de nodos dejaba de decir nada sobre el
 // artefacto que la tesis describe.
-const wfDir = path.join(__dirname, '..', 'workflow');
+const wfDir = path.join(aqui, '..', 'workflow');
 const wfFiles = ['crm_postgres.json', 'tickets_notion.json'];
 
 // Variables de entorno que los nodos leen con $env. Los valores son de mentira:
@@ -110,7 +113,7 @@ function makeMocks(s) {
 
 let ok = 0, fail = 0;
 for (const file of wfFiles) {
-  const wf = JSON.parse(fs.readFileSync(path.join(wfDir, file), 'utf8'));
+  const wf = JSON.parse(readFileSync(path.join(wfDir, file), 'utf8'));
   const codeNodes = wf.nodes.filter(n => n.type === 'n8n-nodes-base.code');
   console.log('\n── ' + file + '  (' + codeNodes.length + ' nodos Code)');
   for (const n of codeNodes) {

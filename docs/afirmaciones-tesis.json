@@ -1,7 +1,7 @@
 {
   "_comentario": [
     "Afirmaciones cuantitativas que hace el documento de la tesis sobre el artefacto.",
-    "`tests/verificar_afirmaciones.js` las recalcula contra el repositorio y avisa si dejaron",
+    "`tests/verificar_afirmaciones.mjs` las recalcula contra el repositorio y avisa si dejaron",
     "de ser ciertas. Es la red de contención para que el documento y el código no se separen.",
     "",
     "`valor_tesis` es lo que dice el .docx. `delta_documentado` son los cambios POSTERIORES",

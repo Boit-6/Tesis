@@ -23,7 +23,7 @@ export default [
         {blankLine: "always", prev: ["const", "let", "var"], next: "*"},
         {blankLine: "any", prev: ["const", "let", "var"], next: ["const", "let", "var"]},
       ],
-      "no-console": ["warn", {allow: ["error"]}],
+      "no-console": ["error", {allow: ["error"]}],
     },
   },
   // React configuration
@@ -73,9 +73,6 @@ export default [
       ],
       "react-compiler/react-compiler": "error",
       "react/jsx-no-leaked-render": "off",
-      "jsx-a11y/no-static-element-interactions": "off",
-      "jsx-a11y/click-events-have-key-events": "off",
-      "jsx-a11y/html-has-lang": "off",
     },
   },
   // TypeScript configuration
@@ -97,6 +94,7 @@ export default [
         "@typescript-eslint/require-await": "off",
         "@typescript-eslint/no-floating-promises": "off",
         "@typescript-eslint/no-confusing-void-expression": "off",
+        "@typescript-eslint/consistent-type-imports": ["warn", {prefer: "type-imports"}],
         "@typescript-eslint/no-unused-vars": [
           "warn",
           {

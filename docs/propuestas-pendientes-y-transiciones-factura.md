@@ -124,10 +124,10 @@ Ver `.env.example` para el detalle línea por línea.
 
 ## 5. Pruebas
 
-`tests/smoke_code_nodes.js` ejecuta los tres nodos `Code` nuevos (`Code - Preparar
+`tests/smoke_code_nodes.mjs` ejecuta los tres nodos `Code` nuevos (`Code - Preparar
 Aviso Propuestas Pendientes`, `Code - Resumen Facturas Vencidas`, `Code - Leer Anular
-Factura`). `tests/parametros_sql.js` verifica que los tres nodos `Postgres` nuevos
-pasen sus parámetros en forma de arreglo. `tests/verificar_afirmaciones.js` recalcula
+Factura`). `tests/parametros_sql.mjs` verifica que los tres nodos `Postgres` nuevos
+pasen sus parámetros en forma de arreglo. `tests/verificar_afirmaciones.mjs` recalcula
 los conteos del workflow (nodos, webhooks, crons — ver `docs/afirmaciones-tesis.json`)
 y agrega dos afirmaciones cualitativas nuevas, `vencida-solo-desde-pendiente` y
 `anulada-desde-pendiente-o-vencida`, que reemplazan a la afirmación anterior

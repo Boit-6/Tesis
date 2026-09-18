@@ -32,7 +32,7 @@ const aSqlPlano = (query) => query.replace(/^=/, '').replace(/\{\{[^}]*\}\}/g, '
 // Los dos flujos del artefacto, nombrados uno por uno. Con un `readdirSync` de
 // `*.json` esto barría también las copias de respaldo del directorio y compilaba
 // el SQL de versiones viejas, inflando el recuento y dando por buenas consultas
-// que ya no existen. Mismo criterio que en tests/smoke_code_nodes.js.
+// que ya no existen. Mismo criterio que en tests/smoke_code_nodes.mjs.
 const FLUJOS = ['crm_postgres.json', 'tickets_notion.json'];
 
 function consultasDeWorkflows() {

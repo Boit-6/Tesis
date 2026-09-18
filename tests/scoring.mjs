@@ -10,12 +10,15 @@
 //   2. CONFIGURABILIDAD: cambiar las variables de entorno tiene que cambiar la
 //      clasificación de forma predecible.
 //
-// Uso: node tests/scoring.js
-const fs = require('fs');
-const path = require('path');
+// Uso: node tests/scoring.mjs
+import {readFileSync} from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+
+const aqui = path.dirname(fileURLToPath(import.meta.url));
 
 const wf = JSON.parse(
-  fs.readFileSync(path.join(__dirname, '..', 'workflow', 'crm_postgres.json'), 'utf8'),
+  readFileSync(path.join(aqui, '..', 'workflow', 'crm_postgres.json'), 'utf8'),
 );
 const jsCode = wf.nodes.find((n) => n.name === 'Code - Scoring').parameters.jsCode;
 

@@ -17,12 +17,14 @@
 // por código y con la operación que lo origina, tomado de la documentación de
 // códigos de error de Supabase Auth.
 //
-// Uso: node tests/auth_errores.js
-const fs = require('fs');
-const path = require('path');
+// Uso: node tests/auth_errores.mjs
+import {readFileSync} from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 
+const aqui = path.dirname(fileURLToPath(import.meta.url));
 const FUENTE = path.join(
-  __dirname, '..', 'FormularioLeads', 'src', 'lib', 'supabase', 'auth-errors.ts',
+  aqui, '..', 'FormularioLeads', 'src', 'lib', 'supabase', 'auth-errors.ts',
 );
 
 // Denominador del RNF5: qué puede devolver la plataforma en ESTOS flujos.
@@ -62,7 +64,7 @@ const CODIGOS_ALCANZABLES = [
 // archivo real y no una copia, con el mismo criterio que el resto de la suite:
 // si el mapa cambia, esta verificación lo ve.
 function codigosTraducidos() {
-  const src = fs.readFileSync(FUENTE, 'utf8');
+  const src = readFileSync(FUENTE, 'utf8');
   const inicio = src.indexOf('MESSAGES_BY_CODE');
   if (inicio === -1) throw new Error('No se encontró MESSAGES_BY_CODE en ' + FUENTE);
 

@@ -21,14 +21,18 @@ const ESCALA_COLOR = [
   "text-brick border-brick/40",
 ];
 
-function colorPrioridad(prioridad: string, prioridades: string[]) {
+// ESCALA_COLOR es un array literal fijo de 4 elementos declarado acá arriba:
+// el índice 0 siempre existe. La aserción es sólo para noUncheckedIndexedAccess.
+const COLOR_POR_DEFECTO = ESCALA_COLOR[0]!;
+
+function colorPrioridad(prioridad: string, prioridades: string[]): string {
   const idx = prioridades.indexOf(prioridad);
 
-  if (idx < 0 || prioridades.length < 2) return ESCALA_COLOR[0];
+  if (idx < 0 || prioridades.length < 2) return COLOR_POR_DEFECTO;
 
   const paso = (idx / (prioridades.length - 1)) * (ESCALA_COLOR.length - 1);
 
-  return ESCALA_COLOR[Math.round(paso)];
+  return ESCALA_COLOR[Math.round(paso)] ?? COLOR_POR_DEFECTO;
 }
 
 function TicketCard({

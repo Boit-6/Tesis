@@ -138,6 +138,98 @@ SELECT probar('n8n_writer NO puede leer profiles',
 SELECT probar('n8n_writer NO puede leer auth.users: sin USAGE sobre el esquema auth',
   'n8n_writer', NULL, 'SELECT count(*) FROM auth.users', 'permiso denegado');
 
+-- ── 11. n8n_writer también escribe facturas, no sólo leads/logs ────────────
+SELECT probar('n8n_writer inserta una factura',
+  'n8n_writer', NULL,
+  'WITH x AS (INSERT INTO facturas (factura_id, lead_id, cliente, email, monto, fecha_vencimiento) VALUES (''FAC-N8NW-0001'', ''LD-TEST-0001'', ''Cliente de prueba'', ''cliente@test.com'', 1000, now() + interval ''5 days'') RETURNING 1) SELECT count(*) FROM x',
+  '1 filas');
+SELECT probar('n8n_writer actualiza la factura que acaba de insertar',
+  'n8n_writer', NULL,
+  'WITH x AS (UPDATE facturas SET estado_pago = ''COBRADO'' WHERE factura_id = ''FAC-N8NW-0001'' RETURNING 1) SELECT count(*) FROM x',
+  '1 filas');
+
+-- ── 12. anon no escribe nada, no sólo "no lee" ─────────────────────────────
+SELECT probar('anon NO puede insertar un lead',
+  'anon', NULL,
+  'WITH x AS (INSERT INTO leads (lead_id, nombre, email) VALUES (''LD-ANON-HACK'', ''h'', ''h@h.com'') RETURNING 1) SELECT count(*) FROM x',
+  'permiso denegado');
+SELECT probar('anon NO puede actualizar un lead',
+  'anon', NULL,
+  'WITH x AS (UPDATE leads SET nombre = ''hackeado'' WHERE lead_id = ''LD-TEST-0001'' RETURNING 1) SELECT count(*) FROM x',
+  'permiso denegado');
+SELECT probar('anon NO puede borrar un lead',
+  'anon', NULL,
+  'WITH x AS (DELETE FROM leads WHERE lead_id = ''LD-TEST-0001'' RETURNING 1) SELECT count(*) FROM x',
+  'permiso denegado');
+
+-- ── 13. La RLS está habilitada Y forzada en las 7 tablas de negocio ────────
+-- No alcanza con que cada caso de arriba dé el resultado esperado: si a una
+-- tabla nueva se le olvida `ENABLE`/`FORCE ROW LEVEL SECURITY`, este es el
+-- único caso que lo detecta directo contra el catálogo, sin depender de que
+-- alguien se acuerde de sumarle sus propios casos de permisos.
+SELECT probar('las 7 tablas de negocio tienen RLS habilitada y forzada',
+  'service_role', NULL,
+  'SELECT count(*) FROM pg_class WHERE relname IN (''leads'',''facturas'',''seguimientos'',''logs'',''profiles'',''rate_limit_log'',''admin_emails'') AND relrowsecurity AND relforcerowsecurity',
+  '7 filas');
+
+-- ── 14. seguimientos: mismo patrón de acceso que facturas ──────────────────
+SELECT probar('n8n_writer inserta un seguimiento',
+  'n8n_writer', NULL,
+  'WITH x AS (INSERT INTO seguimientos (lead_id, numero, canal) VALUES (''LD-TEST-0001'', 1, ''email'') RETURNING 1) SELECT count(*) FROM x',
+  '1 filas');
+SELECT probar('admin lee seguimientos',
+  'authenticated', '11111111-1111-4111-8111-111111111111', 'SELECT count(*) FROM seguimientos', '1 filas');
+SELECT probar('un usuario sin rol admin NO ve seguimientos',
+  'authenticated', '22222222-2222-4222-8222-222222222222', 'SELECT count(*) FROM seguimientos', '0 filas');
+SELECT probar('anon NO puede leer seguimientos',
+  'anon', NULL, 'SELECT count(*) FROM seguimientos', 'permiso denegado');
+
+-- ── 15. rate_limit_log: sólo n8n_writer (S1) y service_role, nadie más ─────
+SELECT probar('n8n_writer inserta en rate_limit_log',
+  'n8n_writer', NULL,
+  'WITH x AS (INSERT INTO rate_limit_log (ip_o_clave, ruta) VALUES (''127.0.0.1'', ''lead/nuevo'') RETURNING 1) SELECT count(*) FROM x',
+  '1 filas');
+SELECT probar('n8n_writer lee rate_limit_log',
+  'n8n_writer', NULL, 'SELECT count(*) FROM rate_limit_log', '1 filas');
+SELECT probar('n8n_writer NO puede borrar de rate_limit_log: sin GRANT DELETE',
+  'n8n_writer', NULL,
+  'WITH x AS (DELETE FROM rate_limit_log WHERE ip_o_clave = ''127.0.0.1'' RETURNING 1) SELECT count(*) FROM x',
+  'permiso denegado');
+SELECT probar('el admin NO puede leer rate_limit_log: no es parte del tablero',
+  'authenticated', '11111111-1111-4111-8111-111111111111', 'SELECT count(*) FROM rate_limit_log', 'permiso denegado');
+SELECT probar('anon NO puede leer rate_limit_log',
+  'anon', NULL, 'SELECT count(*) FROM rate_limit_log', 'permiso denegado');
+
+-- ── 16. Registro solo-teléfono (F1.2) y promoción a admin vía admin_emails ─
+-- El registro solo-teléfono se hace con el rol de conexión de este script
+-- (no con `probar()`, que cambiaría de rol): igual que las dos filas de
+-- auth.users del principio del archivo.
+INSERT INTO auth.users (id, email) VALUES ('33333333-3333-4333-8333-333333333333', NULL);
+SELECT probar('un registro solo-teléfono (email NULL) sí obtiene su fila en profiles',
+  'service_role', NULL,
+  'SELECT count(*) FROM profiles WHERE id = ''33333333-3333-4333-8333-333333333333''',
+  '1 filas');
+SELECT probar('el registro solo-teléfono queda con rol user, no admin',
+  'service_role', NULL,
+  'SELECT count(*) FROM profiles WHERE id = ''33333333-3333-4333-8333-333333333333'' AND role = ''user''',
+  '1 filas');
+
+INSERT INTO admin_emails (email) VALUES ('nuevo-admin@test.com') ON CONFLICT DO NOTHING;
+INSERT INTO auth.users (id, email) VALUES ('44444444-4444-4444-8444-444444444444', 'nuevo-admin@test.com');
+SELECT probar('handle_new_user promueve a admin sólo por estar en admin_emails, sin tocar profiles a mano',
+  'service_role', NULL,
+  'SELECT count(*) FROM profiles WHERE id = ''44444444-4444-4444-8444-444444444444'' AND role = ''admin''',
+  '1 filas');
+
+-- ── 17. set_actualizado_en: el trigger de leads corre de verdad ────────────
+-- `antes` y `upd` comparten el mismo snapshot (misma semántica de la CTE que
+-- causó el bug de rate limiting corregido en Fase 0): `antes` lee el valor
+-- previo a este UPDATE, no el que el propio UPDATE está por escribir.
+SELECT probar('actualizar un lead bumpea actualizado_en',
+  'service_role', NULL,
+  'WITH antes AS (SELECT actualizado_en FROM leads WHERE lead_id = ''LD-TEST-0001''), upd AS (UPDATE leads SET notas = ''trigger-check'' WHERE lead_id = ''LD-TEST-0001'' RETURNING actualizado_en) SELECT count(*) FROM upd, antes WHERE upd.actualizado_en > antes.actualizado_en',
+  '1 filas');
+
 -- ── Reporte ────────────────────────────────────────────────────────────────
 \o
 \pset border 2

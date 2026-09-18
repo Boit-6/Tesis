@@ -4,7 +4,7 @@
 // devolver en los flujos de la aplicación se muestre traducido. Los códigos que
 // hay que cubrir son los que pueden originar las tres operaciones que la
 // aplicación usa —signUp, signInWithPassword y verifyOtp—, y están declarados,
-// con su origen, en `CODIGOS_ALCANZABLES` de tests/auth_errores.js, que falla
+// con su origen, en `CODIGOS_ALCANZABLES` de tests/auth_errores.mjs, que falla
 // si alguno queda sin traducir.
 const MESSAGES_BY_CODE: Record<string, string> = {
   // ── signInWithPassword ──────────────────────────────────────────────────

@@ -208,10 +208,10 @@ tesis/
 ├── scripts/
 │   └── setup-notion-tickets.mjs # Crea la base de Notion del tablero de tickets
 ├── tests/
-│   ├── smoke_code_nodes.js       # Smoke test de los Code nodes de todos los workflows
-│   ├── scoring.js                # Regresión del scoring contra la Tabla 4 (9240 casos)
-│   ├── tickets_envejecimiento.js # Regla de escalada de prioridad de los tickets
-│   ├── verificar_afirmaciones.js # Los números de la tesis vs. el código
+│   ├── smoke_code_nodes.mjs       # Smoke test de los Code nodes de todos los workflows
+│   ├── scoring.mjs                # Regresión del scoring contra la Tabla 4 (9240 casos)
+│   ├── tickets_envejecimiento.mjs # Regla de escalada de prioridad de los tickets
+│   ├── verificar_afirmaciones.mjs # Los números de la tesis vs. el código
 │   ├── verificar_rls.mjs         # RLS real sobre un PostgreSQL desechable
 │   ├── escenarios.mjs            # Validación funcional de punta a punta (E1–E10)
 │   └── rls/                      # Andamiaje de Supabase + los 24 casos de RLS
