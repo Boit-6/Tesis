@@ -173,42 +173,85 @@ sin lockfile duplicado (`pnpm-lock.yaml` eliminado).
 
 ---
 
-## Fase 4 — Testing y calidad → **iniciada (2026-09-18), no cerrada**
+## Fase 4 — Testing y calidad → **CERRADA (2026-09-18)**
 
-### ✅ Hecho hoy — Vitest + primera tanda de tests de seguridad
-- Instalado Vitest 3 + React Testing Library + jsdom (con versiones pineadas
-  a propósito: `@vitejs/plugin-react@^4` y `vitest@^3`, no `latest` — las
+### Frontend: Vitest + RTL, de cero a 60 tests en 8 archivos
+- Instalado Vitest 3 + React Testing Library + jsdom (versiones pineadas a
+  propósito: `@vitejs/plugin-react@^4` y `vitest@^3`, no `latest` — las
   últimas mayores piden Babel 8 / `@types/node` ≥22, que chocan con el resto
-  del proyecto, fijado a Node 20).
-- `vitest.config.ts` + `vitest.setup.ts` (matchers de `@testing-library/jest-dom`).
-- Scripts `test` / `test:watch` en `FormularioLeads/package.json`, más
-  `test:front` en la raíz y sumado a `npm run check`.
-- Paso "Tests (Vitest)" agregado al job `frontend` de CI, antes del build.
-- **37 tests, 5 archivos, los que tocan la superficie más sensible:**
-  - `src/lib/auth.test.ts` — `getAdminStatus`/`getAdminUser` (las 4
-    combinaciones de sesión × rol, y que redirija a `/login` o `/` según
-    corresponda).
-  - `src/lib/tickets.test.ts` — `requireAdmin` (401/403/500) y
-    `llamarTickets` (fail-closed sin `TICKETS_API_KEY`, timeout/error de n8n).
-  - `src/app/api/crm/[accion]/route.test.ts` — el proxy de F2.13: lista
-    blanca de acciones, fail-closed sin `CRM_PANEL_TOKEN`, no filtra el
-    token si n8n devuelve 403, body inválido, respuesta vacía.
-  - `src/app/login/login-form.test.ts` y `src/app/auth/confirm/route.test.ts`
-    — **regresión del open redirect de F0.1**: exporté los dos
-    `redirectSeguro` (antes privados) para poder probarlos directo, incluido
-    el caso puntual que motivó el fix (`/\evil.com`, que el navegador
-    normaliza a `//evil.com`).
+  del proyecto, fijado a Node 20). `vitest.setup.ts` corre `cleanup()` de RTL
+  después de cada test (si no, los `render()` se acumulan entre tests y los
+  `getByRole` empiezan a encontrar más de un elemento).
+- Scripts `test`/`test:watch` en `FormularioLeads/package.json`, `test:front`
+  en la raíz, sumado a `npm run check` y al job `frontend` de CI.
+- **Lógica pura / rutas de servidor (37 tests, F4.1 parte 1):**
+  `lib/auth.ts` (`getAdminStatus`/`getAdminUser`, las 4 combinaciones de
+  sesión × rol), `lib/tickets.ts` (`requireAdmin`, `llamarTickets`
+  fail-closed), el proxy `api/crm/[accion]` completo (lista blanca,
+  fail-closed sin `CRM_PANEL_TOKEN`, no filtra el token si n8n rechaza), y
+  regresión de los dos `redirectSeguro` de F0.1 (se exportaron para poder
+  testearlos directo, incluido el caso puntual `/\evil.com`).
+- **Componentes con RTL (23 tests, F4.1 parte 2):**
+  - `trabajo-estado-select.test.tsx` (6): update optimista, revierte si el
+    servidor responde `ok:false` o si el fetch falla, no llama a nada si
+    elegís el valor que ya estaba.
+  - `lead-form.test.tsx` (6): validación de los 5 campos requeridos, email
+    con formato inválido, envío exitoso con el body correcto, **doble click
+    no manda dos peticiones** (la deuda S6 de la Tabla 11, del lado del
+    navegador), error del servidor no pasa a la pantalla de éxito.
+  - `aceptar-propuesta.test.tsx` (11): las 4 pantallas de F4.3.2/§5.1.2
+    (`ya_procesado`/`expirado`/`rotado`/`invalido`) por separado en vez del
+    cartel genérico, aceptar/rechazar/pedir cambios con sus tres webhooks,
+    `window.confirm` cancelado no llama a nada, botón de pedir cambios
+    deshabilitado hasta 5 caracteres.
 - Verificado con la suite completa + lint (`--max-warnings 0`) + typecheck +
-  `next build` reales, no sólo con los tests en aislado.
+  `next build` reales en cada paso, no sólo con los tests en aislado.
 
-### ❌ Queda pendiente (del plan original, sin tocar)
-- Tests de componente con RTL: `lead-form`, `aceptar-propuesta`,
-  `trabajo-estado-select` (más trabajo que los anteriores: hay que renderizar
-  y simular interacción, no sólo funciones puras).
-- Tests RLS faltantes (`n8n_writer` sobre `facturas`, expiración de tokens,
-  `rate_limit_log`).
-- Migrar tests CJS a ESM, `noUncheckedIndexedAccess` en tsconfig, committear
-  `next-env.d.ts`.
+### Backend: RLS (F4.3) y edge cases (F4.5), contra Postgres real
+- **19 casos nuevos en `tests/rls/casos.sql` (33 → 52)**, corridos contra un
+  PostgreSQL desechable real: n8n_writer también escribe facturas (antes
+  sólo se probaba leads/logs); anon con los 3 intentos de escritura, no sólo
+  lectura; meta-caso contra `pg_class` que exige `relrowsecurity` +
+  `relforcerowsecurity` en las 7 tablas de negocio (para que un `ENABLE`
+  olvidado en una tabla nueva no dependa de que alguien se acuerde de
+  sumarle sus propios casos); `seguimientos` y `rate_limit_log`, que no
+  tenían un solo caso; registro solo-teléfono (F1.2) + promoción a admin vía
+  `admin_emails`; el trigger `set_actualizado_en` corre de verdad.
+  `tests/rls/bootstrap.sql` pasó a permitir `auth.users.email` NULL para
+  poder probar el caso solo-teléfono.
+- **`tests/normalizar_lead_edge_cases.mjs` (17 casos, F4.5):** el parser de
+  presupuesto (F1.9) contra `"$1,500.00"`, `"1.500,00"`, `"1e3"` (se
+  rechaza, no se lee como 13), `"10abc"`, `""`, `null`, negativos y cero; la
+  validación de email contra `"a@"`, vacío, sin arroba y mayúsculas.
+  Sumado a `npm test` como `test:edgecases`.
+- Verificado con `npm run test:docker` (SQL + RLS + idempotencia) completo,
+  no sólo el archivo tocado.
+
+### Higiene del repo (F4.4, F4.6, F4.7, F4.8)
+- Los 6 tests que quedaban en CommonJS (`smoke_code_nodes`, `scoring`,
+  `parametros_sql`, `auth_errores`, `tickets_envejecimiento`,
+  `verificar_afirmaciones`) pasan a `.mjs`, mismo patrón que el resto de la
+  suite. Actualizadas todas las referencias en README/docs que los citaban
+  por nombre (dejé sin tocar `.gitleaksignore` y `docs/dictamen-v6-reejecucion.md`:
+  el primero fija un fingerprint a un commit histórico, el segundo es una
+  narrativa congelada).
+- TypeScript: `noUncheckedIndexedAccess`, `noFallthroughCasesInSwitch`,
+  `forceConsistentCasingInFileNames`, `target: es2017`. Un solo sitio real
+  afectado (`tickets-board.tsx`: `colorPrioridad` podía devolver `undefined`).
+- ESLint: `no-console` a error (ya no había `console.log` sueltos),
+  `consistent-type-imports`. Los tres `jsx-a11y` deshabilitados
+  (`no-static-element-interactions`, `click-events-have-key-events`,
+  `html-has-lang`) resultaron innecesarios — el código ya no los violaba —
+  así que se sacó el disable en vez de acotarlo por archivo.
+- `next-env.d.ts` committeado, ya no en `.gitignore`.
+
+### Lo único que NO se hizo, con motivo
+No pude confirmar un caso de F4.5 (`vence` con `"mañana"`, `"2024-13-99"`):
+no encontré ningún nodo que hoy parsee una fecha así escrita a mano — las
+fechas de vencimiento se calculan con `Date.now() + dias*86400000`, no se
+leen de un string del usuario. Puede que el código haya cambiado desde que
+se escribió el plan original; no inventé un test para un caso que no pude
+ubicar en el código actual.
 
 ### Nota — advisory de `npm audit` en devDependencies
 `@vitest/mocker` (2.1.0–4.1.10, que arrastra `vitest@^3`) tiene un moderate
@@ -243,6 +286,7 @@ es roadmap post-defensa.
 
 1. Confirmar `MP_WEBHOOK_SECRET` en producción (Fase 0) — es lo único que sigue dependiendo de vos, no del código.
 2. Sacar `adenda-informe-evaluacion-20260901.md` del repo entregable (sobra).
-3. Arrancar Fase 4 (tests de frontend) — es la brecha más grande y la más barata de justificar ante un tribunal ("¿por qué el backend tiene tests y el frontend no?").
-4. Borrar o actualizar `PLAN_IMPLEMENTACION.md` para que no quede desincronizado de este archivo.
-5. Reimportar `workflow/crm_postgres.json` en el n8n real para que los fixes de Fase 0 y Fase 1 (XFF, `fecha_envio_email`) queden vivos, no solo en el repo.
+3. Borrar o actualizar `PLAN_IMPLEMENTACION.md` para que no quede desincronizado de este archivo.
+4. Reimportar `workflow/crm_postgres.json` en el n8n real para que los fixes de Fase 0 y Fase 1 (XFF, `fecha_envio_email`) queden vivos, no solo en el repo.
+
+Con Fase 0 a 4 cerradas, sólo queda Fase 5 (backlog a propósito, no deuda).
