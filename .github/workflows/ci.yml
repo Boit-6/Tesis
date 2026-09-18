@@ -21,6 +21,28 @@ permissions:
   contents: read
 
 jobs:
+  secretos:
+    name: Secretos filtrados al repo
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Gitleaks como binario, no como Action de marketplace: la Action
+      # oficial pide una licencia para uso en organizaciones y no vale la
+      # pena esa dependencia para lo que hace falta acá. Versión pineada
+      # (no `latest`) para que la corrida sea reproducible.
+      - name: Instalar gitleaks
+        run: |
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.18.4/gitleaks_8.18.4_linux_x64.tar.gz \
+            | tar -xz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+
+      - name: Escanear todo el historial en busca de secretos
+        run: gitleaks detect --source . --redact -v
+
   workflows:
     name: Workflows n8n y esquema
     runs-on: ubuntu-latest
@@ -88,6 +110,9 @@ jobs:
 
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Tests (Vitest)
+        run: npm test
 
       # El build no necesita credenciales: los clientes de Supabase devuelven
       # null cuando faltan las variables, en vez de romper.

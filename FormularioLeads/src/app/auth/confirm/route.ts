@@ -7,7 +7,7 @@ import {createClient} from "@/lib/supabase/server";
 // Evita el open redirect: `new URL(next, origin)` resuelve tal cual una URL
 // absoluta en `next` (ignora `origin` como base), así que hay que comparar el
 // origin resultante explícitamente en vez de confiar en el prefijo del string.
-function redirectSeguro(valor: string, origin: string): URL {
+export function redirectSeguro(valor: string, origin: string): URL {
   try {
     const resuelta = new URL(valor, origin);
 

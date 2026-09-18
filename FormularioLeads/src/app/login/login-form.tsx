@@ -16,7 +16,7 @@ const labelClass = "mb-2 block text-[10px] tracking-[0.16em] text-faint uppercas
 // `/\evil.com` también empieza con "/" y los navegadores normalizan `\` a `/`
 // al resolver la URL, terminando en `https://evil.com`. Resolver con `URL` y
 // comparar el origin explícitamente cierra ese bypass.
-function redirectSeguro(valor: string | null): string {
+export function redirectSeguro(valor: string | null): string {
   if (!valor) return "/dashboard";
   try {
     const resuelta = new URL(valor, window.location.origin);

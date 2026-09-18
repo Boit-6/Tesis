@@ -25,7 +25,8 @@
     "setup:tickets": "node scripts/setup-notion-tickets.mjs",
     "lint:front": "npm run lint --prefix FormularioLeads",
     "typecheck:front": "npm run typecheck --prefix FormularioLeads",
-    "check": "npm test && npm run lint:front && npm run typecheck:front",
+    "test:front": "npm test --prefix FormularioLeads",
+    "check": "npm test && npm run lint:front && npm run typecheck:front && npm run test:front",
     "dev:front": "npm run dev --prefix FormularioLeads",
     "dev:infra": "docker compose up -d",
     "prepare": "husky"

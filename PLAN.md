@@ -146,7 +146,7 @@ componentes) · react-hook-form integrado · security headers, SEO, dark mode.
 
 ---
 
-## Fase 3 — Infraestructura y DevOps → **prácticamente completa**
+## Fase 3 — Infraestructura y DevOps → **CERRADA**
 
 Confirmados: `.nvmrc`, healthchecks + límites de recursos + logging en
 `docker-compose.yml`, Gotenberg pineado a `8.14.1`, `N8N_DIAGNOSTICS_ENABLED=false`,
@@ -154,23 +154,68 @@ Confirmados: `.nvmrc`, healthchecks + límites de recursos + logging en
 `src/lib/env.ts` con validación zod, README real del frontend (no boilerplate),
 sin lockfile duplicado (`pnpm-lock.yaml` eliminado).
 
-**Falta:** gitleaks / secret scanning (opcional en el plan original, bajo impacto).
+### ✅ CERRADO (2026-09-18) — gitleaks / secret scanning en CI
+- Job nuevo `secretos` en `.github/workflows/ci.yml`. Corre el **binario**
+  de gitleaks pineado a `v8.18.4`, no la Action de marketplace (esa pide
+  licencia para uso en organizaciones — no vale la pena la dependencia).
+- **Lo probé de verdad contra el historial completo del repo antes de
+  confiarlo**, no solo escribí el YAML a ciegas: encontró 3 falsos positivos
+  reales (regla `generic-api-key` matcheando valores de ejemplo de
+  `accept_token`/`pago_token` en `docs/evidencia-E15-E16.md` y
+  `tests/smoke_code_nodes.js` — son UUID que la propia base genera por lead,
+  no credenciales), documentados y suprimidos por fingerprint en
+  `.gitleaksignore` (no hallazgos reales, no hay nada que rotar). Con eso,
+  `gitleaks detect` termina limpio (exit 0).
+- **Nota aparte, no corregida:** el historial tiene un archivo de lock de
+  Word (`~$tesis.docx`) commiteado en algún momento y borrado después — no
+  es un secreto, es basura mínima en el `.git` (no en el árbol actual).
+  Sacarlo requeriría reescribir historia; no lo toqué sin que lo pidas.
 
 ---
 
-## Fase 4 — Testing y calidad → **0/8, sin empezar**
+## Fase 4 — Testing y calidad → **iniciada (2026-09-18), no cerrada**
 
-❌ **FALTA todo.** Confirmado: no existe un solo `.test.` en
-`FormularioLeads/src`. Toda la garantía del frontend hoy es TypeScript +
-ESLint + verificación manual. Es la brecha más grande que queda en todo el
-proyecto — contrasta fuerte con el rigor del backend (workflow + DB), que sí
-tiene suite offline + tests contra Postgres real.
+### ✅ Hecho hoy — Vitest + primera tanda de tests de seguridad
+- Instalado Vitest 3 + React Testing Library + jsdom (con versiones pineadas
+  a propósito: `@vitejs/plugin-react@^4` y `vitest@^3`, no `latest` — las
+  últimas mayores piden Babel 8 / `@types/node` ≥22, que chocan con el resto
+  del proyecto, fijado a Node 20).
+- `vitest.config.ts` + `vitest.setup.ts` (matchers de `@testing-library/jest-dom`).
+- Scripts `test` / `test:watch` en `FormularioLeads/package.json`, más
+  `test:front` en la raíz y sumado a `npm run check`.
+- Paso "Tests (Vitest)" agregado al job `frontend` de CI, antes del build.
+- **37 tests, 5 archivos, los que tocan la superficie más sensible:**
+  - `src/lib/auth.test.ts` — `getAdminStatus`/`getAdminUser` (las 4
+    combinaciones de sesión × rol, y que redirija a `/login` o `/` según
+    corresponda).
+  - `src/lib/tickets.test.ts` — `requireAdmin` (401/403/500) y
+    `llamarTickets` (fail-closed sin `TICKETS_API_KEY`, timeout/error de n8n).
+  - `src/app/api/crm/[accion]/route.test.ts` — el proxy de F2.13: lista
+    blanca de acciones, fail-closed sin `CRM_PANEL_TOKEN`, no filtra el
+    token si n8n devuelve 403, body inválido, respuesta vacía.
+  - `src/app/login/login-form.test.ts` y `src/app/auth/confirm/route.test.ts`
+    — **regresión del open redirect de F0.1**: exporté los dos
+    `redirectSeguro` (antes privados) para poder probarlos directo, incluido
+    el caso puntual que motivó el fix (`/\evil.com`, que el navegador
+    normaliza a `//evil.com`).
+- Verificado con la suite completa + lint (`--max-warnings 0`) + typecheck +
+  `next build` reales, no sólo con los tests en aislado.
 
-Pendiente tal cual estaba en el plan original: Vitest + RTL, tests de
-`lead-form`, `aceptar-propuesta`, `api/crm/[accion]`, `lib/tickets`,
-`lib/auth`; configurar Vitest en CI; tests RLS faltantes (`n8n_writer` sobre
-`facturas`, expiración de tokens, `rate_limit_log`); migrar tests CJS a ESM;
-`noUncheckedIndexedAccess` en tsconfig; committear `next-env.d.ts`.
+### ❌ Queda pendiente (del plan original, sin tocar)
+- Tests de componente con RTL: `lead-form`, `aceptar-propuesta`,
+  `trabajo-estado-select` (más trabajo que los anteriores: hay que renderizar
+  y simular interacción, no sólo funciones puras).
+- Tests RLS faltantes (`n8n_writer` sobre `facturas`, expiración de tokens,
+  `rate_limit_log`).
+- Migrar tests CJS a ESM, `noUncheckedIndexedAccess` en tsconfig, committear
+  `next-env.d.ts`.
+
+### Nota — advisory de `npm audit` en devDependencies
+`@vitest/mocker` (2.1.0–4.1.10, que arrastra `vitest@^3`) tiene un moderate
+advisory (path traversal, GHSA-82fw-gwwq-j7x9). No sube el `npm audit
+--audit-level=high` de CI (queda en 0 igual) y es una herramienta de
+testing que corre sobre código propio en CI, no expuesta a internet — no lo
+fuercé a `vitest@5` porque reintroduce el choque de `@types/node` con Node 20.
 
 ---
 
