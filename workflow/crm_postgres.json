@@ -1376,6 +1376,29 @@
     },
     {
       "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE facturas SET fecha_envio_email = now() WHERE factura_id = $1;",
+        "options": {
+          "queryReplacement": "={{ [$('Code - Generar Factura HTML').item.json.factura_id] }}"
+        }
+      },
+      "id": "deff535d-5d65-4608-b1fb-46ccc42d4e65",
+      "name": "Postgres - Marcar Factura Enviada",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2550,
+        1250
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
         "schema": {
           "__rl": true,
           "mode": "list",
@@ -4582,7 +4605,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nconst headers = item.headers || {};\nconst xff = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '');\n// Clave de rate limit: la IP de origen. Antes se usaba el email declarado en\n// el formulario cuando venía en la petición, pero ese dato lo controla quien\n// llama —alcanza con rotarlo para esquivar el límite por completo, incluso\n// para mandar el email de tier HOT a casillas de terceros—, así que se\n// unifica con el resto de las rutas de este workflow, que ya limitan por IP.\nconst claveLimite = (xff.split(',')[0] || '').trim() || 'ip-desconocida';\nreturn [{ json: { ...item, claveLimite, ruta: 'lead/nuevo' } }];"
+        "jsCode": "const item = $input.first().json;\nconst headers = item.headers || {};\nconst xff = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '');\n// Clave de rate limit: la IP de origen. Antes se usaba el email declarado en\n// el formulario cuando venía en la petición, pero ese dato lo controla quien\n// llama —alcanza con rotarlo para esquivar el límite por completo, incluso\n// para mandar el email de tier HOT a casillas de terceros—, así que se\n// unifica con el resto de las rutas de este workflow, que ya limitan por IP.\n// Se toma el ÚLTIMO tramo de X-Forwarded-For, no el primero: en una cadena\n// con un solo proxy de confianza delante (ver README), el primer tramo lo\n// declara quien llama y es falsificable a voluntad; el último es el que ese\n// proxy agrega él mismo y no puede pisar el cliente.\nconst claveLimite = (xff.split(',').pop() || '').trim() || 'ip-desconocida';\nreturn [{ json: { ...item, claveLimite, ruta: 'lead/nuevo' } }];"
       },
       "id": "1b94196a-7bef-4483-8597-74e7c86d0fed",
       "name": "Code - Clave Rate Limit (Nuevo Lead)",
@@ -4687,7 +4710,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nconst headers = item.headers || {};\nconst xff = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '');\nconst claveLimite = (xff.split(',')[0] || '').trim() || 'ip-desconocida';\nreturn [{ json: { ...item, claveLimite, ruta: 'lead-propuesta' } }];"
+        "jsCode": "const item = $input.first().json;\nconst headers = item.headers || {};\nconst xff = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '');\n// Se toma el ÚLTIMO tramo de X-Forwarded-For, no el primero: en una cadena\n// con un solo proxy de confianza delante (ver README), el primer tramo lo\n// declara quien llama y es falsificable a voluntad; el último es el que ese\n// proxy agrega él mismo y no puede pisar el cliente.\nconst claveLimite = (xff.split(',').pop() || '').trim() || 'ip-desconocida';\nreturn [{ json: { ...item, claveLimite, ruta: 'lead-propuesta' } }];"
       },
       "id": "6f7fe2c4-fbcd-40bd-96e5-c62a7e9acf2a",
       "name": "Code - Clave Rate Limit (Ver Propuesta)",
@@ -4786,7 +4809,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nconst headers = item.headers || {};\nconst xff = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '');\nconst claveLimite = (xff.split(',')[0] || '').trim() || 'ip-desconocida';\nreturn [{ json: { ...item, claveLimite, ruta: 'lead-acepta' } }];"
+        "jsCode": "const item = $input.first().json;\nconst headers = item.headers || {};\nconst xff = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '');\n// Se toma el ÚLTIMO tramo de X-Forwarded-For, no el primero: en una cadena\n// con un solo proxy de confianza delante (ver README), el primer tramo lo\n// declara quien llama y es falsificable a voluntad; el último es el que ese\n// proxy agrega él mismo y no puede pisar el cliente.\nconst claveLimite = (xff.split(',').pop() || '').trim() || 'ip-desconocida';\nreturn [{ json: { ...item, claveLimite, ruta: 'lead-acepta' } }];"
       },
       "id": "8b9024cd-fd8f-4217-a2d6-8ae0b51cf3e0",
       "name": "Code - Clave Rate Limit (Lead Acepta)",
@@ -4885,7 +4908,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nconst headers = item.headers || {};\nconst xff = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '');\nconst claveLimite = (xff.split(',')[0] || '').trim() || 'ip-desconocida';\nreturn [{ json: { ...item, claveLimite, ruta: 'lead-rechaza' } }];"
+        "jsCode": "const item = $input.first().json;\nconst headers = item.headers || {};\nconst xff = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '');\n// Se toma el ÚLTIMO tramo de X-Forwarded-For, no el primero: en una cadena\n// con un solo proxy de confianza delante (ver README), el primer tramo lo\n// declara quien llama y es falsificable a voluntad; el último es el que ese\n// proxy agrega él mismo y no puede pisar el cliente.\nconst claveLimite = (xff.split(',').pop() || '').trim() || 'ip-desconocida';\nreturn [{ json: { ...item, claveLimite, ruta: 'lead-rechaza' } }];"
       },
       "id": "ee13169a-35ad-410d-b996-d9addd2bbcba",
       "name": "Code - Clave Rate Limit (Rechazar Propuesta)",
@@ -4984,7 +5007,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json;\nconst headers = item.headers || {};\nconst xff = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '');\nconst claveLimite = (xff.split(',')[0] || '').trim() || 'ip-desconocida';\nreturn [{ json: { ...item, claveLimite, ruta: 'lead-modifica' } }];"
+        "jsCode": "const item = $input.first().json;\nconst headers = item.headers || {};\nconst xff = String(headers['x-forwarded-for'] || headers['x-real-ip'] || '');\n// Se toma el ÚLTIMO tramo de X-Forwarded-For, no el primero: en una cadena\n// con un solo proxy de confianza delante (ver README), el primer tramo lo\n// declara quien llama y es falsificable a voluntad; el último es el que ese\n// proxy agrega él mismo y no puede pisar el cliente.\nconst claveLimite = (xff.split(',').pop() || '').trim() || 'ip-desconocida';\nreturn [{ json: { ...item, claveLimite, ruta: 'lead-modifica' } }];"
       },
       "id": "c09501e5-c780-4d34-817d-6c3dbf624d45",
       "name": "Code - Clave Rate Limit (Pedir Cambios)",
@@ -5446,11 +5469,6 @@
       "main": [
         [
           {
-            "node": "HTTP - Gotenberg PDF",
-            "type": "main",
-            "index": 0
-          },
-          {
             "node": "Postgres - Insert Factura",
             "type": "main",
             "index": 0
@@ -5471,6 +5489,17 @@
     },
     "Gmail - Enviar Factura PDF": {
       "main": [
+        [
+          {
+            "node": "Postgres - Marcar Factura Enviada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Marcar Factura Enviada": {
+      "main": [
         []
       ]
     },
@@ -5479,6 +5508,11 @@
         [
           {
             "node": "Postgres - Lead a Facturado",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP - Gotenberg PDF",
             "type": "main",
             "index": 0
           }

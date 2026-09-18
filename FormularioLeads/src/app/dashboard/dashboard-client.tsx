@@ -8,6 +8,7 @@ import type {
   PorEnviar,
   Trabajo,
 } from "./dashboard-types";
+import type {Database} from "@/types/supabase";
 
 import {useCallback, useEffect, useState} from "react";
 
@@ -28,6 +29,57 @@ const FACTURAS_LIMITE = 200;
 
 // Ventana para agrupar los eventos de tiempo real en una sola recarga.
 const RECARGA_AGRUPADA_MS = 400;
+
+// Las vistas (`metrics_mensuales`, `facturas_pendientes`) declaran todas sus
+// columnas nullable en los tipos generados —ninguna vista puede garantizar
+// NOT NULL—, aunque acá vengan siempre de columnas NOT NULL de la tabla base.
+// Estos adaptadores son el único lugar que reconcilia esa diferencia, en vez
+// de un `as Metrics`/`as FacturaPendiente[]` a ciegas sobre toda la fila.
+function aMetrics(
+  row: Database["public"]["Views"]["metrics_mensuales"]["Row"] | undefined,
+): Metrics | null {
+  if (!row) return null;
+
+  return {
+    mes: row.mes ?? "",
+    total_leads: row.total_leads ?? 0,
+    conversion_pct: row.conversion_pct ?? 0,
+    facturacion: row.facturacion ?? 0,
+    cobrado: row.cobrado ?? 0,
+    pendiente: row.pendiente ?? 0,
+    facturas_vencidas: row.facturas_vencidas ?? 0,
+    tasa_cobro_pct: row.tasa_cobro_pct ?? 0,
+  };
+}
+
+function aFacturaPendiente(
+  row: Database["public"]["Views"]["facturas_pendientes"]["Row"],
+): FacturaPendiente | null {
+  // `factura_id`, `fecha_vencimiento` y `dias_al_vencimiento` no pueden faltar
+  // en la práctica (columnas NOT NULL o calculadas a partir de una): si algún
+  // día lo hacen, se descarta la fila en vez de mostrar un dato roto.
+  if (
+    !row.factura_id ||
+    !row.cliente ||
+    !row.servicio ||
+    row.monto == null ||
+    !row.moneda ||
+    !row.fecha_vencimiento ||
+    row.dias_al_vencimiento == null
+  ) {
+    return null;
+  }
+
+  return {
+    factura_id: row.factura_id,
+    cliente: row.cliente,
+    servicio: row.servicio,
+    monto: row.monto,
+    moneda: row.moneda,
+    fecha_vencimiento: row.fecha_vencimiento,
+    dias_al_vencimiento: row.dias_al_vencimiento,
+  };
+}
 
 // Coordinador: junta los datos del tablero, mantiene la suscripción Realtime
 // y reparte props a cada sección (dashboard-*.tsx). Las secciones no hablan
@@ -112,20 +164,20 @@ export default function DashboardClient() {
 
       if (fallo) throw fallo;
 
-      setMetrics((resMetrics.data?.[0] as Metrics) ?? null);
+      setMetrics(aMetrics(resMetrics.data?.[0]));
 
       const counts: Record<string, number> = {};
 
-      for (const row of (resEstados.data as {estado: string}[] | null) ?? []) {
+      for (const row of resEstados.data ?? []) {
         counts[row.estado] = (counts[row.estado] ?? 0) + 1;
       }
 
       setFunnel(counts);
-      setLeads((resLeads.data as Lead[] | null) ?? []);
-      setFacturas((resFacturas.data as FacturaPendiente[] | null) ?? []);
-      setTrabajos((resTrabajos.data as Trabajo[] | null) ?? []);
-      setPedidos((resPedidos.data as PedidoCambio[] | null) ?? []);
-      setPorEnviar((resPorEnviar.data as PorEnviar[] | null) ?? []);
+      setLeads(resLeads.data ?? []);
+      setFacturas((resFacturas.data ?? []).map(aFacturaPendiente).filter((f) => f !== null));
+      setTrabajos(resTrabajos.data ?? []);
+      setPedidos(resPedidos.data ?? []);
+      setPorEnviar(resPorEnviar.data ?? []);
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "No pudimos cargar el dashboard.");

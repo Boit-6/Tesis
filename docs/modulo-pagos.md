@@ -41,8 +41,9 @@ pago cambia:
 
 1. `Code - Leer Notificacion MP` saca el `payment_id` del body (Webhooks v2:
    `{type:"payment", data:{id}}`) o de la query (IPN vieja: `?topic=payment&id=`).
-   Si `MP_WEBHOOK_SECRET` está configurado, valida la firma (`x-signature`)
-   antes de seguir; sin secreto, no valida (modo por defecto).
+   Valida la firma (`x-signature`) contra `MP_WEBHOOK_SECRET` antes de
+   seguir; la firma es obligatoria (S8): sin secreto configurado, o con
+   firma inválida, el `payment_id` queda vacío y la notificación se descarta.
 2. `HTTP - MercadoPago Obtener Pago` consulta `GET /v1/payments/{id}` — la
    fuente de verdad es la API de MercadoPago, nunca lo que mande el body de
    la notificación (que no está firmado punto a punto).
@@ -89,7 +90,7 @@ visible por factura (`facturas.comision_plataforma`) y agregada por mes en
 | `MP_ACCESS_TOKEN` | *(vacía)* | Credencial de la cuenta de MercadoPago que cobra. Vacía = modo de desarrollo (sin MercadoPago real). |
 | `MP_CURRENCY` | `ARS` | `currency_id` de la preferencia; tiene que coincidir con el país de la cuenta. |
 | `MP_COMISION_PORCENTAJE` | `1` | % del monto que se anota como comisión de la plataforma. |
-| `MP_WEBHOOK_SECRET` | *(vacía)* | Firma secreta para validar `POST /webhook/mp/notificacion`. Vacía = no se valida (no recomendado en producción). |
+| `MP_WEBHOOK_SECRET` | *(vacía)* | Firma secreta para validar `POST /webhook/mp/notificacion`. Obligatoria (S8): vacía = la notificación siempre se descarta, no solo "sin validar". En dev, `docker-compose.yml` la completa con `dev-secret-cambiar-en-produccion`. |
 
 `MP_WEBHOOK_SECRET` valida la firma con `require('crypto')` dentro de un nodo
 `Code`; hace falta `NODE_FUNCTION_ALLOW_BUILTIN=crypto` en el entorno de n8n

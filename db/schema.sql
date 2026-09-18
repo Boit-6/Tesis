@@ -122,6 +122,12 @@ CREATE TABLE IF NOT EXISTS facturas (
   mp_preference_id       TEXT,
   mp_payment_id          TEXT,
   comision_plataforma    NUMERIC(12,2) NOT NULL DEFAULT 0,
+  -- NULL = todavía no se confirmó el envío del PDF inicial por Gmail (falla
+  -- de Gotenberg o de Gmail después de insertada la factura). No dispara un
+  -- reintento por sí sola: el cron de recordatorios de pago ya avisa al
+  -- cliente con el link igual, aunque nunca haya recibido el PDF. Sirve para
+  -- poder auditar cuántas facturas quedaron así.
+  fecha_envio_email      TIMESTAMPTZ,
   creado_en              TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
