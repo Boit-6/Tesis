@@ -3,12 +3,12 @@
 | campo | valor |
 | --- | --- |
 | comando | `node tests/verificar_rls.mjs` |
-| marca temporal (UTC) | 2026-09-23T16:42:15.824Z |
-| commit | 095b250fb42b08f2001da58262882944ee0b8232 |
-| commit (corto) | 095b250 |
+| marca temporal (UTC) | 2026-09-23T16:56:55.902Z |
+| commit | 83cbf8e5c82c4b4f554c52b7967a8eeb2846de10 |
+| commit (corto) | 83cbf8e |
 | arbol de trabajo | CON CAMBIOS SIN CONFIRMAR |
 | codigo de salida | 0 |
-| duracion | 3.0 s |
+| duracion | 3.2 s |
 
 ## salida
 
@@ -86,14 +86,18 @@ Border style is 2.
 | 49 | OK     | un registro solo-teléfono (email NULL) sí obtiene su fila en profiles                      | 1 filas          | 1 filas          |
 | 50 | OK     | el registro solo-teléfono queda con rol user, no admin                                     | 1 filas          | 1 filas          |
 | 51 | OK     | handle_new_user promueve a admin sólo por estar en admin_emails, sin tocar profiles a mano | 1 filas          | 1 filas          |
-| 52 | OK     | actualizar un lead bumpea actualizado_en                                                   | 1 filas          | 1 filas          |
+| 52 | OK     | el esquema no trae ningún admin precargado (antes: admin@gmail.com)                        | 0 filas          | 0 filas          |
+| 53 | OK     | un email de la whitelist SIN confirmar queda como user                                     | 1 filas          | 1 filas          |
+| 54 | OK     | al confirmar el email, pasa a admin                                                        | 1 filas          | 1 filas          |
+| 55 | OK     | un admin bajado a mano no vuelve a subir por otro cambio de la cuenta                      | 1 filas          | 1 filas          |
+| 56 | OK     | actualizar un lead bumpea actualizado_en                                                   | 1 filas          | 1 filas          |
 +----+--------+--------------------------------------------------------------------------------------------+------------------+------------------+
-(52 rows)
+(56 rows)
 
 +----------+-----------------+
 | casos ok | casos con falla |
 +----------+-----------------+
-|       52 |               0 |
+|       56 |               0 |
 +----------+-----------------+
 (1 row)
 

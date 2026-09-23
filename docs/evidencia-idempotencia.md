@@ -3,12 +3,12 @@
 | campo | valor |
 | --- | --- |
 | comando | `node tests/idempotencia.mjs` |
-| marca temporal (UTC) | 2026-09-23T16:42:18.979Z |
-| commit | 095b250fb42b08f2001da58262882944ee0b8232 |
-| commit (corto) | 095b250 |
+| marca temporal (UTC) | 2026-09-23T16:56:59.282Z |
+| commit | 83cbf8e5c82c4b4f554c52b7967a8eeb2846de10 |
+| commit (corto) | 83cbf8e |
 | arbol de trabajo | CON CAMBIOS SIN CONFIRMAR |
 | codigo de salida | 0 |
-| duracion | 8.1 s |
+| duracion | 8.9 s |
 
 ## salida
 
@@ -47,6 +47,7 @@ OK    la factura recuperada entra al circuito de recordatorios de pago
 ── Cobro por MercadoPago: ningún pago aprobado se pierde en silencio ──
 
 OK    un pago por el monto justo cobra la factura PENDIENTE
+OK    y queda registrado que la cobró MercadoPago
 OK    la notificación repetida del mismo pago no vuelve a aplicarse
 OK    y no genera alerta (MercadoPago reintenta: es ruido esperable)
 OK    un pago tardío cobra la factura VENCIDA (antes se perdía)
@@ -60,5 +61,22 @@ OK    un pago que apunta a una factura inexistente deja alerta
 OK    un pago no aprobado (factura_id vacío) no toca nada ni alerta
 OK    n8n_writer puede dejar la alerta en logs
 
-Resultado: 35 OK, 0 FALLA
+── metrics_mensuales: una factura ANULADA no es facturación ──
+
+OK    cerrar el proyecto marca la factura como cobrada por cierre, no por un pago
+OK    la facturación del mes no suma la anulada (600 + 300 + 100)
+OK    lo cobrado es sólo lo COBRADO
+OK    lo pendiente suma PENDIENTE y VENCIDA, no la anulada
+OK    la tasa de cobro se calcula sobre lo facturado sin anular (60 %)
+OK    las vencidas se siguen contando aparte
+OK    el tablero puede separar lo cobrado sólo por cierre
+
+── Aceptación: el token se revalida en el mismo UPDATE ──
+
+OK    con un token que no es el vigente no se acepta
+OK    con el token vencido no se acepta
+OK    con el token vigente se acepta
+OK    y una segunda aceptación con el mismo token no vuelve a aplicar
+
+Resultado: 47 OK, 0 FALLA
 ```
