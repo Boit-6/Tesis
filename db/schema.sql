@@ -464,9 +464,13 @@ WITH lead_mes AS (
 fact_mes AS (
   SELECT
     to_char(date_trunc('month', fecha_emision), 'YYYY-MM')             AS mes,
-    coalesce(sum(monto), 0)                                            AS facturacion,
+    -- Una factura ANULADA no es facturación: no suma al total, ni a lo
+    -- pendiente, ni al denominador de la tasa de cobro. Hasta el 23-sep-2026
+    -- sí sumaba (pendiente era `estado_pago <> 'COBRADO'`), así que anular una
+    -- factura no movía el pendiente del tablero y bajaba la tasa de cobro.
+    coalesce(sum(monto) FILTER (WHERE estado_pago <> 'ANULADA'), 0)    AS facturacion,
     coalesce(sum(monto) FILTER (WHERE estado_pago = 'COBRADO'), 0)     AS cobrado,
-    coalesce(sum(monto) FILTER (WHERE estado_pago <> 'COBRADO'), 0)    AS pendiente,
+    coalesce(sum(monto) FILTER (WHERE estado_pago IN ('PENDIENTE','VENCIDA')), 0) AS pendiente,
     -- Hasta el 01-sep-2026 esto se inferia contando PENDIENTE + fecha_vencimiento
     -- < now(), porque ningun nodo escribia la transicion VENCIDA (limitacion
     -- declarada en §4.8 y en el punto 7 del Capitulo 8). Con "🟠 Cron -
@@ -477,7 +481,7 @@ fact_mes AS (
     -- vieja sí lo habria hecho mientras siguiera con fecha_vencimiento pasada.
     count(*) FILTER (WHERE estado_pago = 'VENCIDA')                    AS facturas_vencidas,
     round(100.0 * coalesce(sum(monto) FILTER (WHERE estado_pago = 'COBRADO'), 0)
-                 / NULLIF(sum(monto), 0), 1)                           AS tasa_cobro_pct,
+                 / NULLIF(sum(monto) FILTER (WHERE estado_pago <> 'ANULADA'), 0), 1) AS tasa_cobro_pct,
     -- Comisión de la plataforma (MP_COMISION_PORCENTAJE) realizada sobre lo
     -- efectivamente cobrado. Es contable: MercadoPago no la separa sola.
     coalesce(sum(comision_plataforma) FILTER (WHERE estado_pago = 'COBRADO'), 0) AS comision_cobrada

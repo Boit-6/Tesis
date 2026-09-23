@@ -397,6 +397,26 @@ try {
   comprobar('n8n_writer puede dejar la alerta en logs',
     valor("SELECT count(*) FROM logs WHERE evento = 'pago_no_aplicado' AND nivel = 'ERROR';") === '1');
 
+  console.log('\n── metrics_mensuales: una factura ANULADA no es facturación ──\n');
+
+  // Mes propio, lejos de las facturas de los casos de arriba.
+  psql(`
+    INSERT INTO facturas (factura_id, lead_id, cliente, email, servicio, monto, estado_pago, fecha_emision, fecha_vencimiento)
+    VALUES ('FAC-MET-COBR', 'LD-2000000000002-CONF', 'C', 'c@test.com', 'seo', 600, 'COBRADO',   '2020-01-10', '2020-01-25'),
+           ('FAC-MET-PEND', 'LD-2000000000002-CONF', 'C', 'c@test.com', 'seo', 300, 'PENDIENTE', '2020-01-10', '2020-01-25'),
+           ('FAC-MET-VENC', 'LD-2000000000002-CONF', 'C', 'c@test.com', 'seo', 100, 'VENCIDA',   '2020-01-10', '2020-01-25'),
+           ('FAC-MET-ANUL', 'LD-2000000000002-CONF', 'C', 'c@test.com', 'seo', 5000, 'ANULADA',  '2020-01-10', '2020-01-25');
+  `);
+  const metrica = valor(
+    "SELECT facturacion || '|' || cobrado || '|' || pendiente || '|' || tasa_cobro_pct || '|' || facturas_vencidas FROM metrics_mensuales WHERE mes = '2020-01';");
+  const [facturacion, cobrado, pendienteMes, tasa, vencidas] = metrica.split('|');
+
+  comprobar('la facturación del mes no suma la anulada (600 + 300 + 100)', facturacion === '1000.00', metrica);
+  comprobar('lo cobrado es sólo lo COBRADO', cobrado === '600.00', metrica);
+  comprobar('lo pendiente suma PENDIENTE y VENCIDA, no la anulada', pendienteMes === '400.00', metrica);
+  comprobar('la tasa de cobro se calcula sobre lo facturado sin anular (60 %)', tasa === '60.0', metrica);
+  comprobar('las vencidas se siguen contando aparte', vencidas === '1', metrica);
+
   console.log(`\nResultado: ${ok} OK, ${fallas} FALLA`);
   if (fallas) codigoSalida = 1;
 } catch (err) {
