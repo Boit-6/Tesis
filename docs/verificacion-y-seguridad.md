@@ -445,6 +445,13 @@ Gotenberg. Contra el workflow anterior da 36 fallos.
   falta además la reestructuración a `responseNode` si se quiere que también
   devuelva 429 en vez de sólo cortar el procesamiento interno y dejar
   constancia en `logs` (hoy responde con el ack inmediato por defecto).
+- **El rate limit depende de un proxy propio delante de n8n.** La clave es
+  el último tramo de `X-Forwarded-For` (§5.3.1), que sólo es confiable si lo
+  escribe un proxy de confianza. Expuesto directo, quien llama pone la IP que
+  quiera, y los pedidos sin ese header comparten la clave `ip-desconocida`:
+  el límite castiga a los usuarios legítimos y no frena al que abusa. El
+  conteo (SELECT + INSERT en una sentencia) tampoco es atómico: una ráfaga
+  concurrente puede pasar algunos pedidos de más.
 - **El acuse del lead frío sigue yendo a un email sin verificar.** Aunque ya
   no admite HTML ni enlaces en el nombre (5.3.3), el formulario público puede
   hacer que la cuenta del negocio le escriba a cualquier dirección, cinco veces

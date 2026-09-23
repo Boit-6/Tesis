@@ -283,9 +283,68 @@ es roadmap post-defensa.
 
 ---
 
+## Ronda de análisis del 2026-09-23
+
+Revisión completa del repo (esquema, workflows, frontend, compose, CI). Lo que
+se corrigió, un commit por tema, cada uno con su test:
+
+| # | Hallazgo | Commit |
+|---|---|---|
+| 1 | El formulario público permitía mandar HTML arbitrario desde el Gmail del negocio (acuse del lead frío) y romper los avisos de Telegram | `bc476a6` |
+| 2 | SSRF: Gotenberg renderizaba la factura con JS y acceso a la red interna (verificado con contenedores) | `bc476a6` |
+| 3 | Pagos aprobados de MercadoPago que se perdían en silencio (factura VENCIDA/ANULADA, monto sin verificar) | `095b250` |
+| 4 | `admin@gmail.com` precargado en la whitelist y promoción a admin antes de confirmar el email | `6d70103` |
+| 5 | `metrics_mensuales` contaba las facturas ANULADAS como facturación y pendiente | `e54a02b` |
+| 7 | Cerrar el proyecto daba la factura por cobrada, indistinguible de un pago real (`metodo_cobro`) | `f6629a7` |
+| 8 | El tablero no mostraba las facturas VENCIDA ni se enteraba de cambios en `facturas` | `a9464be` |
+| 9 | La aceptación no revalidaba el token en el `UPDATE` | `a6903e1` |
+| 10 | Firma de MercadoPago y `x-api-key` de tickets comparadas con `===` | `a6903e1` |
+| 12 | El proxy consultaba Supabase Auth en cada página pública | `cffc51e` |
+| 14 | `src/lib/env.ts` sin uso | `cffc51e` |
+| 16 | Actions de CI por tag y gitleaks sin verificar checksum | `121026b` |
+
+**No se cambió, con motivo:**
+
+- **Duplicación en n8n (13).** La lógica de rate limit está copiada en 5+5
+  nodos y el bloque `CFG` de tickets en 10. Pasarla a un sub-workflow es un
+  cambio estructural que no se puede verificar sin una instancia de n8n
+  corriendo (el propio `notificaciones_telegram.json` sigue «pendiente de
+  verificación real»). Sí se corrigió el comentario de tickets que decía lo
+  contrario de lo que hace el código.
+- **Rate limit por `X-Forwarded-For` (11).** Sólo es confiable con un proxy
+  propio delante de n8n que escriba ese header; sin él, quien llama elige su
+  IP y los pedidos sin header comparten la clave `ip-desconocida`. Es un
+  requisito de despliegue, documentado en `docs/verificacion-y-seguridad.md`
+  §5.4. El conteo tampoco es atómico ante ráfagas concurrentes.
+
+---
+
 ## Lo que queda
 
-1. Confirmar `MP_WEBHOOK_SECRET` en producción (Fase 0) — depende de quien opere la infra, no del código.
-2. Reimportar `workflow/crm_postgres.json` en el n8n real para que los fixes de Fase 0 y Fase 1 (XFF, `fecha_envio_email`) queden vivos, no solo en el repo.
+Depende de quien opere la infraestructura o del documento, no del código:
+
+1. **Reimportar `workflow/crm_postgres.json` y `workflow/tickets_notion.json`**
+   en el n8n real y recrear Gotenberg (`docker compose up -d gotenberg`). Sin
+   esto, nada de la ronda del 23-sep (ni los fixes de Fase 0 y 1) corre en
+   producción. Probar después: un lead llamado `A & B` tiene que llegar a
+   Telegram, y un pago sobre una factura vencida tiene que registrarse.
+2. **Aplicar `db/schema.sql`** en Supabase y, en esa base, borrar la fila vieja
+   (`DELETE FROM admin_emails WHERE email = 'admin@gmail.com'`) y dar de alta
+   la dirección real del administrador.
+3. **Migrar la conexión de n8n a `n8n_writer`** (`ALTER ROLE n8n_writer WITH
+   LOGIN PASSWORD …` y cambiar la credencial Postgres de n8n). Hasta entonces
+   la mitigación S4 de la Tabla 11 está en el esquema pero no en uso: n8n sigue
+   conectado como `service_role`.
+4. Confirmar `MP_WEBHOOK_SECRET` en producción (Fase 0).
+5. **Actualizar §4.8 de `tesis.docx`:** una factura pasa a COBRADO desde
+   PENDIENTE **o VENCIDA** (pago tardío), nunca desde ANULADA.
+   `tests/verificar_afirmaciones.mjs` ya refleja la regla nueva.
+6. Captcha (p. ej. Cloudflare Turnstile) en el formulario público: el acuse
+   del lead frío todavía puede dirigirse a cualquier dirección, cinco veces por
+   minuto por IP. Requiere una cuenta externa.
+7. Entorno local: `FormularioLeads/node_modules` está instalado desde Windows
+   (sólo binarios `win32`), así que Vitest no arranca en Linux; y `.nvmrc` pide
+   Node 20. Reinstalar con `nvm use && rm -rf node_modules && npm ci` si se
+   trabaja desde Linux.
 
 Con Fase 0 a 4 cerradas, sólo queda Fase 5 (backlog a propósito, no deuda).
