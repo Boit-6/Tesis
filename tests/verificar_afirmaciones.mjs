@@ -210,7 +210,10 @@ function medirCualitativas() {
 
   const escribenEstadoPago = wf.nodes.filter((n) => /estado_pago\s*=\s*'/.test(params(n.name)));
   const marcanCobrado = escribenEstadoPago.filter((n) => /estado_pago\s*=\s*'COBRADO'/.test(params(n.name)));
-  const sinGuarda = marcanCobrado.filter((n) => !/AND estado_pago\s*=\s*'PENDIENTE'/.test(params(n.name)));
+  // Guarda aceptada: PENDIENTE, o PENDIENTE/VENCIDA para registrar un pago
+  // tardío. Nunca desde ANULADA (ni COBRADO: eso sería cobrar dos veces).
+  const sinGuarda = marcanCobrado.filter((n) =>
+    !/AND estado_pago\s*(=\s*'PENDIENTE'|IN \('PENDIENTE','VENCIDA'\))/.test(params(n.name)));
   const asignan = (valor) => wf.nodes
     .filter((n) => new RegExp("estado_pago\\s*=\\s*'" + valor + "'").test(params(n.name)))
     .map((n) => n.name);
@@ -237,9 +240,13 @@ function medirCualitativas() {
       detalle: 'rama fría: ' + (ramaFria.join(' + ') || '(vacía)'),
     },
     {
-      id: 'cobrado-solo-desde-pendiente',
-      seccion: '§4.8',
-      afirma: 'una factura sólo pasa a COBRADO desde PENDIENTE',
+      // Hasta el 23-sep-2026 era «sólo desde PENDIENTE», como dice §4.8. Pero el
+      // cron pasa la factura a VENCIDA mientras su link de pago sigue vivo, y el
+      // pago tardío quedaba acreditado en MercadoPago sin registrarse (ver
+      // docs/modulo-pagos.md §1.1). §4.8 de la tesis tiene que actualizarse.
+      id: 'cobrado-desde-pendiente-o-vencida',
+      seccion: '§4.8 (desvío: 23-sep-2026, pago tardío)',
+      afirma: 'una factura sólo pasa a COBRADO desde PENDIENTE o VENCIDA, nunca desde ANULADA',
       ok: marcanCobrado.length > 0 && sinGuarda.length === 0,
       detalle: marcanCobrado.length + ' nodos marcan COBRADO; sin guarda: ' +
         (sinGuarda.map((n) => n.name).join(', ') || 'ninguno'),
@@ -250,7 +257,7 @@ function medirCualitativas() {
       // declarada en §4.8 y en el punto 7 del Capítulo 8). Se cierra acá: ahora
       // se verifica que ambas transiciones existan Y que sigan siendo
       // condicionales sobre el estado previo, con el mismo criterio de UPDATE
-      // atómico que ya usaba 'cobrado-solo-desde-pendiente'.
+      // atómico que ya usaba 'cobrado-desde-pendiente-o-vencida'.
       id: 'vencida-solo-desde-pendiente',
       seccion: '§4.8 y Cap. 8 (punto 7, cerrado 01-sep-2026)',
       afirma: 'una factura sólo pasa a VENCIDA desde PENDIENTE, con un umbral de días de gracia',

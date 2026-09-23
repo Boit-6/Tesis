@@ -48,16 +48,57 @@ pago cambia:
    fuente de verdad es la API de MercadoPago, nunca lo que mande el body de
    la notificación (que no está firmado punto a punto).
 3. `Code - Procesar Pago MP` sólo deja pasar el pago si `status = approved` y
-   trae un `external_reference` (el `factura_id`).
-4. `Postgres - Marcar Cobrado MP` hace el mismo `UPDATE ... WHERE estado_pago
-   = 'PENDIENTE'` idempotente que ya usaba el modo de desarrollo — una
+   trae un `external_reference` (el `factura_id`). También toma el monto y la
+   moneda que MercadoPago dice haber cobrado (`transaction_amount`,
+   `currency_id`).
+4. `Postgres - Marcar Cobrado MP` hace un `UPDATE ... WHERE estado_pago IN
+   ('PENDIENTE','VENCIDA') AND monto = $3 AND moneda = $4` idempotente — una
    notificación repetida (MercadoPago reintenta) no vuelve a disparar el
-   Telegram ni la sincronización con Notion.
+   Telegram ni la sincronización con Notion, y un pago por otro importe no da
+   la factura por cobrada. El modo de desarrollo (`Postgres - Marcar Cobrado`)
+   acepta los mismos dos estados.
 5. Si aplicó, reusa los mismos nodos de siempre: `Telegram - Pago Recibido`
    y `Postgres - Buscar Card Pago` → `Notion - Estado Pagado`.
 6. Responde `200 {"ok":true|false}` siempre — MercadoPago reintenta si no
    recibe 2xx, así que un pago `pending` o una firma inválida responden OK
    igual (sin marcar nada) para no generar reintentos infinitos.
+
+### 1.1 Ningún pago aprobado se pierde en silencio (23-sep-2026)
+
+Antes, un pago aprobado que el `UPDATE` no aplicaba terminaba en `Respond -
+Notificacion MP Ignorada`, sin registro ni aviso. Eso pasaba en casos reales:
+
+- **Factura VENCIDA.** El cron (RAMA 4) la marca a los
+  `FACTURA_VENCIDA_DIAS_GRACIA` días, pero la preferencia de MercadoPago no
+  vence: el cliente que pagaba tarde quedaba con la plata acreditada y la
+  factura sin cambiar. Ahora el cobro se registra (VENCIDA → COBRADO).
+- **Factura ANULADA.** Su link seguía cobrando. Ahora `IF - Tiene Preferencia
+  MP?` → `HTTP - MercadoPago Expirar Preferencia` hace `PUT
+  /checkout/preferences/{id}` con `expires: true` y `expiration_date_to` en
+  el momento de anular. Si falla (sin credenciales o sin red) la anulación
+  sigue igual, y queda la alerta de abajo como red de contención.
+
+Para todo lo que igual no se aplique, la salida negativa de `IF -
+Actualizacion Aplico MP?` además de responder pasa por `Postgres - Buscar Pago
+No Aplicado` → `Code - Clasificar Pago No Aplicado`. Descarta el ruido
+esperable (pago no aprobado, firma inválida, reintento del mismo pago ya
+registrado) y, para un pago aprobado, deja una fila `ERROR` en `logs`
+(`evento = 'pago_no_aplicado'`) y avisa por `Telegram - Pago No Aplicado` con
+el motivo:
+
+| Motivo | Qué hacer |
+|---|---|
+| La factura está ANULADA | Reembolsar desde MercadoPago o reactivar la factura |
+| Ya estaba cobrada con otro pago | Pago doble: reembolsar uno |
+| Ya figuraba cobrada sin pago de MercadoPago | Se cerró el proyecto antes de que entrara el pago: conciliar a mano |
+| Se pagó otro monto u otra moneda | Revisar el pago en MercadoPago |
+| No existe la factura | Revisar el `external_reference` del pago |
+
+Cubierto por `tests/idempotencia.mjs`, que ejecuta el SQL y el nodo Code del
+workflow contra un PostgreSQL real con el rol `n8n_writer`. Sin verificar
+contra la API real de MercadoPago: el formato de `expiration_date_to` y la
+respuesta del `PUT` salen de la documentación pública, y `tests/mp-doble.mjs`
+los reproduce.
 
 ---
 

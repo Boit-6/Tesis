@@ -2,13 +2,15 @@
 /**
  * Doble de prueba de la API de MercadoPago (escenario E14).
  *
- * Reproduce el contrato DOCUMENTADO de los dos únicos endpoints de MercadoPago
- * que consume el flujo (§4.3.3 de la tesis):
+ * Reproduce el contrato DOCUMENTADO de los endpoints de MercadoPago que
+ * consume el flujo (§4.3.3 de la tesis):
  *
- *   POST /checkout/preferences   → crea la preferencia de Checkout Pro y
- *                                  devuelve { id, init_point, ... }
- *   GET  /v1/payments/{id}       → devuelve el pago, con status y
- *                                  external_reference (el factura_id)
+ *   POST /checkout/preferences      → crea la preferencia de Checkout Pro y
+ *                                     devuelve { id, init_point, ... }
+ *   GET  /v1/payments/{id}          → devuelve el pago, con status y
+ *                                     external_reference (el factura_id)
+ *   PUT  /checkout/preferences/{id} → la expira al anular la factura
+ *                                     (sumado el 23-sep-2026)
  *
  * NO es MercadoPago ni lo sustituye: es un doble que permite ejercitar el
  * escenario E14 de punta a punta cuando la activación de credenciales de prueba
@@ -101,6 +103,21 @@ const servidor = createServer(async (req, res) => {
       external_reference: externalRef,
       date_created: new Date().toISOString(),
     });
+  }
+
+  // Anular una factura expira su preferencia para que el link deje de cobrar.
+  if (req.method === 'PUT' && ruta.startsWith('/checkout/preferences/')) {
+    const auth = String(req.headers.authorization || '');
+    if (!/^Bearer\s+\S+/.test(auth)) {
+      return responder(res, 401, { message: 'invalid access token', status: 401 });
+    }
+    const prefId = ruta.slice('/checkout/preferences/'.length);
+    const pref = preferencias.get(prefId);
+    if (!pref) return responder(res, 404, { message: 'Preference not found', status: 404 });
+    const cuerpo = await leerCuerpo(req);
+    Object.assign(pref, { expires: !!cuerpo.expires, expiration_date_to: cuerpo.expiration_date_to || null });
+    console.log(`[doble-mp] preferencia ${prefId} expirada (expiration_date_to=${pref.expiration_date_to})`);
+    return responder(res, 200, { id: prefId, ...pref });
   }
 
   if (req.method === 'GET' && ruta.startsWith('/v1/payments/')) {

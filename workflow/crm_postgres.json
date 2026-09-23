@@ -288,7 +288,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE facturas SET estado_pago = 'COBRADO', fecha_cobro = now() WHERE factura_id = $1 AND pago_token = $2::uuid AND estado_pago = 'PENDIENTE' RETURNING *;",
+        "query": "UPDATE facturas SET estado_pago = 'COBRADO', fecha_cobro = now() WHERE factura_id = $1 AND pago_token = $2::uuid AND estado_pago IN ('PENDIENTE','VENCIDA') RETURNING *;",
         "options": {
           "queryReplacement": "={{ [$json.factura_id, $json.pago_token] }}"
         }
@@ -3727,7 +3727,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const r = $input.first().json || {};\nconst aprobado = r.status === 'approved' && !!r.external_reference && r.id !== undefined && r.id !== null;\nconst idNum = aprobado ? String(Number(r.id)) : '';\nconst idSano = /^[0-9]+$/.test(idNum) ? idNum : '';\nreturn [{ json: { factura_id: (aprobado && idSano) ? String(r.external_reference) : '', mp_payment_id: idSano } }];"
+        "jsCode": "const r = $input.first().json || {};\nconst aprobado = r.status === 'approved' && !!r.external_reference && r.id !== undefined && r.id !== null;\nconst idNum = aprobado ? String(Number(r.id)) : '';\nconst idSano = /^[0-9]+$/.test(idNum) ? idNum : '';\n// Lo que MercadoPago dice haber cobrado. Postgres - Marcar Cobrado MP sólo da\n// la factura por cobrada si coincide con lo facturado.\nconst montoPagado = Number(r.transaction_amount);\nreturn [{ json: {\n  factura_id: (aprobado && idSano) ? String(r.external_reference) : '',\n  mp_payment_id: idSano,\n  monto_pagado: Number.isFinite(montoPagado) ? montoPagado : 0,\n  moneda_pagada: String(r.currency_id || ''),\n} }];"
       },
       "id": "mp-07-0000-4000-8000-aaaaaaaaaaaa",
       "name": "Code - Procesar Pago MP",
@@ -3741,9 +3741,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE facturas SET estado_pago = 'COBRADO', fecha_cobro = now(), mp_payment_id = $2 WHERE factura_id = $1 AND estado_pago = 'PENDIENTE' RETURNING *;",
+        "query": "UPDATE facturas SET estado_pago = 'COBRADO', fecha_cobro = now(), mp_payment_id = $2 WHERE factura_id = $1 AND estado_pago IN ('PENDIENTE','VENCIDA') AND monto = $3::numeric AND moneda = $4 RETURNING *;",
         "options": {
-          "queryReplacement": "={{ [$json.factura_id, $json.mp_payment_id] }}"
+          "queryReplacement": "={{ [$json.factura_id, $json.mp_payment_id, $json.monto_pagado, $json.moneda_pagada] }}"
         }
       },
       "id": "mp-08-0000-4000-8000-aaaaaaaaaaaa",
@@ -5103,6 +5103,151 @@
         1230,
         4440
       ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT factura_id, estado_pago, mp_payment_id, cliente, monto, moneda FROM facturas WHERE factura_id = $1;",
+        "options": {
+          "queryReplacement": "={{ [$('Code - Procesar Pago MP').item.json.factura_id] }}"
+        }
+      },
+      "id": "mp-12-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Postgres - Buscar Pago No Aplicado",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3800,
+        11960
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Llega acá toda notificación que no marcó la factura como cobrada. La\n// mayoría es ruido esperable (pago pendiente o rechazado, firma inválida,\n// reintento de MercadoPago sobre un pago ya registrado). Lo que no puede\n// pasar en silencio es un pago APROBADO que no se registró: la plata ya entró.\nconst pago = $('Code - Procesar Pago MP').first().json;\nif (!pago.factura_id) return [];\nconst f = $input.first().json || {};\nlet motivo;\nif (!f.factura_id) {\n  motivo = 'no existe una factura con ese identificador';\n} else if (f.estado_pago === 'COBRADO' && String(f.mp_payment_id || '') === pago.mp_payment_id) {\n  return [];\n} else if (f.estado_pago === 'COBRADO') {\n  motivo = f.mp_payment_id\n    ? 'la factura ya estaba cobrada con otro pago (' + f.mp_payment_id + '): es un pago doble'\n    : 'la factura ya figuraba cobrada sin pago de MercadoPago (cierre del proyecto)';\n} else if (f.estado_pago === 'ANULADA') {\n  motivo = 'la factura está ANULADA';\n} else if (Number(f.monto) !== Number(pago.monto_pagado) || f.moneda !== pago.moneda_pagada) {\n  motivo = 'se pagaron ' + pago.monto_pagado + ' ' + pago.moneda_pagada + ' y la factura es por ' + f.monto + ' ' + f.moneda;\n} else {\n  motivo = 'la factura está en estado ' + f.estado_pago;\n}\nreturn [{ json: {\n  factura_id: pago.factura_id,\n  mp_payment_id: pago.mp_payment_id,\n  cliente: f.cliente || '',\n  motivo,\n  detalle: 'factura=' + pago.factura_id + ' pago_mp=' + pago.mp_payment_id + ' motivo=' + motivo,\n} }];"
+      },
+      "id": "mp-13-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Code - Clasificar Pago No Aplicado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4100,
+        11960
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO logs (workflow, evento, nivel, detalle)\nVALUES ('cobro_mp', 'pago_no_aplicado', 'ERROR', $1);",
+        "options": {
+          "queryReplacement": "={{ [$json.detalle] }}"
+        }
+      },
+      "id": "mp-14-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Postgres - Log Pago No Aplicado",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4400,
+        11880
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=⚠️ <b>Pago recibido que no se pudo registrar</b>\nFactura: {{ $json.factura_id }}\nCliente: {{ String($json.cliente || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nPago MercadoPago: {{ $json.mp_payment_id }}\nMotivo: {{ String($json.motivo || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\n\nLa plata entró a MercadoPago pero la factura no cambió de estado. Revisalo: puede corresponder un reembolso.",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "mp-15-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Telegram - Pago No Aplicado",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4400,
+        12040
+      ],
+      "webhookId": "tg-pago-no-aplicado",
+      "credentials": {
+        "telegramApi": {
+          "id": "Zv2UC716Fxh6BCDs",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.mp_preference_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "mp-16-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "IF - Tiene Preferencia MP?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1350,
+        18280
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "={{ $env.MP_API_BASE || 'https://api.mercadopago.com' }}/checkout/preferences/{{ $json.mp_preference_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.MP_ACCESS_TOKEN || '' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ expires: true, expiration_date_to: new Date().toISOString() }) }}",
+        "options": {}
+      },
+      "id": "mp-17-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "HTTP - MercadoPago Expirar Preferencia",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        1650,
+        18280
+      ],
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -6445,6 +6590,11 @@
             "node": "Respond - Notificacion MP Ignorada",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "Postgres - Buscar Pago No Aplicado",
+            "type": "main",
+            "index": 0
           }
         ]
       ]
@@ -6694,6 +6844,11 @@
           },
           {
             "node": "Telegram - Factura Anulada",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF - Tiene Preferencia MP?",
             "type": "main",
             "index": 0
           }
@@ -6956,6 +7111,44 @@
         [
           {
             "node": "Code - Leer Modifica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Buscar Pago No Aplicado": {
+      "main": [
+        [
+          {
+            "node": "Code - Clasificar Pago No Aplicado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Clasificar Pago No Aplicado": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Log Pago No Aplicado",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram - Pago No Aplicado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Tiene Preferencia MP?": {
+      "main": [
+        [
+          {
+            "node": "HTTP - MercadoPago Expirar Preferencia",
             "type": "main",
             "index": 0
           }
