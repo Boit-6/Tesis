@@ -59,6 +59,23 @@ describe("LeadForm", () => {
     expect(await screen.findByText(/formato válido/)).toBeInTheDocument();
   });
 
+  it("rechaza un nombre con un enlace", async () => {
+    const fetchMock = vi.fn();
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+
+    await renderForm();
+    await llenarValido(user);
+    await user.clear(screen.getByLabelText(/^Nombre/));
+    await user.type(screen.getByLabelText(/^Nombre/), "Visitá www.estafa.test");
+    await user.click(screen.getByRole("button", {name: /Enviar consulta/i}));
+
+    expect(await screen.findByText(/no puede incluir enlaces/)).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("envía el formulario con datos válidos y muestra la pantalla de éxito", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, {status: 200}));
 

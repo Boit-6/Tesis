@@ -224,11 +224,18 @@ export default function LeadForm() {
               autoComplete="name"
               className={inputClass}
               id="nombre"
+              maxLength={100}
               placeholder="María González"
               type="text"
               {...register("nombre", {
-                validate: (v) =>
-                  v.trim().length >= 2 || "El nombre debe tener al menos 2 caracteres.",
+                // Mismas reglas que Code - Normalizar Lead en n8n, que es quien las hace cumplir.
+                validate: (v) => {
+                  if (v.trim().length < 2) return "El nombre debe tener al menos 2 caracteres.";
+                  if (v.trim().length > 100) return "El nombre puede tener hasta 100 caracteres.";
+                  if (/:\/\/|www\./i.test(v)) return "El nombre no puede incluir enlaces.";
+
+                  return true;
+                },
               })}
             />
             {errors.nombre && (

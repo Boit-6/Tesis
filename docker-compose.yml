@@ -151,6 +151,16 @@ services:
     image: gotenberg/gotenberg:8.14.1
     container_name: gotenberg
     restart: unless-stopped
+    # La factura es HTML con datos del cliente y Chromium la renderiza dentro de
+    # crm-net, con alcance a n8n. Por defecto ejecuta JavaScript y carga
+    # cualquier URL http(s): un <iframe> hacia http://n8n:5678 terminaba impreso
+    # en el PDF que se le manda al cliente (SSRF). La factura no usa scripts ni
+    # recursos externos, así que se apaga JS y sólo se permite el propio
+    # index.html que Gotenberg escribe en /tmp.
+    command:
+      - gotenberg
+      - --chromium-disable-javascript=true
+      - --chromium-allow-list=^file:///tmp/.*
     # No expone puerto al host: solo n8n lo consume por la red interna.
     networks:
       - crm-net

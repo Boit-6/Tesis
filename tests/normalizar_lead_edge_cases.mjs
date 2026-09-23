@@ -73,5 +73,16 @@ check(
   normalizar({...base, presupuesto: 6000, email: null}).error?.includes('email invalido') ?? false,
 );
 
+// ── Nombre ──────────────────────────────────────────────────────────────────
+// Aparece tal cual en el acuse que va al email del formulario: sin tope ni
+// filtro de enlaces, ese correo servía para mandar spam a terceros.
+const nombreOk = (valor) => normalizar({...base, presupuesto: 6000, email: 'a@b.co', nombre: valor});
+
+check('un nombre con "&" y tildes se acepta', nombreOk('García & Asociados').ok);
+check('un nombre de 100 caracteres se acepta', nombreOk('a'.repeat(100)).ok);
+check('un nombre de 101 caracteres se rechaza', nombreOk('a'.repeat(101)).error?.includes('nombre muy largo') ?? false);
+check('un nombre con "https://" se rechaza', nombreOk('Juan https://estafa.test').error?.includes('nombre con enlace') ?? false);
+check('un nombre con "www." se rechaza', nombreOk('Visitá WWW.estafa.test').error?.includes('nombre con enlace') ?? false);
+
 console.log('\nResultado: ' + ok + ' OK, ' + fail + ' FAIL');
 process.exit(fail ? 1 : 0);

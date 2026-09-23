@@ -685,7 +685,7 @@
     {
       "parameters": {
         "chatId": "={{ $env.TICKETS_TELEGRAM_CHAT_ID || $env.TELEGRAM_CHAT_ID }}",
-        "text": "=🚨 <b>Módulo de tickets</b>\nWorkflow: {{ $json.workflow.name }}\nNodo: {{ $json.execution.lastNodeExecuted }}\nError: {{ $json.execution.error.message }}",
+        "text": "=🚨 <b>Módulo de tickets</b>\nWorkflow: {{ $json.workflow.name }}\nNodo: {{ $json.execution.lastNodeExecuted }}\nError: {{ String($json.execution.error.message || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}",
         "additionalFields": {
           "appendAttribution": false,
           "parse_mode": "HTML"

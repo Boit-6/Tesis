@@ -27,7 +27,7 @@ más una captura, ahora hay además un comando.
 ## 2. Comandos
 
 ```bash
-npm test                # suite offline: nodos Code, scoring, tickets, parámetros SQL, afirmaciones
+npm test                # suite offline: nodos Code, scoring, tickets, parámetros SQL, escape de HTML, afirmaciones
 npm run test:docker     # SQL, RLS e idempotencia sobre un PostgreSQL desechable (necesita Docker)
 npm run test:escenarios # validación funcional de punta a punta (necesita el sistema levantado)
 ```
@@ -375,6 +375,46 @@ una ruta con `token=`; los `console.error` de la página de aceptación
 (`aceptar-propuesta.tsx`) corren en el navegador del cliente, no en logs de
 servidor, y sólo registran el propio `Error` de red, no la URL.
 
+### 5.3.3 Inyección de HTML desde el formulario público (23-sep-2026)
+
+`nombre`, `email` y el mensaje de un pedido de cambios los escribe cualquiera,
+y ningún nodo los escapaba antes de interpolarlos en tres lugares que
+interpretan HTML:
+
+- **Correos de Gmail.** El acuse del lead frío (`Gmail - Acuse Lead Frio`) se
+  manda a la dirección que puso quien completó el formulario. Con un `nombre`
+  armado a propósito, cualquiera podía hacer que la cuenta del negocio enviara
+  HTML arbitrario (enlaces de phishing incluidos) a terceros, a razón de cinco
+  por minuto por IP.
+- **El PDF de la factura.** Gotenberg renderiza el HTML con Chromium dentro de
+  `crm-net`, la misma red que n8n, con JavaScript habilitado y sin restricción
+  de URLs. Se verificó con contenedores reales que un `<iframe>` hacia un
+  servicio interno terminaba impreso en el PDF que se le envía al cliente
+  (SSRF), y que un `<script>` se ejecutaba.
+- **Telegram** (`parse_mode: HTML`). Además de la inyección, un `&` o un `<`
+  suelto hace que la API rechace el mensaje entero: un cliente legítimo
+  llamado «García & Asociados» se quedaba sin aviso.
+
+Cambios:
+
+- Los ocho nodos Code que arman HTML pasan cada valor por `esc()` (`&`, `<`,
+  `>`, comillas). Las expresiones `{{ }}` de Telegram, del subflujo de
+  notificaciones y del cuerpo de Gmail escapan los campos libres (`nombre`,
+  `cliente`, `mensaje`, `error_msg`, `detalle`).
+- Gotenberg arranca con `--chromium-disable-javascript=true` y
+  `--chromium-allow-list=^file:///tmp/.*` (`docker-compose.yml`): la factura
+  no usa scripts ni recursos externos, así que sólo puede cargar el propio
+  `index.html`. Con esa configuración, el mismo `<iframe>` y el mismo
+  `<script>` dejan de tener efecto y la factura se renderiza igual.
+- `Code - Normalizar Lead` rechaza nombres de más de 100 caracteres o con un
+  enlace (`://`, `www.`), y el formulario aplica la misma regla. El nombre
+  aparece tal cual en el acuse, así que sin ese límite el correo seguía
+  sirviendo como spam en texto plano aunque ya no aceptara HTML.
+
+`tests/escape_html.mjs` (dentro de `npm test`) ejecuta cada nodo con un
+payload hostil, exige el escape en cada expresión y comprueba las flags de
+Gotenberg. Contra el workflow anterior da 36 fallos.
+
 ### 5.4 Qué sigue abierto
 
 - **Rate limiting real, verificado en vivo.** El 01-sep-2026 se implementó
@@ -388,6 +428,12 @@ servidor, y sólo registran el propio `Error` de red, no la URL.
   falta además la reestructuración a `responseNode` si se quiere que también
   devuelva 429 en vez de sólo cortar el procesamiento interno y dejar
   constancia en `logs` (hoy responde con el ack inmediato por defecto).
+- **El acuse del lead frío sigue yendo a un email sin verificar.** Aunque ya
+  no admite HTML ni enlaces en el nombre (5.3.3), el formulario público puede
+  hacer que la cuenta del negocio le escriba a cualquier dirección, cinco veces
+  por minuto por IP. Cerrarlo del todo requiere un captcha (por ejemplo
+  Cloudflare Turnstile) validado del lado de n8n, que depende de una cuenta
+  externa.
 - **El token viaja en la query string** del `GET /lead-propuesta` (y, desde el
   31-ago-2026, también `pago_token` en el `GET /webhook/pago-confirmado`), con
   lo que puede quedar en logs de intermediarios (proxies, CDN, el servidor de
