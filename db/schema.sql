@@ -174,7 +174,13 @@ CREATE TABLE IF NOT EXISTS profiles (
 CREATE TABLE IF NOT EXISTS admin_emails (
   email TEXT PRIMARY KEY
 );
-INSERT INTO admin_emails (email) VALUES ('admin@gmail.com') ON CONFLICT DO NOTHING;
+-- Sin semilla a propósito. Hasta el 23-sep-2026 se insertaba 'admin@gmail.com',
+-- una casilla pública real: quien fuera su dueño se registraba y quedaba admin.
+-- Para dar de alta al administrador, una vez y con la dirección real:
+--   INSERT INTO admin_emails (email) VALUES ('tu-correo@dominio.com');
+-- En una base ya creada, esa fila vieja sigue ahí hasta que se borre a mano
+-- (DELETE FROM admin_emails WHERE email = 'admin@gmail.com'); no se borra
+-- desde acá por si esa era, de verdad, la dirección del administrador.
 
 -- Registro de invocaciones por IP/clave y ruta, para el rate limiting básico
 -- de los cinco webhooks públicos que no admiten autenticación de origen
@@ -356,9 +362,18 @@ CREATE TRIGGER trg_leads_updated
 -- ---------------------------------------------------------------------
 -- Trigger: crea el perfil (rol 'user' por defecto) al registrarse.
 -- Se promueve a 'admin' si el email está en `admin_emails` (whitelist
--- editable con un INSERT/DELETE puntual, sin tocar este archivo). Un email
--- NULL (registro solo-teléfono) nunca matchea la whitelist: NULL = NULL no
--- es true en SQL, así que cae a 'user' sin caso especial.
+-- editable con un INSERT/DELETE puntual, sin tocar este archivo) Y ya está
+-- confirmado. Un email NULL (registro solo-teléfono) nunca matchea la
+-- whitelist: NULL = NULL no es true en SQL, así que cae a 'user' sin caso
+-- especial.
+-- La confirmación importa: el INSERT en auth.users ocurre al registrarse,
+-- antes de que nadie pruebe ser dueño de la casilla. Si el rol se asignara
+-- acá sin mirarla, alcanzaría con desactivar "Confirm email" en Supabase
+-- (o con un registro que quedara a medio confirmar) para que cualquiera que
+-- escribiera la dirección de la whitelist obtuviera una fila 'admin'. Con
+-- "Confirm email" desactivado, Supabase ya trae `email_confirmed_at` en el
+-- INSERT, así que ese caso se resuelve acá mismo; si no, lo resuelve
+-- handle_user_confirmed() al confirmarse.
 -- `SECURITY DEFINER` es necesario porque el usuario recién registrado
 -- todavía no tiene fila en `profiles` desde la que autorizarse solo.
 -- ---------------------------------------------------------------------
@@ -369,7 +384,8 @@ BEGIN
   VALUES (
     NEW.id,
     NEW.email,
-    CASE WHEN EXISTS (SELECT 1 FROM public.admin_emails WHERE email = NEW.email)
+    CASE WHEN NEW.email_confirmed_at IS NOT NULL
+          AND EXISTS (SELECT 1 FROM public.admin_emails WHERE email = NEW.email)
       THEN 'admin' ELSE 'user' END
   )
   ON CONFLICT (id) DO NOTHING;
@@ -383,12 +399,35 @@ CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
 
+-- Promoción al confirmar el email por primera vez. Sólo en esa transición
+-- (NULL → fecha): un admin bajado de rol a mano no vuelve a subir solo por
+-- un evento posterior de su cuenta.
+CREATE OR REPLACE FUNCTION public.handle_user_confirmed() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  UPDATE public.profiles SET role = 'admin'
+  WHERE id = NEW.id
+    AND role = 'user'
+    AND EXISTS (SELECT 1 FROM public.admin_emails WHERE email = NEW.email);
+
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_confirmed ON auth.users;
+CREATE TRIGGER on_auth_user_confirmed
+  AFTER UPDATE OF email_confirmed_at ON auth.users
+  FOR EACH ROW
+  WHEN (OLD.email_confirmed_at IS NULL AND NEW.email_confirmed_at IS NOT NULL)
+  EXECUTE FUNCTION public.handle_user_confirmed();
+
 -- Backfill: cuentas ya existentes (creadas antes de este trigger) también
 -- necesitan su fila en `profiles`. Idempotente vía ON CONFLICT: una fila que
 -- ya existe (por ejemplo porque un admin real bajó de rol a mano) no se
 -- vuelve a tocar acá, así que re-aplicar el schema nunca re-promueve a nadie.
 INSERT INTO public.profiles (id, email, role)
-SELECT id, email, CASE WHEN EXISTS (SELECT 1 FROM public.admin_emails a WHERE a.email = auth.users.email)
+SELECT id, email, CASE WHEN email_confirmed_at IS NOT NULL
+      AND EXISTS (SELECT 1 FROM public.admin_emails a WHERE a.email = auth.users.email)
   THEN 'admin' ELSE 'user' END
 FROM auth.users
 ON CONFLICT (id) DO NOTHING;

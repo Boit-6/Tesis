@@ -24,9 +24,13 @@ CREATE SCHEMA IF NOT EXISTS auth;
 -- `email` nullable: Supabase Auth admite registros solo-teléfono (email=NULL).
 -- La tabla real de Supabase también lo admite; si acá fuera NOT NULL no se
 -- podría probar el caso que motivó F1.2 (profiles.email dejó de ser NOT NULL).
+-- `email_confirmed_at`: NULL hasta que el usuario confirma el email (con
+-- "Confirm email" desactivado, Supabase lo completa ya en el INSERT). El
+-- esquema sólo promueve a admin sobre un email confirmado.
 CREATE TABLE IF NOT EXISTS auth.users (
-  id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email TEXT UNIQUE
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email              TEXT UNIQUE,
+  email_confirmed_at TIMESTAMPTZ
 );
 
 -- Misma semántica que la de Supabase: lee el `sub` del JWT de la sesión.

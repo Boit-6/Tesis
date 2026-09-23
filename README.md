@@ -114,6 +114,12 @@ cd tesis
 **2. Base de datos (Supabase):**
 Ejecutar [`db/schema.sql`](db/schema.sql) en el SQL Editor de Supabase (crea tablas, enums, vistas, triggers y las políticas RLS con rol `admin`).
 
+Después, dar de alta la dirección del administrador (el esquema no trae ninguna precargada):
+```sql
+INSERT INTO admin_emails (email) VALUES ('tu-correo@dominio.com');
+```
+Esa cuenta pasa a `admin` recién cuando confirma el email.
+
 **3. Orquestación (n8n + Gotenberg):**
 ```bash
 cp .env.example .env        # completá TELEGRAM_CHAT_ID, NOTION_DATABASE_ID, N8N_PUBLIC_URL…
@@ -177,7 +183,7 @@ npm run test:docker
 | Prueba | Qué verifica |
 |---|---|
 | `test:sql` | Compila con `PREPARE` las **28 consultas SQL** de los workflows contra el esquema real. Una columna mal escrita en un nodo Postgres se detecta acá y no en producción |
-| `test:rls` | Aplica `db/schema.sql` **tal cual está en el repositorio** y ejecuta **24 casos** de RLS rol por rol: que `anon` no acceda a nada, que estar logueado no alcance sin rol `admin`, que la auditoría esté cerrada, que nadie pueda escribir desde el navegador ni auto-ascenderse a admin |
+| `test:rls` | Aplica `db/schema.sql` **tal cual está en el repositorio** y ejecuta **56 casos** de RLS rol por rol: que `anon` no acceda a nada, que estar logueado no alcance sin rol `admin`, que la auditoría esté cerrada, que nadie pueda escribir desde el navegador ni auto-ascenderse a admin, y que la whitelist de admins exija un email confirmado |
 | `test:idempotencia` | Ejecuta de verdad las consultas de deduplicación (S6) y de reconciliación de facturas (S5) sobre el esquema real, leyendo el SQL del propio workflow: si un nodo deja de ser idempotente, se pone en rojo |
 
 Ambas levantan un PostgreSQL desechable: no tocan ninguna instancia real.

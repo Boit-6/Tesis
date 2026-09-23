@@ -214,11 +214,35 @@ SELECT probar('el registro solo-teléfono queda con rol user, no admin',
   'SELECT count(*) FROM profiles WHERE id = ''33333333-3333-4333-8333-333333333333'' AND role = ''user''',
   '1 filas');
 
-INSERT INTO admin_emails (email) VALUES ('nuevo-admin@test.com') ON CONFLICT DO NOTHING;
-INSERT INTO auth.users (id, email) VALUES ('44444444-4444-4444-8444-444444444444', 'nuevo-admin@test.com');
+INSERT INTO admin_emails (email) VALUES ('nuevo-admin@test.com'), ('confirma-despues@test.com') ON CONFLICT DO NOTHING;
+-- Con "Confirm email" desactivado, Supabase trae email_confirmed_at en el INSERT.
+INSERT INTO auth.users (id, email, email_confirmed_at) VALUES ('44444444-4444-4444-8444-444444444444', 'nuevo-admin@test.com', now());
 SELECT probar('handle_new_user promueve a admin sólo por estar en admin_emails, sin tocar profiles a mano',
   'service_role', NULL,
   'SELECT count(*) FROM profiles WHERE id = ''44444444-4444-4444-8444-444444444444'' AND role = ''admin''',
+  '1 filas');
+
+-- ── 16.1 La whitelist no alcanza sin probar que el email es propio ─────────
+SELECT probar('el esquema no trae ningún admin precargado (antes: admin@gmail.com)',
+  'service_role', NULL, 'SELECT count(*) FROM admin_emails WHERE email = ''admin@gmail.com''', '0 filas');
+
+INSERT INTO auth.users (id, email) VALUES ('55555555-5555-4555-8555-555555555555', 'confirma-despues@test.com');
+SELECT probar('un email de la whitelist SIN confirmar queda como user',
+  'service_role', NULL,
+  'SELECT count(*) FROM profiles WHERE id = ''55555555-5555-4555-8555-555555555555'' AND role = ''user''',
+  '1 filas');
+
+UPDATE auth.users SET email_confirmed_at = now() WHERE id = '55555555-5555-4555-8555-555555555555';
+SELECT probar('al confirmar el email, pasa a admin',
+  'service_role', NULL,
+  'SELECT count(*) FROM profiles WHERE id = ''55555555-5555-4555-8555-555555555555'' AND role = ''admin''',
+  '1 filas');
+
+UPDATE profiles SET role = 'user' WHERE id = '55555555-5555-4555-8555-555555555555';
+UPDATE auth.users SET email_confirmed_at = now() + interval '1 second' WHERE id = '55555555-5555-4555-8555-555555555555';
+SELECT probar('un admin bajado a mano no vuelve a subir por otro cambio de la cuenta',
+  'service_role', NULL,
+  'SELECT count(*) FROM profiles WHERE id = ''55555555-5555-4555-8555-555555555555'' AND role = ''user''',
   '1 filas');
 
 -- ── 17. set_actualizado_en: el trigger de leads corre de verdad ────────────
