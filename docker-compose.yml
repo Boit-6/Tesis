@@ -139,7 +139,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          # Con 512M n8n muere por falta de heap al activar el workflow del CRM
+          # (233 nodos): medido el 23-sep-2026, usa ~660M ya activo.
+          memory: 2G
           cpus: '1.0'
     logging:
       driver: json-file

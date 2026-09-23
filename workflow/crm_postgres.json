@@ -5248,6 +5248,19 @@
         18280
       ],
       "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Postgres - Insert Factura devuelve la fila insertada y descarta el binario\n// que armó Code - Generar Factura HTML. Desde que la inserción pasó a correr\n// antes del PDF (18-sep-2026), Gotenberg recibía un item sin\n// factura_html_file y la rama se cortaba: ninguna factura salía por correo.\n// Acá se vuelve a juntar la fila con el HTML.\nconst factura = $('Code - Generar Factura HTML').first();\nreturn [{ json: $input.first().json, binary: factura.binary }];"
+      },
+      "id": "fac-bin-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Code - Recuperar HTML Factura",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2250,
+        1340
+      ]
     }
   ],
   "connections": {
@@ -5657,7 +5670,7 @@
             "index": 0
           },
           {
-            "node": "HTTP - Gotenberg PDF",
+            "node": "Code - Recuperar HTML Factura",
             "type": "main",
             "index": 0
           }
@@ -7149,6 +7162,17 @@
         [
           {
             "node": "HTTP - MercadoPago Expirar Preferencia",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Recuperar HTML Factura": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Gotenberg PDF",
             "type": "main",
             "index": 0
           }
