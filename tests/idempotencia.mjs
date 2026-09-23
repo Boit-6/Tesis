@@ -62,13 +62,15 @@ const SQL_COBRADO_MP = consultaDe('Postgres - Marcar Cobrado MP');
 const SQL_BUSCAR_NO_APLICADO = consultaDe('Postgres - Buscar Pago No Aplicado');
 const SQL_LOG_NO_APLICADO = consultaDe('Postgres - Log Pago No Aplicado');
 const SQL_FACTURA_COBRADA_CIERRE = consultaDe('Postgres - Factura Cobrada');
+const SQL_MARCAR_ACEPTADO = consultaDe('Postgres - Marcar Aceptado');
 const JS_CLASIFICAR_NO_APLICADO = wf.nodes
   .find((n) => n.name === 'Code - Clasificar Pago No Aplicado').parameters.jsCode;
 
 // Si algún `{{ … }}` sobrevivió, la consulta no es ejecutable y el verificador
 // estaría probando otra cosa. Mejor fallar acá y a la vista.
 for (const [nombre, sql] of Object.entries({SQL_INSERT_LEAD, SQL_LEER_ACEPTADO, SQL_INSERT_FACTURA, SQL_LEAD_FACTURADO,
-  SQL_COBRADO_MP, SQL_BUSCAR_NO_APLICADO, SQL_LOG_NO_APLICADO, SQL_FACTURA_COBRADA_CIERRE})) {
+  SQL_COBRADO_MP, SQL_BUSCAR_NO_APLICADO, SQL_LOG_NO_APLICADO, SQL_FACTURA_COBRADA_CIERRE,
+  SQL_MARCAR_ACEPTADO})) {
   if (sql.includes('{{')) throw new Error(`${nombre} conserva una expresión sin resolver: ${sql}`);
 }
 
@@ -429,6 +431,26 @@ try {
   comprobar('la tasa de cobro se calcula sobre lo facturado sin anular (60 %)', tasa === '60.0', metrica);
   comprobar('las vencidas se siguen contando aparte', vencidas === '1', metrica);
   comprobar('el tablero puede separar lo cobrado sólo por cierre', cierreManual === '600.00', metrica);
+
+  console.log('\n── Aceptación: el token se revalida en el mismo UPDATE ──\n');
+
+  // El nodo Code previo ya clasifica el token, pero entre esa lectura y el
+  // UPDATE la propuesta puede reenviarse (rota el token) o vencer. La guarda
+  // tiene que estar en la escritura, no sólo antes.
+  const TOKEN = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+  psql(`
+    INSERT INTO leads (lead_id, nombre, email, presupuesto, servicio, estado, accept_token, token_expira_en)
+    VALUES ('LD-4000000000000-ACEP', 'Acepta', 'acepta@test.com', 1000, 'seo', 'PROPUESTA_ENVIADA', '${TOKEN}', now() + interval '5 days'),
+           ('LD-4000000000001-VENC', 'Vencido', 'vencido@test.com', 1000, 'seo', 'PROPUESTA_ENVIADA', '${TOKEN}', now() - interval '1 minute');
+  `);
+  const aceptar = (leadId, token) => ejecutar(SQL_MARCAR_ACEPTADO, [leadId, token]).length;
+
+  comprobar('con un token que no es el vigente no se acepta',
+    aceptar('LD-4000000000000-ACEP', '00000000-0000-4000-8000-000000000000') === 0);
+  comprobar('con el token vencido no se acepta', aceptar('LD-4000000000001-VENC', TOKEN) === 0);
+  comprobar('con el token vigente se acepta', aceptar('LD-4000000000000-ACEP', TOKEN) === 1);
+  comprobar('y una segunda aceptación con el mismo token no vuelve a aplicar',
+    aceptar('LD-4000000000000-ACEP', TOKEN) === 0);
 
   console.log(`\nResultado: ${ok} OK, ${fallas} FALLA`);
   if (fallas) codigoSalida = 1;

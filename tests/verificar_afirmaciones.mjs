@@ -279,8 +279,10 @@ function medirCualitativas() {
     {
       id: 'aceptacion-condicional-atomica',
       seccion: '§4.3.2 y RNF2',
-      afirma: 'la transición a ACEPTADO es condicional sobre el estado previo',
-      ok: /estado IN \('PROPUESTA_ENVIADA','EN_SEGUIMIENTO'\)/.test(params('Postgres - Marcar Aceptado')),
+      afirma: 'la transición a ACEPTADO es condicional sobre el estado previo y el token vigente',
+      ok: /estado IN \('PROPUESTA_ENVIADA','EN_SEGUIMIENTO'\)/.test(params('Postgres - Marcar Aceptado')) &&
+        /accept_token::text = \$2/.test(params('Postgres - Marcar Aceptado')) &&
+        /token_expira_en > now\(\)/.test(params('Postgres - Marcar Aceptado')),
       detalle: 'nodo Postgres - Marcar Aceptado',
     },
     {

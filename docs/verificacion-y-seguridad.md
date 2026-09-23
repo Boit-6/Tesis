@@ -415,6 +415,23 @@ Cambios:
 payload hostil, exige el escape en cada expresión y comprueba las flags de
 Gotenberg. Contra el workflow anterior da 36 fallos.
 
+### 5.3.4 Token revalidado en la escritura y secretos en tiempo constante (23-sep-2026)
+
+- **Aceptación.** `Code - Clasificar Aceptacion` valida el token al leer el
+  lead, pero `Postgres - Marcar Aceptado` sólo miraba el estado. Si entre la
+  lectura y la escritura la propuesta se reenviaba (el token rota, §5.1.1) o
+  vencía, se aceptaba igual con el token viejo. El `UPDATE` ahora exige
+  `accept_token` y vigencia en la misma sentencia. `tests/idempotencia.mjs`
+  lo ejecuta contra PostgreSQL con token ajeno, vencido y vigente.
+- **Comparación de secretos.** La firma `x-signature` de MercadoPago y el
+  `x-api-key` de tickets se comparaban con `===`, que corta en el primer
+  carácter distinto y deja medir cuánto de un secreto se acertó. Ahora la
+  firma usa `crypto.timingSafeEqual` y tickets una comparación de largo fijo
+  (sus nodos Code no cargan `crypto`). El comentario de tickets que decía que
+  sin clave el módulo «queda abierto» estaba al revés: falla cerrado.
+  `tests/firmas.mjs` (en `npm test`) ejecuta ambos nodos con firmas y claves
+  válidas, falsas, truncadas y ausentes.
+
 ### 5.4 Qué sigue abierto
 
 - **Rate limiting real, verificado en vivo.** El 01-sep-2026 se implementó
