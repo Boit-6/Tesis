@@ -1,27 +1,30 @@
-import {NextResponse} from "next/server";
+import type {Database} from "@/types/supabase";
 
-import {getAdminStatus} from "@/lib/auth";
+// Compartido entre el servidor (/api/tickets) y el tablero (componente de
+// cliente): nada de acá puede importar módulos sólo de servidor.
 
-// Base de n8n para llamadas server-side. Se prefiere N8N_BASE (privada) y se cae
-// a la pública que ya usa el resto del dashboard.
-const N8N_BASE = process.env.N8N_BASE ?? process.env.NEXT_PUBLIC_N8N_BASE;
+// Escala fija del tablero: el orden de ESTADOS son las columnas y el de
+// PRIORIDADES es la escala por la que sube el cron de envejecimiento (los
+// mismos enums de db/schema.sql: ticket_estado y ticket_prioridad).
+export const ESTADOS = ["BACKLOG", "EN_CURSO", "BLOQUEADO", "HECHO"] as const;
 
-// Secreto opcional del módulo de tickets. Vive sólo en el servidor: por eso el
-// tablero habla con n8n a través de /api/tickets y no directo desde el browser.
-const TICKETS_API_KEY = process.env.TICKETS_API_KEY;
+export const PRIORIDADES = ["BAJA", "MEDIA", "ALTA", "CRITICA"] as const;
+
+export type TicketEstado = (typeof ESTADOS)[number];
+
+export type TicketPrioridad = (typeof PRIORIDADES)[number];
 
 export interface Ticket {
   ticket_id: string;
-  url: string | null;
   titulo: string;
-  estado: string;
-  prioridad: string;
-  prioridad_inicial: string;
+  estado: TicketEstado;
+  prioridad: TicketPrioridad;
+  prioridad_inicial: TicketPrioridad;
   score: number;
   etiquetas: string[];
-  proyecto: string;
   origen: string;
-  ref: string;
+  lead_id: string | null;
+  cliente: string | null;
   notas: string;
   vence: string | null;
   creado: string;
@@ -41,92 +44,40 @@ export interface TicketsResponse {
   tickets: Ticket[];
 }
 
-// Compuerta de rol: los route handlers no pasan por el gate de /dashboard, así
-// que cada uno revalida sesión + rol admin por su cuenta (núcleo compartido
-// con las páginas del panel en @/lib/auth).
-export async function requireAdmin() {
-  const {user, esAdmin, supabaseDisponible} = await getAdminStatus();
+export const esEstado = (v: unknown): v is TicketEstado =>
+  typeof v === "string" && (ESTADOS as readonly string[]).includes(v);
 
-  if (!supabaseDisponible) {
-    return NextResponse.json(
-      {ok: false, error: "Faltan las variables de Supabase en el servidor."},
-      {status: 500},
-    );
-  }
+export const esPrioridad = (v: unknown): v is TicketPrioridad =>
+  typeof v === "string" && (PRIORIDADES as readonly string[]).includes(v);
 
-  if (!user) return NextResponse.json({ok: false, error: "No autenticado."}, {status: 401});
+type FilaTablero = Database["public"]["Views"]["tickets_tablero"]["Row"];
 
-  if (!esAdmin) return NextResponse.json({ok: false, error: "Requiere rol admin."}, {status: 403});
+// La vista declara todo nullable (ninguna vista puede garantizar NOT NULL):
+// se descarta la fila que no traiga lo mínimo en vez de pintar un dato roto.
+export function aTicket(fila: FilaTablero): Ticket | null {
+  if (!fila.id || !fila.titulo || !esEstado(fila.estado) || !esPrioridad(fila.prioridad))
+    return null;
 
-  return null;
-}
-
-// Llama a un webhook del módulo de tickets y devuelve la respuesta ya normalizada.
-export async function llamarTickets(
-  ruta: string,
-  init?: {method?: string; body?: unknown},
-): Promise<NextResponse> {
-  if (!N8N_BASE) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "Falta N8N_BASE / NEXT_PUBLIC_N8N_BASE en el servidor.",
-      },
-      {status: 500},
-    );
-  }
-
-  // Sin la key, el módulo de tickets queda abierto del otro lado (ver
-  // autorizado() en tickets_notion.json): mejor no mandar la mutación que
-  // mandarla sin credencial.
-  if (!TICKETS_API_KEY) {
-    return NextResponse.json(
-      {ok: false, error: "Falta TICKETS_API_KEY en el servidor."},
-      {status: 503},
-    );
-  }
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "x-api-key": TICKETS_API_KEY,
+  return {
+    ticket_id: fila.id,
+    titulo: fila.titulo,
+    estado: fila.estado,
+    prioridad: fila.prioridad,
+    prioridad_inicial: esPrioridad(fila.prioridad_inicial)
+      ? fila.prioridad_inicial
+      : fila.prioridad,
+    score: fila.score ?? 0,
+    etiquetas: fila.etiquetas ?? [],
+    origen: fila.origen ?? "",
+    lead_id: fila.lead_id,
+    cliente: fila.cliente,
+    notas: fila.notas ?? "",
+    vence: fila.vence,
+    creado: fila.creado_en ?? "",
+    ultimo_movimiento: fila.ultimo_movimiento ?? "",
+    escaladas: fila.escaladas ?? 0,
+    dias_abierto: fila.dias_abierto ?? 0,
+    dias_quieto: fila.dias_quieto ?? 0,
+    dias_para_escalar: fila.dias_para_escalar,
   };
-
-  // El aviso de ngrok solo aparece detrás de un túnel de desarrollo.
-  if (process.env.NODE_ENV === "development") {
-    headers["ngrok-skip-browser-warning"] = "true";
-  }
-
-  try {
-    const res = await fetch(`${N8N_BASE}/webhook/${ruta}`, {
-      method: init?.method ?? "GET",
-      headers,
-      body: init?.body ? JSON.stringify(init.body) : undefined,
-      cache: "no-store",
-    });
-
-    const texto = await res.text();
-
-    // n8n puede responder vacío si la rama se cortó antes del nodo Respond.
-    if (!texto) {
-      return NextResponse.json(
-        {ok: false, error: `n8n respondió vacío (${res.status}).`},
-        {status: 502},
-      );
-    }
-
-    return new NextResponse(texto, {
-      status: res.status,
-      headers: {"Content-Type": "application/json"},
-    });
-  } catch (err) {
-    console.error(err);
-
-    return NextResponse.json(
-      {
-        ok: false,
-        error: "No se pudo contactar a n8n. ¿Está levantado y publicado el workflow?",
-      },
-      {status: 502},
-    );
-  }
 }

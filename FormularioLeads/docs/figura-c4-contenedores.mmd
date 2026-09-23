@@ -22,7 +22,6 @@ flowchart TB
         direction LR
         gmail["<b>Gmail</b><br/><i>[Sistema externo]</i>"]
         telegram["<b>Telegram</b><br/><i>[Sistema externo]</i>"]
-        notion["<b>Notion</b><br/><i>[Sistema externo]</i>"]
         gotenberg["<b>Gotenberg</b><br/><i>[Sistema externo]</i>"]
         mp["<b>MercadoPago</b><br/><i>[Sistema externo]</i>"]
     end
@@ -39,7 +38,6 @@ flowchart TB
     n8n -->|"Escribe el estado<br/><i>[SQL · service_role]</i>"| db
     n8n -->|"<i>[API]</i>"| gmail
     n8n -->|"<i>[API]</i>"| telegram
-    n8n -->|"<i>[API]</i>"| notion
     n8n -->|"HTML → PDF<br/><i>[HTTP]</i>"| gotenberg
     n8n -->|"Crea la preferencia<br/><i>[API]</i>"| mp
     mp -.->|"Notifica el pago<br/><i>[Webhook]</i>"| n8n
@@ -49,7 +47,7 @@ flowchart TB
     classDef externo fill:#999999,stroke:#6b6b6b,color:#ffffff;
     class cliente,freelancer persona;
     class spa,proxy,n8n,db,auth contenedor;
-    class gmail,telegram,notion,gotenberg,mp externo;
+    class gmail,telegram,gotenberg,mp externo;
 
     style sistema fill:none,stroke:#666666,stroke-dasharray:6 4
     style externos fill:none,stroke:#bbbbbb,stroke-dasharray:3 3

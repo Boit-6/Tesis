@@ -20,7 +20,7 @@ const aqui = path.dirname(fileURLToPath(import.meta.url));
 const raiz = path.join(aqui, '..');
 const leerWf = (f) => JSON.parse(readFileSync(path.join(raiz, 'workflow', f), 'utf8'));
 const crm = leerWf('crm_postgres.json');
-const tickets = leerWf('tickets_notion.json');
+const tickets = leerWf('tickets.json');
 
 let ok = 0, fail = 0;
 const check = (nombre, condicion, detalle) => {

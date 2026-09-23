@@ -78,7 +78,6 @@ CREATE TABLE IF NOT EXISTS leads (
   seguimientos              INT NOT NULL DEFAULT 0,
   operador_asignado         TEXT,
   notas                     TEXT,
-  card_id                   TEXT,
   accept_token              UUID NOT NULL DEFAULT gen_random_uuid(),
   -- Vigencia del enlace de aceptación. La estampa n8n al enviar la propuesta
   -- (`now() + TOKEN_VIGENCIA_DIAS`) y la revalidan todas las consultas que
@@ -182,6 +181,37 @@ CREATE TABLE IF NOT EXISTS admin_emails (
 -- (DELETE FROM admin_emails WHERE email = 'admin@gmail.com'); no se borra
 -- desde acá por si esa era, de verdad, la dirección del administrador.
 
+-- Tickets: el tablero de trabajo del panel. Hasta el 23-sep-2026 vivían en una
+-- base de Notion y n8n hacía de traductor; ahora son una tabla más, con RLS,
+-- tiempo real y la regla de envejecimiento en SQL (ticket_dias_escalada más
+-- abajo y el cron del workflow de tickets).
+DO $$ BEGIN CREATE TYPE ticket_estado AS ENUM ('BACKLOG','EN_CURSO','BLOQUEADO','HECHO');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+-- El orden del enum ES la escala: el cron sube al valor siguiente.
+DO $$ BEGIN CREATE TYPE ticket_prioridad AS ENUM ('BAJA','MEDIA','ALTA','CRITICA');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+CREATE TABLE IF NOT EXISTS tickets (
+  id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  titulo             TEXT NOT NULL CHECK (length(btrim(titulo)) BETWEEN 1 AND 200),
+  estado             ticket_estado NOT NULL DEFAULT 'BACKLOG',
+  prioridad          ticket_prioridad NOT NULL DEFAULT 'MEDIA',
+  prioridad_inicial  ticket_prioridad NOT NULL DEFAULT 'MEDIA',
+  etiquetas          TEXT[] NOT NULL DEFAULT '{}',
+  origen             TEXT NOT NULL DEFAULT 'DASHBOARD' CHECK (origen IN ('DASHBOARD','CRM')),
+  -- El proyecto al que pertenece, si lo sembró la aceptación de una propuesta.
+  lead_id            TEXT REFERENCES leads(lead_id) ON DELETE SET NULL,
+  notas              TEXT CHECK (notas IS NULL OR length(notas) <= 2000),
+  vence              DATE,
+  escaladas          INT NOT NULL DEFAULT 0,
+  -- Último cambio de estado o de prioridad (incluida una escalada): es el
+  -- reloj del envejecimiento. Lo mantiene el trigger trg_tickets_movimiento.
+  ultimo_movimiento  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  cerrado_en         TIMESTAMPTZ,
+  creado_en          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- Registro de invocaciones por IP/clave y ruta, para el rate limiting básico
 -- de los cinco webhooks públicos que no admiten autenticación de origen
 -- (Tabla 11, S1: lead/nuevo, lead-propuesta, lead-acepta, lead-rechaza,
@@ -219,6 +249,10 @@ CREATE TABLE IF NOT EXISTS rate_limit_log (
 -- traen; sobre una base vieja, en cambio, el índice se crearía antes de que
 -- exista la columna y el script aborta.
 -- =====================================================================
+
+-- Notion salió del sistema (23-sep-2026): el lead ya no tiene una tarjeta
+-- espejo, así que `card_id` no apunta a nada.
+ALTER TABLE leads DROP COLUMN IF EXISTS card_id;
 
 -- Columna de estado del trabajo (para bases creadas antes de agregarla).
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS estado_trabajo trabajo_estado NOT NULL DEFAULT 'PENDIENTE';
@@ -352,6 +386,11 @@ CREATE INDEX IF NOT EXISTS idx_rate_limit_clave_ruta_fecha
 -- vuelve a declararse arriba.
 DROP INDEX IF EXISTS idx_leads_token_venc;
 
+-- Tickets: el tablero lee los abiertos, el cron busca los quietos, y la
+-- siembra del CRM no puede duplicar un ticket del mismo proyecto.
+CREATE INDEX IF NOT EXISTS idx_tickets_estado ON tickets(estado, ultimo_movimiento);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tickets_lead_titulo ON tickets(lead_id, titulo) WHERE lead_id IS NOT NULL;
+
 -- Nota de alcance: a la escala del MVP (decenas de filas) estos índices no
 -- cambian los tiempos de forma observable. Se agregan porque las consultas que
 -- los usan ya están escritas y son las que crecerían en un uso real.
@@ -370,6 +409,44 @@ DROP TRIGGER IF EXISTS trg_leads_updated ON leads;
 CREATE TRIGGER trg_leads_updated
   BEFORE UPDATE ON leads
   FOR EACH ROW EXECUTE FUNCTION set_actualizado_en();
+
+-- ---------------------------------------------------------------------
+-- Tickets: reglas del envejecimiento
+-- ---------------------------------------------------------------------
+-- Días sin movimiento que tolera cada prioridad antes de subir un escalón.
+-- CRITICA es el tope: no escala.
+CREATE OR REPLACE FUNCTION ticket_dias_escalada(p ticket_prioridad) RETURNS int
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE p WHEN 'BAJA' THEN 10 WHEN 'MEDIA' THEN 7 WHEN 'ALTA' THEN 4 END
+$$;
+
+-- Peso de la prioridad en el score (0-100) que ordena el tablero.
+CREATE OR REPLACE FUNCTION ticket_peso(p ticket_prioridad) RETURNS int
+LANGUAGE sql IMMUTABLE AS $$
+  SELECT CASE p WHEN 'BAJA' THEN 10 WHEN 'MEDIA' THEN 25 WHEN 'ALTA' THEN 50 WHEN 'CRITICA' THEN 80 END
+$$;
+
+-- Cambiar el estado o la prioridad cuenta como movimiento y reinicia el reloj
+-- (desde el tablero, o el propio cron al escalar). Pasar a HECHO lo cierra.
+CREATE OR REPLACE FUNCTION tickets_movimiento() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.estado IS DISTINCT FROM OLD.estado OR NEW.prioridad IS DISTINCT FROM OLD.prioridad THEN
+    NEW.ultimo_movimiento := now();
+  END IF;
+  IF NEW.estado = 'HECHO' AND OLD.estado <> 'HECHO' THEN
+    NEW.cerrado_en := now();
+  ELSIF NEW.estado <> 'HECHO' THEN
+    NEW.cerrado_en := NULL;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_tickets_movimiento ON tickets;
+CREATE TRIGGER trg_tickets_movimiento
+  BEFORE UPDATE ON tickets
+  FOR EACH ROW EXECUTE FUNCTION tickets_movimiento();
 
 -- ---------------------------------------------------------------------
 -- Trigger: crea el perfil (rol 'user' por defecto) al registrarse.
@@ -456,6 +533,7 @@ ON CONFLICT (id) DO NOTHING;
 -- Son vistas sin estado: dropearlas no toca ningún dato.
 DROP VIEW IF EXISTS metrics_mensuales;
 DROP VIEW IF EXISTS facturas_pendientes;
+DROP VIEW IF EXISTS tickets_tablero;
 
 CREATE OR REPLACE VIEW metrics_mensuales
   WITH (security_invoker = true) AS
@@ -537,6 +615,25 @@ SELECT
 FROM facturas f
 WHERE f.estado_pago = 'PENDIENTE';
 
+-- Lo que pinta el tablero: el ticket, el cliente del proyecto y los números
+-- del envejecimiento calculados al momento (nada de esto se guarda, así no
+-- hay un score viejo esperando al cron).
+CREATE OR REPLACE VIEW tickets_tablero
+  WITH (security_invoker = true) AS
+SELECT
+  t.*,
+  l.nombre                                               AS cliente,
+  (now()::date - t.creado_en::date)                      AS dias_abierto,
+  (now()::date - t.ultimo_movimiento::date)              AS dias_quieto,
+  CASE WHEN t.estado = 'HECHO' THEN 0
+       ELSE least(100, ticket_peso(t.prioridad) + 2 * (now()::date - t.creado_en::date))
+  END                                                    AS score,
+  CASE WHEN t.estado = 'HECHO' OR t.prioridad = 'CRITICA' THEN NULL
+       ELSE greatest(0, ticket_dias_escalada(t.prioridad) - (now()::date - t.ultimo_movimiento::date))
+  END                                                    AS dias_para_escalar
+FROM tickets t
+LEFT JOIN leads l USING (lead_id);
+
 -- =====================================================================
 -- Seguridad a nivel de fila (RLS) — RNF1, RNF2, §4.6, Anexo C
 -- =====================================================================
@@ -550,6 +647,7 @@ ALTER TABLE logs            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profiles        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rate_limit_log  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_emails    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tickets         ENABLE ROW LEVEL SECURITY;
 
 -- 1.1) FORCE: sin esto, el OWNER de la tabla evade la RLS igual que si
 --      tuviera BYPASSRLS (una tarea de backup o una migración conectada con
@@ -563,6 +661,7 @@ ALTER TABLE logs            FORCE ROW LEVEL SECURITY;
 ALTER TABLE profiles        FORCE ROW LEVEL SECURITY;
 ALTER TABLE rate_limit_log  FORCE ROW LEVEL SECURITY;
 ALTER TABLE admin_emails    FORCE ROW LEVEL SECURITY;
+ALTER TABLE tickets         FORCE ROW LEVEL SECURITY;
 
 -- 2) Políticas de LECTURA sobre las tablas que alimentan el tablero.
 --    No alcanza con `authenticated`: se exige además `profiles.role =
@@ -605,6 +704,24 @@ CREATE POLICY profiles_select_own ON profiles
 -- 4) Privilegios de tabla (GRANT). La RLS filtra filas, pero el rol
 --    igual necesita el privilegio SELECT sobre el objeto.
 GRANT SELECT ON leads, facturas, seguimientos, profiles TO authenticated;
+
+-- 4.1) Tickets: a diferencia del resto, el tablero SÍ escribe (crear y mover
+--      tickets desde /api/tickets, con la sesión del admin). Sin DELETE.
+DROP POLICY IF EXISTS tickets_select_admin ON tickets;
+CREATE POLICY tickets_select_admin ON tickets
+  FOR SELECT TO authenticated
+  USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+DROP POLICY IF EXISTS tickets_insert_admin ON tickets;
+CREATE POLICY tickets_insert_admin ON tickets
+  FOR INSERT TO authenticated
+  WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+DROP POLICY IF EXISTS tickets_update_admin ON tickets;
+CREATE POLICY tickets_update_admin ON tickets
+  FOR UPDATE TO authenticated
+  USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'))
+  WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+GRANT SELECT, INSERT, UPDATE ON tickets TO authenticated;
+GRANT SELECT ON tickets_tablero TO authenticated;
 GRANT SELECT ON metrics_mensuales, facturas_pendientes TO authenticated;
 
 -- 5) `service_role` se conserva para acceso administrativo (SQL editor,
@@ -614,7 +731,8 @@ GRANT SELECT ON metrics_mensuales, facturas_pendientes TO authenticated;
 --    autoalojado del docker-compose) NO, y BYPASSRLS solo evade la RLS, no
 --    otorga el privilegio de tabla. Se conceden explícitamente para que
 --    funcione en ambos entornos.
-GRANT SELECT, INSERT, UPDATE, DELETE ON leads, facturas, seguimientos, logs, profiles, rate_limit_log, admin_emails TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON leads, facturas, seguimientos, logs, profiles, rate_limit_log, admin_emails, tickets TO service_role;
+GRANT SELECT ON tickets_tablero TO service_role;
 GRANT SELECT ON metrics_mensuales, facturas_pendientes TO service_role;
 
 -- Nota: la `service_role` posee además BYPASSRLS, por lo que sus escrituras
@@ -709,6 +827,17 @@ DROP POLICY IF EXISTS rate_limit_log_insert_n8n_writer ON rate_limit_log;
 CREATE POLICY rate_limit_log_insert_n8n_writer ON rate_limit_log
   FOR INSERT TO n8n_writer WITH CHECK (true);
 
+-- Tickets: el CRM siembra los del proyecto al aceptarse una propuesta y el
+-- cron de envejecimiento los escala. Sin DELETE, como el resto.
+GRANT SELECT, INSERT, UPDATE ON tickets TO n8n_writer;
+GRANT SELECT ON tickets_tablero TO n8n_writer;
+DROP POLICY IF EXISTS tickets_select_n8n_writer ON tickets;
+CREATE POLICY tickets_select_n8n_writer ON tickets FOR SELECT TO n8n_writer USING (true);
+DROP POLICY IF EXISTS tickets_insert_n8n_writer ON tickets;
+CREATE POLICY tickets_insert_n8n_writer ON tickets FOR INSERT TO n8n_writer WITH CHECK (true);
+DROP POLICY IF EXISTS tickets_update_n8n_writer ON tickets;
+CREATE POLICY tickets_update_n8n_writer ON tickets FOR UPDATE TO n8n_writer USING (true) WITH CHECK (true);
+
 -- Paso operativo pendiente, fuera del alcance de este script porque no debe
 -- versionar contraseñas: en el proyecto de Supabase real, dar LOGIN y una
 -- contraseña a `n8n_writer` (`ALTER ROLE n8n_writer WITH LOGIN PASSWORD
@@ -720,8 +849,8 @@ CREATE POLICY rate_limit_log_insert_n8n_writer ON rate_limit_log
 -- 6) El rol público (`anon`) no debe leer las tablas de negocio ni las
 --    vistas. Se revoca explícitamente por si el default privilege de la
 --    plataforma lo hubiera otorgado.
-REVOKE ALL ON leads, facturas, seguimientos, logs, profiles, rate_limit_log, admin_emails FROM anon;
-REVOKE ALL ON metrics_mensuales, facturas_pendientes FROM anon;
+REVOKE ALL ON leads, facturas, seguimientos, logs, profiles, rate_limit_log, admin_emails, tickets FROM anon;
+REVOKE ALL ON metrics_mensuales, facturas_pendientes, tickets_tablero FROM anon;
 
 -- 7) Realtime: el tablero se suscribe a los cambios de `leads`
 --    (postgres_changes, §4.2.5 / RNF6 / escenario E7) y, desde el
@@ -736,7 +865,7 @@ DECLARE
   t text;
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
-    FOREACH t IN ARRAY ARRAY['leads', 'facturas'] LOOP
+    FOREACH t IN ARRAY ARRAY['leads', 'facturas', 'tickets'] LOOP
       IF NOT EXISTS (
         SELECT 1 FROM pg_publication_tables
         WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = t

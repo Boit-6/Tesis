@@ -63,6 +63,10 @@ const SQL_BUSCAR_NO_APLICADO = consultaDe('Postgres - Buscar Pago No Aplicado');
 const SQL_LOG_NO_APLICADO = consultaDe('Postgres - Log Pago No Aplicado');
 const SQL_FACTURA_COBRADA_CIERRE = consultaDe('Postgres - Factura Cobrada');
 const SQL_MARCAR_ACEPTADO = consultaDe('Postgres - Marcar Aceptado');
+const SQL_CREAR_TICKETS = consultaDe('Postgres - Crear Tickets Proyecto');
+const wfTickets = JSON.parse(readFileSync(path.join(raiz, 'workflow', 'tickets.json'), 'utf8'));
+const SQL_ESCALAR = wfTickets.nodes.find((n) => n.name === 'Postgres - Escalar Tickets Quietos')
+  .parameters.query.trim().replace(/;$/, '');
 const JS_CLASIFICAR_NO_APLICADO = wf.nodes
   .find((n) => n.name === 'Code - Clasificar Pago No Aplicado').parameters.jsCode;
 
@@ -70,7 +74,7 @@ const JS_CLASIFICAR_NO_APLICADO = wf.nodes
 // estaría probando otra cosa. Mejor fallar acá y a la vista.
 for (const [nombre, sql] of Object.entries({SQL_INSERT_LEAD, SQL_LEER_ACEPTADO, SQL_INSERT_FACTURA, SQL_LEAD_FACTURADO,
   SQL_COBRADO_MP, SQL_BUSCAR_NO_APLICADO, SQL_LOG_NO_APLICADO, SQL_FACTURA_COBRADA_CIERRE,
-  SQL_MARCAR_ACEPTADO})) {
+  SQL_MARCAR_ACEPTADO, SQL_CREAR_TICKETS, SQL_ESCALAR})) {
   if (sql.includes('{{')) throw new Error(`${nombre} conserva una expresión sin resolver: ${sql}`);
 }
 
@@ -451,6 +455,54 @@ try {
   comprobar('con el token vigente se acepta', aceptar('LD-4000000000000-ACEP', TOKEN) === 1);
   comprobar('y una segunda aceptación con el mismo token no vuelve a aplicar',
     aceptar('LD-4000000000000-ACEP', TOKEN) === 0);
+
+  console.log('\n── Tickets: siembra del CRM y envejecimiento ──\n');
+
+  // Los parámetros que arma Code - Tickets del Proyecto, una fila por ticket.
+  const sembrar = (titulo, prioridad = 'ALTA') => ejecutar(SQL_CREAR_TICKETS,
+    [titulo, prioridad, 'LD-4000000000000-ACEP', 'proyecto,seo', 'Generado', '2026-12-01']);
+
+  sembrar('Kickoff con Acepta');
+  sembrar('Kickoff con Acepta');
+  comprobar('sembrar dos veces el mismo ticket del proyecto no lo duplica',
+    valor("SELECT count(*) FROM tickets WHERE lead_id = 'LD-4000000000000-ACEP';") === '1');
+  comprobar('las etiquetas llegan como arreglo y la vista trae el cliente',
+    valor("SELECT array_to_string(etiquetas, '|') || ' ' || cliente FROM tickets_tablero WHERE lead_id = 'LD-4000000000000-ACEP';") === 'proyecto|seo Acepta');
+
+  // Tickets con el reloj corrido: uno BAJA quieto 11 días (tolera 10), uno
+  // ALTA quieto 2 días (tolera 4), uno HECHO viejo y uno ya en CRITICA.
+  psql(`
+    INSERT INTO tickets (titulo, prioridad, estado, creado_en, ultimo_movimiento) VALUES
+      ('Olvidado', 'BAJA', 'BACKLOG', now() - interval '11 days', now() - interval '11 days'),
+      ('Reciente', 'ALTA', 'EN_CURSO', now() - interval '2 days', now() - interval '2 days'),
+      ('Cerrado viejo', 'BAJA', 'HECHO', now() - interval '40 days', now() - interval '40 days'),
+      ('Incendio', 'CRITICA', 'BACKLOG', now() - interval '9 days', now() - interval '9 days');
+  `);
+  const ticket = (titulo) => valor(`SELECT prioridad || '/' || escaladas || '/' || dias_quieto || '/' || score FROM tickets_tablero WHERE titulo = '${titulo}';`);
+
+  comprobar('el score crece con los días abierto (BAJA 10 + 2×11 = 32)', ticket('Olvidado').endsWith('/32'), ticket('Olvidado'));
+  comprobar('un ticket cerrado vale 0', ticket('Cerrado viejo').endsWith('/0'), ticket('Cerrado viejo'));
+
+  const [resumen] = ejecutar(SQL_ESCALAR);
+  const [abiertos, escaladas, criticos] = resumen.split('|');
+
+  comprobar('el cron escala sólo al que superó lo que tolera su prioridad',
+    JSON.parse(escaladas).map((t) => t.titulo).join() === 'Olvidado', escaladas);
+  comprobar('sube un escalón y el reloj se reinicia', ticket('Olvidado').startsWith('MEDIA/1/0/'), ticket('Olvidado'));
+  comprobar('el cerrado y el reciente no se tocan',
+    ticket('Cerrado viejo').startsWith('BAJA/0/') && ticket('Reciente').startsWith('ALTA/0/'));
+  comprobar('CRITICA es el tope: no escala, pero aparece en el resumen',
+    ticket('Incendio').startsWith('CRITICA/0/') && JSON.parse(criticos).some((t) => t.titulo === 'Incendio'), criticos);
+  comprobar('el resumen cuenta los abiertos', Number(abiertos) >= 4, abiertos);
+  comprobar('correrlo de nuevo el mismo día no vuelve a escalar',
+    JSON.parse(ejecutar(SQL_ESCALAR)[0].split('|')[1]).length === 0);
+
+  psql("UPDATE tickets SET estado = 'HECHO' WHERE titulo = 'Reciente';");
+  comprobar('pasar a HECHO lo cierra (cerrado_en)',
+    valor("SELECT cerrado_en IS NOT NULL FROM tickets WHERE titulo = 'Reciente';") === 't');
+  psql("UPDATE tickets SET estado = 'EN_CURSO' WHERE titulo = 'Reciente';");
+  comprobar('reabrirlo limpia cerrado_en',
+    valor("SELECT cerrado_en IS NULL FROM tickets WHERE titulo = 'Reciente';") === 't');
 
   console.log(`\nResultado: ${ok} OK, ${fallas} FALLA`);
   if (fallas) codigoSalida = 1;

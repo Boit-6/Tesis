@@ -2,7 +2,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## 🔵 Captación y calificación (RAMA 1)\nCapta el lead del formulario → normaliza → **score/tier** → lo guarda.\nSi es HOT/WARM: propuesta por email + card en Notion + Telegram. Si es COLD: solo aviso.\n\n**Idempotencia (S6):** el INSERT es condicional — no inserta si ya entró un lead con el **mismo correo** dentro de `DEDUP_VENTANA_MINUTOS` (10 por defecto). Sin fila, `IF - Lead Nuevo?` corta en `No-op - Lead Duplicado`: ni segundo score ni segunda propuesta. El webhook ya respondió 200 al enviar, así que el que hizo doble clic ve éxito igual.\nEl `WHERE NOT EXISTS` **solo no alcanza**: dos peticiones solapadas abren transacciones distintas y, bajo READ COMMITTED, ninguna ve la fila que la otra no commiteó todavía (comprobado: dos POST simultáneos insertaban dos leads). Por eso va delante `pg_try_advisory_xact_lock` sobre el correo, que solo una de las dos transacciones consigue.",
+        "content": "## 🔵 Captación y calificación (RAMA 1)\nCapta el lead del formulario → normaliza → **score/tier** → lo guarda.\nSi es HOT/WARM: propuesta por email + Telegram. Si es COLD: solo aviso.\n\n**Idempotencia (S6):** el INSERT es condicional — no inserta si ya entró un lead con el **mismo correo** dentro de `DEDUP_VENTANA_MINUTOS` (10 por defecto). Sin fila, `IF - Lead Nuevo?` corta en `No-op - Lead Duplicado`: ni segundo score ni segunda propuesta. El webhook ya respondió 200 al enviar, así que el que hizo doble clic ve éxito igual.\nEl `WHERE NOT EXISTS` **solo no alcanza**: dos peticiones solapadas abren transacciones distintas y, bajo READ COMMITTED, ninguna ve la fila que la otra no commiteó todavía (comprobado: dos POST simultáneos insertaban dos leads). Por eso va delante `pg_try_advisory_xact_lock` sobre el correo, que solo una de las dos transacciones consigue.",
         "height": 650,
         "width": 3930,
         "color": 4
@@ -18,7 +18,7 @@
     },
     {
       "parameters": {
-        "content": "## 🟢 Aceptación y facturación (RAMA 2)\nEl cliente acepta → valida token → **ACEPTADO** → genera **factura PDF** (Gotenberg) → guarda → email + Telegram + Notion.\n\n**Tickets del proyecto:** al aplicar la aceptación se siembran los tickets en el tablero de Notion llamando al webhook del módulo `tickets_notion.json`. Es una llamada HTTP con `onError: continuar`: si el módulo no está activo, la aceptación no se ve afectada.",
+        "content": "## 🟢 Aceptación y facturación (RAMA 2)\nEl cliente acepta → valida token → **ACEPTADO** → genera **factura PDF** (Gotenberg) → guarda → email + Telegram.\n\n**Tickets del proyecto:** al aplicar la aceptación se siembran los tickets del proyecto en la tabla `tickets` (plantilla en TICKETS_PLANTILLA_PROYECTO). El INSERT tiene `onError: continuar` y no duplica si se repite: un problema con los tickets no afecta la aceptación.",
         "height": 650,
         "width": 3030,
         "color": 3
@@ -82,7 +82,7 @@
     },
     {
       "parameters": {
-        "content": "## 🗂️ Estado del trabajo (dashboard)\nDesde el panel: cambia `estado_trabajo` en Supabase + espeja en Notion.",
+        "content": "## 🗂️ Estado del trabajo (dashboard)\nDesde el panel: cambia `estado_trabajo` en Supabase.",
         "height": 470,
         "width": 1530,
         "color": 5
@@ -98,7 +98,7 @@
     },
     {
       "parameters": {
-        "content": "## 🚫 Cancelar (dashboard)\nEl freelancer **cancela** un lead desde el panel → PERDIDO + Telegram + Notion CANCELADO.",
+        "content": "## 🚫 Cancelar (dashboard)\nEl freelancer **cancela** un lead desde el panel → PERDIDO + Telegram.",
         "height": 830,
         "width": 1530,
         "color": 2
@@ -146,7 +146,7 @@
     },
     {
       "parameters": {
-        "content": "## 🔴 Cierre de proyecto (RAMA 5)\n**Cierra**: CERRADO + factura COBRADA + Notion + Telegram + email de testimonio.",
+        "content": "## 🔴 Cierre de proyecto (RAMA 5)\n**Cierra**: CERRADO + factura COBRADA + Telegram + email de testimonio.",
         "height": 470,
         "width": 2430,
         "color": 3
@@ -415,186 +415,6 @@
         1350,
         12140
       ]
-    },
-    {
-      "parameters": {
-        "jsCode": "const l = $('Code - Generar Propuesta').first().json;\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n// Base de Notion con las cards de leads. Requiere N8N_BLOCK_ENV_ACCESS_IN_NODE=false.\nconst DATABASE_ID = leerEnv('NOTION_DATABASE_ID', 'REEMPLAZAR_DATABASE_ID');\nconst body = {\n  parent: { database_id: DATABASE_ID },\n  properties: {\n    Name: { title: [{ text: { content: String(l.nombre || 'Lead') } }] },\n    Estado: { select: { name: 'PROPUESTA_ENVIADA' } },\n    Tier: { select: { name: String(l.tier || 'COLD') } },\n    Servicio: { select: { name: String(l.servicio || 'otro') } },\n    Email: { email: String(l.email || 'sin@email.com') },\n    Presupuesto: { number: Number(l.presupuesto) || 0 },\n    Score: { number: Number(l.score) || 0 },\n    'Lead ID': { rich_text: [{ text: { content: String(l.lead_id || '') } }] }\n  }\n};\nreturn [{ json: { lead_id: l.lead_id, notion_body: body } }];"
-      },
-      "id": "6f6f8741-c420-4b9f-9eb6-557687c3a37d",
-      "name": "Code - Preparar Card Notion",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2550,
-        100
-      ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.notion.com/v1/pages",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "notionApi",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Notion-Version",
-              "value": "2022-06-28"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.notion_body) }}",
-        "options": {}
-      },
-      "id": "a54e785d-500f-475f-9966-2855d5aa9a5a",
-      "name": "Notion - Crear Card",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [
-        2850,
-        100
-      ],
-      "credentials": {
-        "notionApi": {
-          "id": "ixGL80lti6fEq518",
-          "name": "Notion account"
-        }
-      },
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "UPDATE leads SET card_id = COALESCE(NULLIF($1, ''), card_id) WHERE lead_id = $2;",
-        "options": {
-          "queryReplacement": "={{ [$json.id || '', $('Code - Preparar Card Notion').item.json.lead_id] }}"
-        }
-      },
-      "id": "0afbc8e1-d009-4a3f-af1a-252c5f1ca56f",
-      "name": "Postgres - Guardar card_id",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        3150,
-        100
-      ],
-      "credentials": {
-        "postgres": {
-          "id": "vgFRrzGWcRMcT0YX",
-          "name": "Postgres account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "method": "PATCH",
-        "url": "=https://api.notion.com/v1/pages/{{ $json.card_id }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "notionApi",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Notion-Version",
-              "value": "2022-06-28"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ properties: { Estado: { select: { name: 'ACEPTADO' } } } }) }}",
-        "options": {}
-      },
-      "id": "f946e2a9-35aa-4bd5-b86b-007b96efafc2",
-      "name": "Notion - Estado Aceptado",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [
-        1650,
-        1430
-      ],
-      "credentials": {
-        "notionApi": {
-          "id": "ixGL80lti6fEq518",
-          "name": "Notion account"
-        }
-      },
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "method": "PATCH",
-        "url": "=https://api.notion.com/v1/pages/{{ $('Postgres - Lead Cerrado').item.json.card_id }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "notionApi",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Notion-Version",
-              "value": "2022-06-28"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ properties: { Estado: { select: { name: 'CERRADO' } } } }) }}",
-        "options": {}
-      },
-      "id": "21e61a00-32e7-4cad-84d5-1e659d0d93b3",
-      "name": "Notion - Estado Cerrado",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [
-        1050,
-        10630
-      ],
-      "credentials": {
-        "notionApi": {
-          "id": "ixGL80lti6fEq518",
-          "name": "Notion account"
-        }
-      },
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "method": "PATCH",
-        "url": "=https://api.notion.com/v1/pages/{{ $('Code - Preparar Follow-up').item.json.card_id }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "notionApi",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Notion-Version",
-              "value": "2022-06-28"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ properties: { Estado: { select: { name: 'PERDIDO' } } } }) }}",
-        "options": {}
-      },
-      "id": "3abe1e5b-e545-4328-bd22-8690ba991c57",
-      "name": "Notion - Estado Perdido",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [
-        2550,
-        12930
-      ],
-      "credentials": {
-        "notionApi": {
-          "id": "ixGL80lti6fEq518",
-          "name": "Notion account"
-        }
-      },
-      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -2804,169 +2624,6 @@
     },
     {
       "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": true,
-            "typeValidation": "loose"
-          },
-          "conditions": [
-            {
-              "leftValue": "={{ $json.card_id }}",
-              "rightValue": "",
-              "operator": {
-                "type": "string",
-                "operation": "notEmpty",
-                "singleValue": true
-              }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "f1a20025-0000-4025-8025-cc0000000025",
-      "name": "IF - Tiene Card?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [
-        1050,
-        6030
-      ]
-    },
-    {
-      "parameters": {
-        "method": "PATCH",
-        "url": "=https://api.notion.com/v1/pages/{{ $json.card_id }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "notionApi",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Notion-Version",
-              "value": "2022-06-28"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ properties: { 'Estado Trabajo': { select: { name: $('Code - Validar Estado Trabajo').item.json.estado } } } }) }}",
-        "options": {}
-      },
-      "id": "f1a20026-0000-4026-8026-cc0000000026",
-      "name": "Notion - Estado Trabajo",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [
-        1350,
-        5850
-      ],
-      "credentials": {
-        "notionApi": {
-          "id": "ixGL80lti6fEq518",
-          "name": "Notion account"
-        }
-      },
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "method": "PATCH",
-        "url": "=https://api.notion.com/v1/pages/{{ $json.card_id }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "notionApi",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Notion-Version",
-              "value": "2022-06-28"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ properties: { Estado: { select: { name: 'CANCELADO' } } } }) }}",
-        "options": {}
-      },
-      "id": "f1a20031-0000-4031-8031-dd0000000031",
-      "name": "Notion - Estado Cancelado",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [
-        1350,
-        3910
-      ],
-      "credentials": {
-        "notionApi": {
-          "id": "ixGL80lti6fEq518",
-          "name": "Notion account"
-        }
-      },
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT card_id FROM leads WHERE lead_id = $1 LIMIT 1;",
-        "options": {
-          "queryReplacement": "={{ [$json.lead_id] }}"
-        }
-      },
-      "id": "f1a20032-0000-4032-8032-dd0000000032",
-      "name": "Postgres - Buscar Card Pago",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.6,
-      "position": [
-        1350,
-        11960
-      ],
-      "alwaysOutputData": true,
-      "credentials": {
-        "postgres": {
-          "id": "vgFRrzGWcRMcT0YX",
-          "name": "Postgres account"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "method": "PATCH",
-        "url": "=https://api.notion.com/v1/pages/{{ $json.card_id }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "notionApi",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Notion-Version",
-              "value": "2022-06-28"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ properties: { Estado: { select: { name: 'PAGADO' } } } }) }}",
-        "options": {}
-      },
-      "id": "f1a20033-0000-4033-8033-dd0000000033",
-      "name": "Notion - Estado Pagado",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [
-        1650,
-        11600
-      ],
-      "credentials": {
-        "notionApi": {
-          "id": "ixGL80lti6fEq518",
-          "name": "Notion account"
-        }
-      },
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
         "httpMethod": "POST",
         "path": "lead-cancelar",
         "responseMode": "responseNode",
@@ -3102,42 +2759,6 @@
         1350,
         7180
       ],
-      "onError": "continueRegularOutput"
-    },
-    {
-      "parameters": {
-        "method": "PATCH",
-        "url": "=https://api.notion.com/v1/pages/{{ $json.card_id }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "notionApi",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Notion-Version",
-              "value": "2022-06-28"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ properties: { Estado: { select: { name: 'CANCELADO' } } } }) }}",
-        "options": {}
-      },
-      "id": "f1a20046-0000-4046-8046-ee0000000046",
-      "name": "Notion - Cancelado Panel",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [
-        1350,
-        7360
-      ],
-      "credentials": {
-        "notionApi": {
-          "id": "ixGL80lti6fEq518",
-          "name": "Notion account"
-        }
-      },
       "onError": "continueRegularOutput"
     },
     {
@@ -3575,7 +3196,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Al aceptarse la propuesta, siembra los tickets del proyecto en el tablero\n// (workflow tickets_notion.json). El enganche es por HTTP y no por nodos\n// compartidos: el módulo de tickets sigue siendo independiente y reusable.\n// La plantilla es configurable con TICKETS_PLANTILLA_PROYECTO, con filas\n// \"Titulo|PRIORIDAD|dias_hasta_vencer\" separadas por \";\".\nconst lead = $input.first().json || {};\nconst env = (typeof $env !== 'undefined' && $env) ? $env : {};\nconst leer = (k, def) => {\n  let v;\n  try { v = env[k]; } catch (e) { v = undefined; }\n  return (v === undefined || v === null || v === '') ? def : String(v);\n};\n\nconst base = leer('TICKETS_WEBHOOK_BASE', 'http://localhost:5678').replace(/\\/+$/, '');\nconst plantilla = leer(\n  'TICKETS_PLANTILLA_PROYECTO',\n  'Kickoff con {cliente}|ALTA|2;Primera entrega de {servicio}|MEDIA|7;Revision y ajustes|MEDIA|14;Cobrar la factura de {cliente}|ALTA|10'\n);\n\nconst cliente = String(lead.nombre || 'el cliente');\nconst servicio = String(lead.servicio || 'el proyecto').replace(/_/g, ' ');\nconst enDias = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);\n\nconst items = [];\nfor (const fila of plantilla.split(';')) {\n  const partes = fila.split('|').map((s) => String(s || '').trim());\n  const titulo = partes[0];\n  if (!titulo) continue;\n  const dias = Number(partes[2]);\n  const ticket = {\n    titulo: titulo.replace(/\\{cliente\\}/g, cliente).replace(/\\{servicio\\}/g, servicio),\n    prioridad: partes[1] || 'MEDIA',\n    origen: 'CRM',\n    ref: String(lead.lead_id || ''),\n    etiquetas: ['proyecto', servicio.replace(/\\s+/g, '-')],\n    notas: 'Generado automaticamente al aceptarse la propuesta de ' + cliente + '.'\n  };\n  if (Number.isFinite(dias) && dias > 0) ticket.vence = enDias(dias);\n  items.push({ json: { url: base + '/webhook/ticket/nuevo', ticket: ticket } });\n}\nreturn items;"
+        "jsCode": "// Al aceptarse la propuesta, siembra los tickets del proyecto en el tablero\n// (tabla tickets). La plantilla es configurable con TICKETS_PLANTILLA_PROYECTO:\n// filas \"Titulo|PRIORIDAD|dias_hasta_vencer\" separadas por \";\", donde\n// {cliente} y {servicio} se reemplazan con los datos del lead.\nconst lead = $input.first().json || {};\nconst env = (typeof $env !== 'undefined' && $env) ? $env : {};\nconst leer = (k, def) => {\n  let v;\n  try { v = env[k]; } catch (e) { v = undefined; }\n  return (v === undefined || v === null || v === '') ? def : String(v);\n};\nconst plantilla = leer(\n  'TICKETS_PLANTILLA_PROYECTO',\n  'Kickoff con {cliente}|ALTA|2;Primera entrega de {servicio}|MEDIA|7;Revision y ajustes|MEDIA|14;Cobrar la factura de {cliente}|ALTA|10'\n);\nconst PRIORIDADES = ['BAJA', 'MEDIA', 'ALTA', 'CRITICA'];\nconst cliente = String(lead.nombre || 'el cliente');\nconst servicio = String(lead.servicio || 'el proyecto').replace(/_/g, ' ');\nconst enDias = (d) => new Date(Date.now() + d * 86400000).toISOString().slice(0, 10);\n\nconst items = [];\nfor (const fila of plantilla.split(';')) {\n  const partes = fila.split('|').map((s) => String(s || '').trim());\n  if (!partes[0]) continue;\n  const prioridad = String(partes[1] || '').toUpperCase();\n  const dias = Number(partes[2]);\n  items.push({ json: {\n    titulo: partes[0].replace(/\\{cliente\\}/g, cliente).replace(/\\{servicio\\}/g, servicio).slice(0, 200),\n    prioridad: PRIORIDADES.includes(prioridad) ? prioridad : 'MEDIA',\n    lead_id: String(lead.lead_id || ''),\n    // Postgres arma el arreglo con string_to_array: sin comas adentro.\n    etiquetas: ['proyecto', servicio.replace(/[\\s,]+/g, '-')].join(','),\n    notas: 'Generado automáticamente al aceptarse la propuesta de ' + cliente + '.',\n    vence: (Number.isFinite(dias) && dias > 0) ? enDias(dias) : '',\n  } });\n}\nreturn items;"
       },
       "id": "tkcrm-01-0000-4000-8000-aaaaaaaaaaaa",
       "name": "Code - Tickets del Proyecto",
@@ -3585,34 +3206,6 @@
         1950,
         1610
       ]
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "={{ $json.url }}",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "x-api-key",
-              "value": "={{ $env.TICKETS_API_KEY || '' }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.ticket) }}",
-        "options": {}
-      },
-      "id": "tkcrm-02-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "HTTP - Crear Ticket Proyecto",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [
-        2250,
-        1610
-      ],
-      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -5261,6 +4854,30 @@
         2250,
         1340
       ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO tickets (titulo, prioridad, prioridad_inicial, origen, lead_id, etiquetas, notas, vence) VALUES ($1, $2::ticket_prioridad, $2::ticket_prioridad, 'CRM', $3, string_to_array($4, ','), $5, NULLIF($6, '')::date) ON CONFLICT (lead_id, titulo) WHERE lead_id IS NOT NULL DO NOTHING;",
+        "options": {
+          "queryReplacement": "={{ [$json.titulo, $json.prioridad, $json.lead_id, $json.etiquetas, $json.notas, $json.vence] }}"
+        }
+      },
+      "id": "tk-crm-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Postgres - Crear Tickets Proyecto",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2250,
+        1610
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      },
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -5309,49 +4926,11 @@
             "node": "Respond - Pago Confirmado",
             "type": "main",
             "index": 0
-          },
-          {
-            "node": "Postgres - Buscar Card Pago",
-            "type": "main",
-            "index": 0
           }
         ],
         [
           {
             "node": "Respond - Pago Invalido",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code - Preparar Card Notion": {
-      "main": [
-        [
-          {
-            "node": "Notion - Crear Card",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Notion - Crear Card": {
-      "main": [
-        [
-          {
-            "node": "Postgres - Guardar card_id",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Postgres - Guardar card_id": {
-      "main": [
-        [
-          {
-            "node": "Telegram - Propuesta Enviada",
             "type": "main",
             "index": 0
           }
@@ -5462,7 +5041,7 @@
       "main": [
         [
           {
-            "node": "Code - Preparar Card Notion",
+            "node": "Telegram - Propuesta Enviada",
             "type": "main",
             "index": 0
           }
@@ -5790,11 +5369,6 @@
             "node": "Telegram - Lead Perdido",
             "type": "main",
             "index": 0
-          },
-          {
-            "node": "Notion - Estado Perdido",
-            "type": "main",
-            "index": 0
           }
         ]
       ]
@@ -5926,11 +5500,6 @@
         [
           {
             "node": "Postgres - Factura Cobrada",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Notion - Estado Cerrado",
             "type": "main",
             "index": 0
           }
@@ -6114,11 +5683,6 @@
             "node": "Respond - Rechazo OK",
             "type": "main",
             "index": 0
-          },
-          {
-            "node": "Notion - Estado Cancelado",
-            "type": "main",
-            "index": 0
           }
         ],
         [
@@ -6220,34 +5784,6 @@
             "node": "Respond - Trabajo OK",
             "type": "main",
             "index": 0
-          },
-          {
-            "node": "IF - Tiene Card?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "IF - Tiene Card?": {
-      "main": [
-        [
-          {
-            "node": "Notion - Estado Trabajo",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        []
-      ]
-    },
-    "Postgres - Buscar Card Pago": {
-      "main": [
-        [
-          {
-            "node": "Notion - Estado Pagado",
-            "type": "main",
-            "index": 0
           }
         ]
       ]
@@ -6295,11 +5831,6 @@
           },
           {
             "node": "Telegram - Cancelado Panel",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Notion - Cancelado Panel",
             "type": "main",
             "index": 0
           }
@@ -6461,11 +5992,6 @@
             "index": 0
           },
           {
-            "node": "Notion - Estado Aceptado",
-            "type": "main",
-            "index": 0
-          },
-          {
             "node": "Code - Tickets del Proyecto",
             "type": "main",
             "index": 0
@@ -6484,7 +6010,7 @@
       "main": [
         [
           {
-            "node": "HTTP - Crear Ticket Proyecto",
+            "node": "Postgres - Crear Tickets Proyecto",
             "type": "main",
             "index": 0
           }
@@ -6589,11 +6115,6 @@
           },
           {
             "node": "Telegram - Pago Recibido",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Postgres - Buscar Card Pago",
             "type": "main",
             "index": 0
           }

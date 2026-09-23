@@ -13,7 +13,7 @@ const COLOR: Record<string, string> = {
 
 // Selector de estado del TRABAJO. Optimista: aplica el cambio en pantalla y lo
 // manda a /api/crm/trabajo-estado (route handler que revalida el rol admin y
-// agrega la credencial antes de llamar a n8n, que actualiza Supabase + Notion).
+// agrega la credencial antes de llamar a n8n, que actualiza Supabase).
 // Si falla, revierte.
 export default function TrabajoEstadoSelect({
   leadId,

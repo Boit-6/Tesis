@@ -14,43 +14,14 @@ const aqui = path.dirname(fileURLToPath(import.meta.url));
 // sobre código viejo y el recuento de nodos dejaba de decir nada sobre el
 // artefacto que la tesis describe.
 const wfDir = path.join(aqui, '..', 'workflow');
-const wfFiles = ['crm_postgres.json', 'tickets_notion.json'];
+const wfFiles = ['crm_postgres.json', 'tickets.json'];
 
 // Variables de entorno que los nodos leen con $env. Los valores son de mentira:
 // alcanzan para que la config resuelva y el código corra.
 const envMock = {
   TELEGRAM_CHAT_ID: '-1001234567890',
-  NOTION_DATABASE_ID: '11111111222233334444555566667777',
-  NOTION_TICKETS_DATABASE_ID: '88888888999900001111222233334444',
   TICKETS_PROYECTO: 'CRM Freelance',
 };
-
-// Página de Notion de mentira, con la forma que devuelve la API.
-function notionPage(over = {}) {
-  const dias = over.diasQuieto == null ? 12 : over.diasQuieto;
-  const fecha = new Date(Date.now() - dias * 86400000).toISOString().slice(0, 10);
-  return {
-    id: over.id || '0f0e0d0c-0b0a-4090-8080-707060605050',
-    url: 'https://notion.so/ticket',
-    created_time: fecha + 'T10:00:00.000Z',
-    properties: {
-      Name: {type: 'title', title: [{plain_text: over.titulo || 'Arreglar el PDF de la factura'}]},
-      Estado: {type: 'select', select: {name: over.estado || 'BACKLOG'}},
-      Prioridad: {type: 'select', select: {name: over.prioridad || 'BAJA'}},
-      'Prioridad inicial': {type: 'select', select: {name: 'BAJA'}},
-      Score: {type: 'number', number: over.score == null ? 10 : over.score},
-      Etiquetas: {type: 'multi_select', multi_select: [{name: 'facturacion'}]},
-      Proyecto: {type: 'select', select: {name: 'CRM Freelance'}},
-      Origen: {type: 'select', select: {name: 'MANUAL'}},
-      Ref: {type: 'rich_text', rich_text: [{plain_text: 'LD-1718000000000-ABCD'}]},
-      Creado: {type: 'date', date: {start: fecha}},
-      'Ultimo movimiento': {type: 'date', date: {start: fecha}},
-      Escaladas: {type: 'number', number: 0},
-      Vence: {type: 'date', date: null},
-      Notas: {type: 'rich_text', rich_text: []},
-    },
-  };
-}
 
 const sample = {
   lead_id: 'LD-1718000000000-ABCD',
@@ -90,16 +61,10 @@ const sample = {
     limite: '50',
   },
   headers: {'content-type': 'application/json'},
-  // Respuestas de la API de Notion (para los nodos que mapean sus resultados).
-  id: '0f0e0d0c-0b0a-4090-8080-707060605050',
-  url: 'https://notion.so/ticket',
-  results: [
-    notionPage({diasQuieto: 12, prioridad: 'BAJA'}),
-    notionPage({id: 'aaa', diasQuieto: 2, prioridad: 'ALTA', score: 54}),
-    notionPage({id: 'bbb', diasQuieto: 30, prioridad: 'CRITICA', score: 100, estado: 'EN_CURSO'}),
-  ],
-  properties: notionPage().properties,
-  created_time: notionPage().created_time,
+  // Resultado del UPDATE de envejecimiento (workflow de tickets).
+  abiertos: 3,
+  escaladas: [{titulo: 'Arreglar el PDF <b>de</b> la factura', prioridad: 'ALTA'}],
+  criticos: [{titulo: 'Cobrar la factura', dias: 5}],
   execution: {error: {message: 'boom'}, lastNodeExecuted: 'Nodo X'},
   workflow: {name: 'CRM'},
 };

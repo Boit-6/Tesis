@@ -329,7 +329,7 @@ function medirCualitativas() {
 
 const medidas = {
   crm: medirWorkflow('crm_postgres.json'),
-  tickets: medirWorkflow('tickets_notion.json'),
+  tickets: medirWorkflow('tickets.json'),
   db: medirEsquema(),
   importesDesdePresupuesto: medirImportes(),
   scoring: medirScoring(),

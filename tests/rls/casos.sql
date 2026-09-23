@@ -245,6 +245,33 @@ SELECT probar('un admin bajado a mano no vuelve a subir por otro cambio de la cu
   'SELECT count(*) FROM profiles WHERE id = ''55555555-5555-4555-8555-555555555555'' AND role = ''user''',
   '1 filas');
 
+-- ── 16.2 Tickets: el tablero escribe, pero sólo el admin ──────────────────
+INSERT INTO tickets (id, titulo) VALUES ('99999999-9999-4999-8999-999999999999', 'Ticket de prueba');
+SELECT probar('anon NO puede leer tickets', 'anon', NULL, 'SELECT count(*) FROM tickets', 'permiso denegado');
+SELECT probar('anon NO puede leer tickets_tablero', 'anon', NULL, 'SELECT count(*) FROM tickets_tablero', 'permiso denegado');
+SELECT probar('usuario sin rol admin ve 0 tickets',
+  'authenticated', '22222222-2222-4222-8222-222222222222', 'SELECT count(*) FROM tickets_tablero', '0 filas');
+SELECT probar('usuario sin rol admin NO puede crear tickets',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (INSERT INTO tickets (titulo) VALUES (''intruso'') RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
+SELECT probar('usuario sin rol admin NO puede mover tickets (0 filas afectadas)',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (UPDATE tickets SET estado = ''HECHO'' RETURNING 1) SELECT count(*) FROM x', '0 filas');
+SELECT probar('el admin ve los tickets en el tablero',
+  'authenticated', '11111111-1111-4111-8111-111111111111', 'SELECT count(*) FROM tickets_tablero', '1 filas');
+SELECT probar('el admin puede crear un ticket',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  'WITH x AS (INSERT INTO tickets (titulo) VALUES (''desde el tablero'') RETURNING 1) SELECT count(*) FROM x', '1 filas');
+SELECT probar('el admin puede mover un ticket',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  'WITH x AS (UPDATE tickets SET estado = ''EN_CURSO'' WHERE titulo = ''Ticket de prueba'' RETURNING 1) SELECT count(*) FROM x', '1 filas');
+SELECT probar('nadie borra tickets desde el tablero',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  'WITH x AS (DELETE FROM tickets RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
+SELECT probar('n8n_writer puede sembrar tickets',
+  'n8n_writer', NULL,
+  'WITH x AS (INSERT INTO tickets (titulo, origen) VALUES (''sembrado'', ''CRM'') RETURNING 1) SELECT count(*) FROM x', '1 filas');
+
 -- ── 17. set_actualizado_en: el trigger de leads corre de verdad ────────────
 -- `antes` y `upd` comparten el mismo snapshot (misma semántica de la CTE que
 -- causó el bug de rate limiting corregido en Fase 0): `antes` lee el valor

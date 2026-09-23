@@ -2,7 +2,7 @@ import type {NextRequest} from "next/server";
 
 import {NextResponse} from "next/server";
 
-import {requireAdmin} from "@/lib/tickets";
+import {requireAdmin} from "@/lib/auth";
 
 // Proxy server-side de las acciones del panel interno hacia n8n.
 //

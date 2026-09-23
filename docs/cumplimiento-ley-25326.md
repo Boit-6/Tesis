@@ -11,7 +11,7 @@
 ## 1. Contexto
 
 El Capítulo 2 (§2.9) de la tesis identificó que el sistema capta, almacena y transfiere a
-terceros (Supabase, el servicio de correo/Gmail, Telegram y Notion) datos de contacto de
+terceros (Supabase, el servicio de correo/Gmail y Telegram) datos de contacto de
 personas físicas identificables — nombre, correo, teléfono, presupuesto y descripción del
 proyecto — sin aviso de privacidad, consentimiento informado, política de retención ni
 inscripción de la base ante el organismo de control, y que varios de esos destinatarios están
@@ -30,13 +30,13 @@ Este trabajo implementa una primera respuesta parcial a esa deuda, acotada al fr
   dato:
   1. Finalidad del tratamiento (punto 2 del aviso).
   2. Carácter obligatorio o facultativo de cada dato solicitado (punto 3).
-  3. Destinatarios de los datos: Supabase, Gmail, Telegram, Notion (punto 4).
+  3. Destinatarios de los datos: Supabase, Gmail, Telegram (punto 4).
   4. Identidad del responsable, con placeholders a completar (punto 1).
   5. Posibilidad de ejercer los derechos de acceso, rectificación y supresión —derechos
      ARCO— (punto 5), incluyendo la mención a la Agencia de Acceso a la Información Pública
      (AAIP) como órgano de control.
 - Agrega, como exige el propio §2.9 de la tesis, un párrafo **separado y explícito** de
-  consentimiento para la transferencia internacional de datos a Supabase/Gmail/Telegram/Notion
+  consentimiento para la transferencia internacional de datos a Supabase/Gmail/Telegram
   (punto 8 del aviso, arts. 11 y 12 de la Ley 25.326), distinto del consentimiento general para
   el tratamiento.
 - Contiene placeholders explícitos donde falta un dato real de la organización responsable:
@@ -81,7 +81,7 @@ cambio **no** resuelve:
    la base (`db/schema.sql` no tiene hoy ninguna rutina de expiración o borrado de leads
    antiguos). Definir esa política y automatizarla es trabajo futuro.
 4. **Cláusulas contractuales tipo (Disposición 60-E/2016) con cada encargado** domiciliado fuera
-   de los países de protección adecuada (Supabase, Google/Gmail, Telegram, Notion), como vía
+   de los países de protección adecuada (Supabase, Google/Gmail, Telegram), como vía
    alternativa o complementaria al consentimiento expreso del titular para la transferencia
    internacional. No se gestionó ni redactó ninguna cláusula contractual con estos proveedores;
    el trabajo se apoyó únicamente en la vía del consentimiento expreso del titular (art. 11 y

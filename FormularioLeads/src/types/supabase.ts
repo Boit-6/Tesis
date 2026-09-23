@@ -43,6 +43,10 @@ export type LogNivel = "INFO" | "RECORDATORIO" | "HOY" | "VENCIDA" | "URGENTE" |
 
 export type TrabajoEstadoDb = "PENDIENTE" | "EN_PROGRESO" | "EN_REVISION" | "ENTREGADO";
 
+export type TicketEstadoDb = "BACKLOG" | "EN_CURSO" | "BLOQUEADO" | "HECHO";
+
+export type TicketPrioridadDb = "BAJA" | "MEDIA" | "ALTA" | "CRITICA";
+
 export interface Database {
   public: {
     Tables: {
@@ -65,7 +69,6 @@ export interface Database {
           seguimientos: number;
           operador_asignado: string | null;
           notas: string | null;
-          card_id: string | null;
           accept_token: string;
           token_expira_en: string | null;
           fecha_ingreso: string;
@@ -98,7 +101,6 @@ export interface Database {
           seguimientos?: number;
           operador_asignado?: string | null;
           notas?: string | null;
-          card_id?: string | null;
           accept_token?: string;
           token_expira_en?: string | null;
           fecha_ingreso?: string;
@@ -167,6 +169,50 @@ export interface Database {
         Relationships: [
           {
             foreignKeyName: "facturas_lead_id_fkey";
+            columns: ["lead_id"];
+            isOneToOne: false;
+            referencedRelation: "leads";
+            referencedColumns: ["lead_id"];
+          },
+        ];
+      };
+      tickets: {
+        Row: {
+          id: string;
+          titulo: string;
+          estado: TicketEstadoDb;
+          prioridad: TicketPrioridadDb;
+          prioridad_inicial: TicketPrioridadDb;
+          etiquetas: string[];
+          origen: string;
+          lead_id: string | null;
+          notas: string | null;
+          vence: string | null;
+          escaladas: number;
+          ultimo_movimiento: string;
+          cerrado_en: string | null;
+          creado_en: string;
+        };
+        Insert: {
+          id?: string;
+          titulo: string;
+          estado?: TicketEstadoDb;
+          prioridad?: TicketPrioridadDb;
+          prioridad_inicial?: TicketPrioridadDb;
+          etiquetas?: string[];
+          origen?: string;
+          lead_id?: string | null;
+          notas?: string | null;
+          vence?: string | null;
+          escaladas?: number;
+          ultimo_movimiento?: string;
+          cerrado_en?: string | null;
+          creado_en?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["tickets"]["Insert"]>;
+        Relationships: [
+          {
+            foreignKeyName: "tickets_lead_id_fkey";
             columns: ["lead_id"];
             isOneToOne: false;
             referencedRelation: "leads";
@@ -274,6 +320,30 @@ export interface Database {
       };
     };
     Views: {
+      tickets_tablero: {
+        Row: {
+          id: string | null;
+          titulo: string | null;
+          estado: TicketEstadoDb | null;
+          prioridad: TicketPrioridadDb | null;
+          prioridad_inicial: TicketPrioridadDb | null;
+          etiquetas: string[] | null;
+          origen: string | null;
+          lead_id: string | null;
+          notas: string | null;
+          vence: string | null;
+          escaladas: number | null;
+          ultimo_movimiento: string | null;
+          cerrado_en: string | null;
+          creado_en: string | null;
+          cliente: string | null;
+          dias_abierto: number | null;
+          dias_quieto: number | null;
+          score: number | null;
+          dias_para_escalar: number | null;
+        };
+        Relationships: [];
+      };
       // Las vistas son de solo lectura y `security_invoker`: todas sus
       // columnas se declaran opcionales/nullable, igual que hace el propio
       // generador de Supabase (una vista no puede garantizar NOT NULL).
@@ -334,6 +404,8 @@ export interface Database {
       pago_estado: PagoEstado;
       log_nivel: LogNivel;
       trabajo_estado: TrabajoEstadoDb;
+      ticket_estado: TicketEstadoDb;
+      ticket_prioridad: TicketPrioridadDb;
     };
     CompositeTypes: Record<string, never>;
   };

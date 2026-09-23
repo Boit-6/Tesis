@@ -122,10 +122,6 @@ export default function AvisoPrivacidad() {
             equipo del responsable sobre la llegada de su consulta y su avance; no se le envían
             mensajes directos a través de este canal.
           </li>
-          <li>
-            <strong>Notion Labs, Inc. (Notion)</strong> — se utiliza como tablero interno de
-            seguimiento comercial y de tickets de trabajo.
-          </li>
         </ul>
         <p className="mt-2">
           Ninguno de estos destinatarios está autorizado a utilizar sus datos para fines propios ni
@@ -203,11 +199,11 @@ export default function AvisoPrivacidad() {
         </h2>
         <p className="mt-2">
           Algunos de los encargados del tratamiento detallados en el punto 4 —en particular,{" "}
-          <strong>Supabase, Google LLC (Gmail), Telegram FZ-LLC y Notion Labs, Inc.</strong>— están
-          domiciliados o procesan datos en países que la Disposición 60-E/2016 de la (entonces)
-          Dirección Nacional de Protección de Datos Personales <strong>no reconoce</strong> como
-          países que ofrecen niveles de protección de datos personales adecuados en los términos del
-          art. 12 de la Ley 25.326 (por ejemplo, Estados Unidos).
+          <strong>Supabase, Google LLC (Gmail) y Telegram FZ-LLC</strong>— están domiciliados o
+          procesan datos en países que la Disposición 60-E/2016 de la (entonces) Dirección Nacional
+          de Protección de Datos Personales <strong>no reconoce</strong> como países que ofrecen
+          niveles de protección de datos personales adecuados en los términos del art. 12 de la Ley
+          25.326 (por ejemplo, Estados Unidos).
         </p>
         <p className="mt-2">
           Esto implica que, al enviar este formulario, sus datos personales pueden ser transferidos
@@ -219,9 +215,9 @@ export default function AvisoPrivacidad() {
           Al marcar el casillero de aceptación del formulario, usted{" "}
           <strong>presta ese consentimiento expreso</strong> para que sus datos de contacto (nombre,
           correo electrónico, teléfono, presupuesto estimado y descripción del proyecto) sean
-          transferidos y almacenados en la infraestructura de Supabase, Google LLC (Gmail), Telegram
-          FZ-LLC y Notion Labs, Inc., exclusivamente para las finalidades descriptas en el punto 2
-          de este aviso. Usted puede revocar este consentimiento en cualquier momento ejerciendo sus
+          transferidos y almacenados en la infraestructura de Supabase, Google LLC (Gmail) y
+          Telegram FZ-LLC, exclusivamente para las finalidades descriptas en el punto 2 de este
+          aviso. Usted puede revocar este consentimiento en cualquier momento ejerciendo sus
           derechos ARCO según el punto 5, sin perjuicio de que la revocación no afecta la licitud
           del tratamiento realizado con anterioridad.
         </p>

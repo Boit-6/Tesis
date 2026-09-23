@@ -1,8 +1,6 @@
-// Verificación de credenciales en los dos puntos del workflow que comparan un
-// secreto: la firma x-signature de las notificaciones de MercadoPago
-// (`Code - Leer Notificacion MP`) y el x-api-key del módulo de tickets
-// (`autorizado()`, repetido en los nodos Code de tickets_notion.json). Ejecuta
-// el código de cada nodo tal cual está en el workflow.
+// Verificación de la firma x-signature de las notificaciones de MercadoPago
+// (`Code - Leer Notificacion MP`): ejecuta el código del nodo tal cual está en
+// el workflow con firmas válidas, falsas, truncadas y ausentes.
 //
 // Uso: node tests/firmas.mjs
 import {createHmac} from 'node:crypto';
@@ -58,28 +56,6 @@ truncada['x-signature'] = truncada['x-signature'].slice(0, -1);
 check('una firma de otro largo se descarta (sin excepción)', pagoLeido(truncada) === '');
 check('sin x-signature se descarta', pagoLeido({}) === '');
 check('sin MP_WEBHOOK_SECRET configurado se descarta todo', pagoLeido(firmar('123456'), {}) === '');
-
-// ── Tickets: x-api-key ──────────────────────────────────────────────────────
-const tickets = leerWf('tickets_notion.json');
-const conAutorizado = tickets.nodes.filter((n) => /const autorizado = /.test(n.parameters.jsCode || ''));
-
-check('autorizado() compara en tiempo constante en todos los nodos (' + conAutorizado.length + ')',
-  conAutorizado.length > 0 && conAutorizado.every((n) => /igualSeguro\(/.test(n.parameters.jsCode)));
-check('ningún nodo de tickets dice que sin clave el módulo queda abierto',
-  conAutorizado.every((n) => !/queda abierto/.test(n.parameters.jsCode)));
-
-const validarNuevo = tickets.nodes.find((n) => n.name === 'Code - Validar Ticket Nuevo');
-const ENV_TICKETS = {TICKETS_API_KEY: 'clave-correcta', NOTION_TICKETS_DATABASE_ID: '8'.repeat(32)};
-const respuesta = (headers, env = ENV_TICKETS) =>
-  correr(validarNuevo, {body: {titulo: 'Probar la clave'}, headers}, env)[0].json;
-
-check('con la clave correcta el ticket pasa', respuesta({'x-api-key': 'clave-correcta'}).ok === true);
-check('con una clave del mismo largo pero distinta, 401',
-  respuesta({'x-api-key': 'clave-correctX'}).http_code === 401);
-check('con un prefijo de la clave, 401', respuesta({'x-api-key': 'clave'}).http_code === 401);
-check('sin header, 401', respuesta({}).http_code === 401);
-check('sin TICKETS_API_KEY en el servidor, 401 aunque manden algo',
-  respuesta({'x-api-key': ''}, {NOTION_TICKETS_DATABASE_ID: '8'.repeat(32)}).http_code === 401);
 
 console.log('\nResultado: ' + ok + ' OK, ' + fail + ' FAIL');
 process.exit(fail ? 1 : 0);

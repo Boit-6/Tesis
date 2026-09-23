@@ -20,7 +20,7 @@ Características técnicas clave:
 - 🗄️ **PostgreSQL como única fuente de verdad** con enums, integridad referencial, RLS y vistas calculadas en vivo.
 - 🔑 **Aceptación segura y atómica** mediante token UUID validado contra la base (sin doble facturación en concurrencia).
 - 🧾 **Facturación automática en PDF** (HTML → Gotenberg) y **cobro real con MercadoPago** (idempotente; sin credenciales configuradas cae a un modo de desarrollo sin gateway).
-- 🗂️ **CRM visual en Notion** + alertas por **Telegram**.
+- 🎫 **Tablero de tickets propio** con envejecimiento de prioridades + alertas por **Telegram**.
 - 📊 **Tablero interno en tiempo real** (Supabase Realtime) con gestión del estado del trabajo y de los pedidos de cambio.
 
 ---
@@ -45,13 +45,13 @@ La orquestación tiene **13 webhooks** y **4 procesos programados** (más loggin
 
 | Disparador | Proceso | Qué hace |
 |---|---|---|
-| Webhook `lead-nuevo` | Captación + scoring + propuesta | Normaliza, califica (score/tier) y guarda; si es HOT/WARM manda propuesta + card en Notion |
+| Webhook `lead-nuevo` | Captación + scoring + propuesta | Normaliza, califica (score/tier) y guarda; si es HOT/WARM avisa para fijar los términos de la propuesta |
 | Webhook `lead-propuesta` (GET) | Lectura de propuesta | Devuelve datos para la página de aceptación (solo lectura) |
 | Webhook `lead-acepta` | Aceptación (atómica) | Valida token → `UPDATE ... WHERE estado IN (...)` → factura PDF → email |
 | Webhook `lead-rechaza` | Rechazo | Marca el lead como PERDIDO |
 | Webhook `lead-modifica` | Pedido de cambios | Vuelve a EN_SEGUIMIENTO, guarda el mensaje y avisa por Telegram |
-| Webhook `trabajo-estado` | Estado del trabajo | Actualiza `estado_trabajo` (PENDIENTE→…→ENTREGADO) + sync a Notion |
-| Webhook `lead-cancelar` | Cancelación | Cancela el lead desde el tablero (PERDIDO + Telegram + Notion) |
+| Webhook `trabajo-estado` | Estado del trabajo | Actualiza `estado_trabajo` (PENDIENTE→…→ENTREGADO) |
+| Webhook `lead-cancelar` | Cancelación | Cancela el lead desde el tablero (PERDIDO + Telegram) |
 | Webhook `cambio-aceptar` / `cambio-rechazar` | Resolver pedidos de cambio | Reenvía la propuesta / mantiene la original |
 | Webhook `mp/notificacion` (POST) | Cobro real con MercadoPago | MercadoPago avisa el pago → se verifica contra su API → marca la factura COBRADO (idempotente) |
 | Webhook `pago-confirmado` (GET) | Cobro — modo de desarrollo | Sin `MP_ACCESS_TOKEN` configurado, marca la factura COBRADO a mano (idempotente) |
@@ -60,18 +60,19 @@ La orquestación tiene **13 webhooks** y **4 procesos programados** (más loggin
 | Cron 10:00 | Recordatorios | Avisos de facturas por vencer / vencidas |
 | Cron 23:59 | Métricas | Reporte diario por Telegram |
 
-### 🎫 Módulo de tickets (workflow aparte)
+### 🎫 Tickets
 
-[`workflow/tickets_notion.json`](workflow/tickets_notion.json) es un **workflow independiente**: un tablero tipo Trello sobre Notion para las tareas pendientes. Su particularidad es el **envejecimiento**: un ticket que nadie toca sube solo de prioridad (`BAJA → MEDIA → ALTA → CRITICA`) hasta que se atiende, así ninguna tarea queda en el olvido.
+Un tablero tipo Trello en el dashboard (`/dashboard/tickets`) para las tareas del trabajo. Los tickets son una tabla más de la base (`tickets`, con RLS y tiempo real): se crean y se mueven desde el tablero, y al aceptarse una propuesta el CRM siembra los del proyecto (plantilla en `TICKETS_PLANTILLA_PROYECTO`).
 
-| Disparador | Qué hace |
+Su particularidad es el **envejecimiento**: un ticket que nadie toca sube solo de prioridad (`BAJA → MEDIA → ALTA → CRITICA`) hasta que se atiende. Moverlo de columna o cambiarle la prioridad reinicia el reloj.
+
+| Pieza | Qué hace |
 |---|---|
-| Webhook `ticket/nuevo` | Crea el ticket en Notion (normaliza prioridad/estado/etiquetas contra la config) |
-| Webhook `ticket/estado` | Mueve de columna o cambia la prioridad; recalcula el score y reinicia el reloj |
-| Webhook `ticket/listar` (GET) | Devuelve el tablero como JSON plano — lo consume el dashboard |
-| Cron 8:00 | Envejecimiento: escala prioridades, recalcula scores y avisa por Telegram |
+| `/api/tickets` (GET / POST) | Lista el tablero (vista `tickets_tablero`, con score y días calculados al momento) y crea tickets, con la sesión del admin |
+| `/api/tickets/estado` (POST) | Mueve de columna o cambia la prioridad |
+| [`workflow/tickets.json`](workflow/tickets.json) · Cron 8:00 | Escala en una sola sentencia SQL los tickets quietos y manda el resumen por Telegram |
 
-No comparte nodos con el CRM (el enganche es una llamada HTTP tolerante a fallos), **toda su configuración sale de variables de entorno** y se importa tal cual en otro proyecto. Documentación completa: [`docs/modulo-tickets.md`](docs/modulo-tickets.md).
+Detalle: [`docs/modulo-tickets.md`](docs/modulo-tickets.md).
 
 ---
 
@@ -87,7 +88,7 @@ No comparte nodos con el CRM (el enganche es una llamada HTTP tolerante a fallos
 - PostgreSQL / Supabase (tablas, enums, vistas, triggers, RLS)
 
 **Integraciones**
-- Gmail (OAuth2) · Telegram Bot · Notion API · MercadoPago (Checkout Pro + Webhooks)
+- Gmail (OAuth2) · Telegram Bot · MercadoPago (Checkout Pro + Webhooks)
 
 **DevOps**
 - Docker / Docker Compose
@@ -99,7 +100,7 @@ No comparte nodos con el CRM (el enganche es una llamada HTTP tolerante a fallos
 - **Docker** y **Docker Compose**
 - **Node.js 18+** y **npm** (para el front)
 - **Git**
-- Cuentas/credenciales: **Supabase**, **bot de Telegram**, **integración de Notion**, **Gmail (OAuth2)**
+- Cuentas/credenciales: **Supabase**, **bot de Telegram**, **Gmail (OAuth2)**
 
 ---
 
@@ -122,7 +123,7 @@ Esa cuenta pasa a `admin` recién cuando confirma el email.
 
 **3. Orquestación (n8n + Gotenberg):**
 ```bash
-cp .env.example .env        # completá TELEGRAM_CHAT_ID, NOTION_DATABASE_ID, N8N_PUBLIC_URL…
+cp .env.example .env        # completá TELEGRAM_CHAT_ID, N8N_PUBLIC_URL…
 docker compose up -d        # n8n en http://localhost:5678 + Gotenberg en la misma red
 ```
 En n8n: importar [`workflow/crm_postgres.json`](workflow/crm_postgres.json), crear las credenciales y editar los valores marcados:
@@ -132,19 +133,12 @@ En n8n: importar [`workflow/crm_postgres.json`](workflow/crm_postgres.json), cre
 | `Postgres - CRM Supabase` | Session pooler 5432, SSL require, user `postgres.<project-ref>` |
 | `Gmail - CRM Freelance` | OAuth2 |
 | `Telegram - CRM Freelance` | Bot token |
-| `Notion - CRM Freelance` | Internal token — **compartir la DB con la integración** |
 
-> Valores a editar a mano: `DATABASE_ID` de Notion, la URL del front, la URL pública de n8n (ngrok o dominio), la URL del Google Form de reseñas y el `chatId` de Telegram. Luego **publicar** el workflow.
+> Valores a editar a mano: la URL del front, la URL pública de n8n (ngrok o dominio), la URL del Google Form de reseñas y el `chatId` de Telegram. Luego **publicar** el workflow.
 
 > ⚠️ **Checklist de importación** — 7 nodos de este workflow referencian la credencial `CRM - Header Auth (panel)` con `id: "REEMPLAZAR_AL_IMPORTAR"`. Si se publica el workflow sin re-vincularla, esos nodos quedan rotos o corriendo sin la verificación de esa credencial, según cómo resuelva n8n el ID inexistente. Antes de publicar: abrir cada nodo marcado en rojo por n8n al importar y reasignarle la credencial real.
 
-**4. Módulo de tickets** (opcional, el CRM funciona sin él):
-```bash
-NOTION_TOKEN=secret_xxx NOTION_PARENT_PAGE_ID=<id> node scripts/setup-notion-tickets.mjs
-```
-Pegar el `DATABASE_ID` que imprime en `NOTION_TICKETS_DATABASE_ID` del `.env`, importar [`workflow/tickets_notion.json`](workflow/tickets_notion.json) en n8n y publicarlo. Detalle en [`docs/modulo-tickets.md`](docs/modulo-tickets.md).
-
-> ⚠️ **Checklist de importación** — este workflow trae 8 nodos con credencial en `REEMPLAZAR_AL_IMPORTAR`: 6 usan `Notion account` y 2 usan `Telegram account`. Re-vincular ambas antes de publicar. Además, sin `TICKETS_API_KEY` configurada en el `.env` los webhooks del módulo quedan sin autenticar — no lo dejes vacío en producción.
+**4. Tickets:** importar [`workflow/tickets.json`](workflow/tickets.json) en n8n (usa las mismas credenciales de Postgres y Telegram) y publicarlo. La tabla ya la creó `db/schema.sql`.
 
 **5. Presentación (front):**
 ```bash
@@ -168,7 +162,6 @@ npm test
 |---|---|
 | `test:humo` | Ejecuta el JavaScript de los **41 nodos `Code`** de los dos workflows con mocks de n8n (`$input`, `$`, `$json`, `$env`), para detectar errores de runtime sin levantar nada |
 | `test:scoring` | Que la calificación de leads dé **idéntico a la Tabla 4** de la tesis en 9240 combinaciones, y que los umbrales sigan siendo configurables |
-| `test:tickets` | La regla de envejecimiento: que el ticket olvidado suba de prioridad, que el que se está atendiendo no, y que un tablero sin cambios no genere ni una llamada a la API |
 | `test:autherrores` | El RNF5 en su mitad medible: que los **22 códigos** de error que Supabase Auth puede devolver en los flujos que usa la aplicación (`signUp`, `signInWithPassword` y `verifyOtp`) tengan mensaje en español. El conjunto alcanzable se declara código por código, con la operación que lo origina |
 | `test:parametros` | Cómo los **28 nodos Postgres** le pasan los valores a su consulta: que usen la forma de arreglo (con la forma de texto n8n descarta los valores vacíos y parte los que traen comas), que la cantidad coincida con los `$N` del SQL y que ningún dato viaje concatenado dentro de la consulta |
 | `test:edgecases` | Casos límite de `Code - Normalizar Lead`: el parser de presupuesto (formatos de moneda, notación científica, basura) y la validación de email |
@@ -183,7 +176,7 @@ npm run test:docker
 | Prueba | Qué verifica |
 |---|---|
 | `test:sql` | Compila con `PREPARE` las **28 consultas SQL** de los workflows contra el esquema real. Una columna mal escrita en un nodo Postgres se detecta acá y no en producción |
-| `test:rls` | Aplica `db/schema.sql` **tal cual está en el repositorio** y ejecuta **56 casos** de RLS rol por rol: que `anon` no acceda a nada, que estar logueado no alcance sin rol `admin`, que la auditoría esté cerrada, que nadie pueda escribir desde el navegador ni auto-ascenderse a admin, y que la whitelist de admins exija un email confirmado |
+| `test:rls` | Aplica `db/schema.sql` **tal cual está en el repositorio** y ejecuta **66 casos** de RLS rol por rol: que `anon` no acceda a nada, que estar logueado no alcance sin rol `admin`, que la auditoría esté cerrada, que nadie pueda escribir desde el navegador ni auto-ascenderse a admin, y que la whitelist de admins exija un email confirmado |
 | `test:idempotencia` | Ejecuta de verdad las consultas de deduplicación (S6) y de reconciliación de facturas (S5) sobre el esquema real, leyendo el SQL del propio workflow: si un nodo deja de ser idempotente, se pone en rojo |
 
 Ambas levantan un PostgreSQL desechable: no tocan ninguna instancia real.
@@ -209,15 +202,12 @@ Validación funcional por escenarios (E1–E10) documentada en la tesis (Tabla 9
 tesis/
 ├── workflow/
 │   ├── crm_postgres.json      # Workflow n8n del CRM (11 webhooks + 3 crons, 130 nodos func. + notas)
-│   └── tickets_notion.json    # Módulo de tickets (3 webhooks + 1 cron) — independiente y reusable
+│   └── tickets.json           # Cron de envejecimiento de los tickets
 ├── db/
 │   └── schema.sql             # Esquema PostgreSQL (tablas, enums, vistas, triggers, RLS)
-├── scripts/
-│   └── setup-notion-tickets.mjs # Crea la base de Notion del tablero de tickets
 ├── tests/
 │   ├── smoke_code_nodes.mjs       # Smoke test de los Code nodes de todos los workflows
 │   ├── scoring.mjs                # Regresión del scoring contra la Tabla 4 (9240 casos)
-│   ├── tickets_envejecimiento.mjs # Regla de escalada de prioridad de los tickets
 │   ├── verificar_afirmaciones.mjs # Los números de la tesis vs. el código
 │   ├── normalizar_lead_edge_cases.mjs # Presupuesto y email en sus casos límite
 │   ├── verificar_rls.mjs         # RLS real sobre un PostgreSQL desechable

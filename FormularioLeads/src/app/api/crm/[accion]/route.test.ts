@@ -1,11 +1,11 @@
 import {NextRequest} from "next/server";
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 
-import {requireAdmin} from "@/lib/tickets";
+import {requireAdmin} from "@/lib/auth";
 
 // `vi.mock` queda hoisteado por Vitest al tope del archivo, antes que
 // cualquier import — no hace falta escribirlo primero a mano.
-vi.mock("@/lib/tickets", () => ({
+vi.mock("@/lib/auth", () => ({
   requireAdmin: vi.fn(),
 }));
 

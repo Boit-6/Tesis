@@ -4,8 +4,10 @@ import type {Ticket, TicketsResponse} from "@/lib/tickets";
 
 import {useCallback, useEffect, useState} from "react";
 
-// Tablero tipo Trello sobre la base de Notion. El estado vive en Notion; acá
-// sólo se pinta y se dispara el cambio contra /api/tickets (que va a n8n).
+import {esEstado} from "@/lib/tickets";
+
+// Tablero tipo Trello sobre la tabla `tickets`. Se pinta la vista
+// tickets_tablero y los cambios van por /api/tickets (sesión del admin + RLS).
 // La prioridad la sube sola el cron de envejecimiento: por eso cada card
 // muestra hace cuánto no se mueve y cuánto le falta para escalar.
 
@@ -114,16 +116,6 @@ function TicketCard({
         >
           →
         </button>
-        {ticket.url && /^https:\/\//i.test(ticket.url) && (
-          <a
-            className="ease text-mist hover:text-ochre ml-auto text-[10px] transition duration-200"
-            href={ticket.url}
-            rel="noreferrer"
-            target="_blank"
-          >
-            Notion ↗
-          </a>
-        )}
       </div>
     </article>
   );
@@ -170,11 +162,13 @@ export default function TicketsBoard() {
   const tickets = datos?.tickets ?? [];
 
   async function mover(ticketId: string, estado: string) {
+    if (!esEstado(estado)) return;
+
     const previo = datos;
 
     setMoviendo(ticketId);
 
-    // Optimista: movemos la card en pantalla y revertimos si el webhook falla.
+    // Optimista: movemos la card en pantalla y revertimos si la API falla.
     setDatos((actual) =>
       actual
         ? {
@@ -194,7 +188,7 @@ export default function TicketsBoard() {
 
       if (!res.ok || !json.ok) throw new Error(json.error ?? `Error ${res.status}`);
 
-      // Recargamos: el score lo recalcula n8n, no lo adivinamos acá.
+      // Recargamos: el score y el reloj los calcula la base, no los adivinamos acá.
       await cargar();
     } catch (err) {
       console.error(err);

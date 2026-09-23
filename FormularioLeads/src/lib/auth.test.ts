@@ -1,7 +1,7 @@
 import {redirect} from "next/navigation";
 import {beforeEach, describe, expect, it, vi} from "vitest";
 
-import {getAdminStatus, getAdminUser} from "./auth";
+import {getAdminStatus, getAdminUser, requireAdmin} from "./auth";
 
 import {createClient} from "@/lib/supabase/server";
 
@@ -121,5 +121,39 @@ describe("getAdminUser", () => {
 
     await expect(getAdminUser()).resolves.toBe(user);
     expect(redirect).not.toHaveBeenCalled();
+  });
+});
+
+describe("requireAdmin", () => {
+  beforeEach(() => {
+    vi.mocked(createClient).mockReset();
+  });
+
+  it("500 si faltan las variables de Supabase en el servidor", async () => {
+    vi.mocked(createClient).mockResolvedValue(null);
+
+    expect((await requireAdmin())?.status).toBe(500);
+  });
+
+  it("401 sin sesión", async () => {
+    vi.mocked(createClient).mockResolvedValue(mockSupabase({user: null}) as never);
+
+    expect((await requireAdmin())?.status).toBe(401);
+  });
+
+  it("403 con sesión pero sin rol admin", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      mockSupabase({user: {id: "u1"}, role: "user"}) as never,
+    );
+
+    expect((await requireAdmin())?.status).toBe(403);
+  });
+
+  it("null (deja pasar) con sesión y rol admin", async () => {
+    vi.mocked(createClient).mockResolvedValue(
+      mockSupabase({user: {id: "u1"}, role: "admin"}) as never,
+    );
+
+    expect(await requireAdmin()).toBeNull();
   });
 });

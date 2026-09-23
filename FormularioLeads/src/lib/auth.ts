@@ -1,6 +1,7 @@
 import type {User} from "@supabase/supabase-js";
 
 import {redirect} from "next/navigation";
+import {NextResponse} from "next/server";
 
 import {createClient} from "@/lib/supabase/server";
 
@@ -38,4 +39,25 @@ export async function getAdminUser(): Promise<User> {
   if (!esAdmin) redirect("/");
 
   return user;
+}
+
+// Compuerta de rol: los route handlers no pasan por el gate de /dashboard, así
+// que cada uno revalida sesión + rol admin por su cuenta (núcleo compartido
+// con las páginas del panel). La RLS vuelve a exigir el rol admin del lado
+// de la base.
+export async function requireAdmin() {
+  const {user, esAdmin, supabaseDisponible} = await getAdminStatus();
+
+  if (!supabaseDisponible) {
+    return NextResponse.json(
+      {ok: false, error: "Faltan las variables de Supabase en el servidor."},
+      {status: 500},
+    );
+  }
+
+  if (!user) return NextResponse.json({ok: false, error: "No autenticado."}, {status: 401});
+
+  if (!esAdmin) return NextResponse.json({ok: false, error: "Requiere rol admin."}, {status: 403});
+
+  return null;
 }

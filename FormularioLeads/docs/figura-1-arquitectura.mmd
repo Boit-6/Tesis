@@ -30,7 +30,6 @@ flowchart TB
         direction LR
         GM["Gmail"]
         TG["Telegram"]
-        NO["Notion"]
         GT["Gotenberg<br/>HTML → PDF"]
         MP["MercadoPago<br/>cobro real"]
     end
@@ -49,7 +48,7 @@ flowchart TB
     WH --> LG
     CR --> LG
     LG -->|"escritura única<br/>service_role · evade RLS"| TB
-    LG --> GM & TG & NO & GT & MP
+    LG --> GM & TG & GT & MP
     MP -. "notificación de pago" .-> WH
 
     classDef pres fill:#fef3c7,stroke:#d97706,color:#111827;
@@ -59,4 +58,4 @@ flowchart TB
     class F1,F2,F3,F4 pres;
     class WH,LG,CR orch;
     class AU,TB,VW data;
-    class GM,TG,NO,GT,MP ext;
+    class GM,TG,GT,MP ext;

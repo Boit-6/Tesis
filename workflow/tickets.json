@@ -1,0 +1,100 @@
+{
+  "name": "Tickets — envejecimiento",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "tk-01-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "⏰ Cron - Envejecimiento 8AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH escaladas AS (\n  UPDATE tickets t\n  SET prioridad = (enum_range(t.prioridad, NULL::ticket_prioridad))[2],\n      escaladas = t.escaladas + 1\n  WHERE t.estado <> 'HECHO'\n    AND t.prioridad <> 'CRITICA'\n    AND now()::date - t.ultimo_movimiento::date >= ticket_dias_escalada(t.prioridad)\n  RETURNING t.titulo, t.prioridad\n)\nSELECT\n  (SELECT count(*) FROM tickets WHERE estado <> 'HECHO')::int AS abiertos,\n  coalesce((SELECT json_agg(json_build_object('titulo', titulo, 'prioridad', prioridad)) FROM escaladas), '[]'::json) AS escaladas,\n  coalesce((SELECT json_agg(json_build_object('titulo', titulo, 'dias', now()::date - ultimo_movimiento::date) ORDER BY ultimo_movimiento)\n            FROM tickets WHERE estado <> 'HECHO' AND prioridad = 'CRITICA'), '[]'::json) AS criticos;",
+        "options": {}
+      },
+      "id": "tk-02-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Postgres - Escalar Tickets Quietos",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [260, 0],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Arma el resumen diario para Telegram (parse_mode HTML): lo que subió de\n// prioridad hoy y lo que sigue en CRITICA sin resolver. Los títulos los\n// escribe quien crea el ticket, así que pasan por esc().\nconst esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');\nconst r = $input.first().json || {};\nconst escaladas = Array.isArray(r.escaladas) ? r.escaladas : [];\nconst criticos = Array.isArray(r.criticos) ? r.criticos : [];\nconst lineas = ['🎫 <b>Tickets</b>', 'Abiertos: <b>' + Number(r.abiertos || 0) + '</b>'];\nif (escaladas.length) {\n  lineas.push('', '⬆️ <b>Subieron de prioridad (' + escaladas.length + ')</b>');\n  for (const t of escaladas.slice(0, 10)) lineas.push('• ' + esc(t.titulo) + ' → <b>' + esc(t.prioridad) + '</b>');\n  if (escaladas.length > 10) lineas.push('… y ' + (escaladas.length - 10) + ' más.');\n}\nif (criticos.length) {\n  lineas.push('', '🔥 <b>En CRITICA sin resolver</b>');\n  for (const t of criticos.slice(0, 10)) lineas.push('• ' + esc(t.titulo) + ' (' + Number(t.dias) + 'd quieto)');\n}\nif (!escaladas.length && !criticos.length) lineas.push('', '✅ Nada escaló hoy, el tablero está al día.');\nreturn [{ json: { texto: lineas.join('\\n') } }];"
+      },
+      "id": "tk-03-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Code - Resumen Tickets",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TICKETS_TELEGRAM_CHAT_ID || $env.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $json.texto }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "tk-04-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Telegram - Resumen Tickets",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [780, 0],
+      "webhookId": "tk-telegram-resumen",
+      "credentials": {
+        "telegramApi": {
+          "id": "Zv2UC716Fxh6BCDs",
+          "name": "Telegram account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "content": "## 🎫 Tickets — envejecimiento\nCada día a las 8:00 sube un escalón la prioridad de los tickets abiertos que llevan más días quietos de los que tolera su prioridad (`ticket_dias_escalada` en db/schema.sql: BAJA 10, MEDIA 7, ALTA 4). Subir de prioridad cuenta como movimiento: el reloj se reinicia (trigger `trg_tickets_movimiento`). Después manda el resumen por Telegram.\n\nLos tickets se crean y se mueven desde el tablero del dashboard (`/api/tickets`, con la sesión del admin y RLS), y el CRM siembra los del proyecto al aceptarse una propuesta.",
+        "height": 260,
+        "width": 1000,
+        "color": 5
+      },
+      "id": "tk-05-0000-4000-8000-aaaaaaaaaaaa",
+      "name": "Nota — Tickets",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-40, -300]
+    }
+  ],
+  "connections": {
+    "⏰ Cron - Envejecimiento 8AM": {
+      "main": [[{ "node": "Postgres - Escalar Tickets Quietos", "type": "main", "index": 0 }]]
+    },
+    "Postgres - Escalar Tickets Quietos": {
+      "main": [[{ "node": "Code - Resumen Tickets", "type": "main", "index": 0 }]]
+    },
+    "Code - Resumen Tickets": {
+      "main": [[{ "node": "Telegram - Resumen Tickets", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}
