@@ -32,7 +32,10 @@ export interface Lead {
   fecha_ingreso: string;
 }
 
+// Factura por cobrar: PENDIENTE, o VENCIDA (la marca el cron después de los
+// días de gracia; sigue pudiendo cobrarse y es la que más urge ver).
 export interface FacturaPendiente {
+  estado: "PENDIENTE" | "VENCIDA";
   factura_id: string;
   cliente: string;
   servicio: string;

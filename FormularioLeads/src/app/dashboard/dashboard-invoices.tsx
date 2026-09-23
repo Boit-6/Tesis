@@ -4,7 +4,7 @@ import {SectionHeader, formatDate, formatMoney} from "./dashboard-shared";
 
 import {ghostButtonClass, tdClass, thClass} from "@/lib/constants";
 
-// IV — Facturas pendientes.
+// IV — Facturas por cobrar (PENDIENTE y VENCIDA).
 export default function DashboardInvoices({
   facturas,
   onAnular,
@@ -14,13 +14,13 @@ export default function DashboardInvoices({
 }) {
   return (
     <section>
-      <SectionHeader num="IV" title="Facturas pendientes" />
+      <SectionHeader num="IV" title="Facturas por cobrar" />
       {facturas.length === 0 ? (
-        <p className="text-muted text-[13px]">No hay facturas pendientes.</p>
+        <p className="text-muted text-[13px]">No hay facturas por cobrar.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-left">
-            <caption className="sr-only">Facturas pendientes</caption>
+            <caption className="sr-only">Facturas por cobrar</caption>
             <thead>
               <tr>
                 <th className={thClass}>Factura</th>
@@ -39,7 +39,14 @@ export default function DashboardInvoices({
 
                 return (
                   <tr key={factura.factura_id}>
-                    <td className={`${tdClass} text-mist text-[12.5px]`}>{factura.factura_id}</td>
+                    <td className={`${tdClass} text-mist text-[12.5px]`}>
+                      {factura.factura_id}
+                      {factura.estado === "VENCIDA" && (
+                        <span className="text-brick mt-1 block text-[10px] tracking-[0.14em] uppercase">
+                          Vencida
+                        </span>
+                      )}
+                    </td>
                     <td className={`${tdClass} text-ink font-serif text-[18px]`}>
                       {factura.cliente}
                     </td>

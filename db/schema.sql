@@ -724,17 +724,25 @@ REVOKE ALL ON leads, facturas, seguimientos, logs, profiles, rate_limit_log, adm
 REVOKE ALL ON metrics_mensuales, facturas_pendientes FROM anon;
 
 -- 7) Realtime: el tablero se suscribe a los cambios de `leads`
---    (postgres_changes, §4.2.5 / RNF6 / escenario E7). Se agrega la tabla
---    a la publicación de Supabase, de forma idempotente y sin romper en
---    un PostgreSQL vanilla donde esa publicación no exista.
+--    (postgres_changes, §4.2.5 / RNF6 / escenario E7) y, desde el
+--    23-sep-2026, de `facturas`: el pago de MercadoPago, el cron que marca
+--    VENCIDA y la anulación cambian la factura sin tocar su lead, y el
+--    tablero no se enteraba hasta recargar. Se agregan las tablas a la
+--    publicación de Supabase, de forma idempotente y sin romper en un
+--    PostgreSQL vanilla donde esa publicación no exista. La RLS sigue
+--    aplicando: sólo un admin recibe los eventos.
 DO $$
+DECLARE
+  t text;
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
-    IF NOT EXISTS (
-      SELECT 1 FROM pg_publication_tables
-      WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'leads'
-    ) THEN
-      ALTER PUBLICATION supabase_realtime ADD TABLE leads;
-    END IF;
+    FOREACH t IN ARRAY ARRAY['leads', 'facturas'] LOOP
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_publication_tables
+        WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = t
+      ) THEN
+        EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE public.%I', t);
+      END IF;
+    END LOOP;
   END IF;
 END $$;

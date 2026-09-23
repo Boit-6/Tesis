@@ -72,6 +72,7 @@ function aFacturaPendiente(
   }
 
   return {
+    estado: "PENDIENTE",
     factura_id: row.factura_id,
     cliente: row.cliente,
     servicio: row.servicio,
@@ -79,6 +80,36 @@ function aFacturaPendiente(
     moneda: row.moneda,
     fecha_vencimiento: row.fecha_vencimiento,
     dias_al_vencimiento: row.dias_al_vencimiento,
+  };
+}
+
+// Días entre hoy y la fecha de vencimiento, con la misma cuenta que la vista
+// `facturas_pendientes` (fecha_vencimiento::date - now()::date).
+function diasHasta(fecha: string): number {
+  const hoy = new Date();
+  const vence = new Date(fecha);
+
+  hoy.setHours(0, 0, 0, 0);
+  vence.setHours(0, 0, 0, 0);
+
+  return Math.round((vence.getTime() - hoy.getTime()) / 86_400_000);
+}
+
+function aFacturaVencida(
+  row: Pick<
+    Database["public"]["Tables"]["facturas"]["Row"],
+    "factura_id" | "cliente" | "servicio" | "monto" | "moneda" | "fecha_vencimiento"
+  >,
+): FacturaPendiente {
+  return {
+    estado: "VENCIDA",
+    factura_id: row.factura_id,
+    cliente: row.cliente,
+    servicio: row.servicio ?? "",
+    monto: row.monto,
+    moneda: row.moneda,
+    fecha_vencimiento: row.fecha_vencimiento,
+    dias_al_vencimiento: diasHasta(row.fecha_vencimiento),
   };
 }
 
@@ -109,56 +140,74 @@ export default function DashboardClient() {
     try {
       setError(null);
 
-      const [resMetrics, resEstados, resLeads, resFacturas, resTrabajos, resPedidos, resPorEnviar] =
-        await Promise.all([
-          supabase.from("metrics_mensuales").select("*").order("mes", {ascending: false}).limit(1),
-          // Cuenta el embudo histórico completo (no solo el mes en curso), a
-          // propósito: es la única lectura de todo el tablero que no puede
-          // acotarse a metrics_mensuales, que agrupa por mes y no trae todos
-          // los estados. A la escala actual (decenas de filas) traer solo la
-          // columna `estado` de cada lead no es un costo real.
-          supabase.from("leads").select("estado"),
-          supabase
-            .from("leads")
-            .select("lead_id,nombre,email,servicio,estado,tier,presupuesto,fecha_ingreso")
-            .order("fecha_ingreso", {ascending: false})
-            .limit(LEADS_LIMITE),
-          supabase
-            .from("facturas_pendientes")
-            .select("*")
-            .order("dias_al_vencimiento")
-            .limit(FACTURAS_LIMITE),
-          supabase
-            .from("leads")
-            .select("lead_id,nombre,servicio,estado_trabajo")
-            .in("estado", ["ACEPTADO", "FACTURADO"])
-            .order("fecha_ingreso", {ascending: false}),
-          // Un pedido de cambios pendiente es un lead que está EN_SEGUIMIENTO y
-          // tiene el mensaje del cliente en `notas`. Filtrar sólo por `notas`
-          // no alcanza: nada la limpia al resolver el pedido, así que la
-          // bandeja se llenaba de leads ya facturados, cerrados o perdidos que
-          // alguna vez pidieron un cambio, con sus botones activos y sin forma
-          // de sacarlos de la lista. Al resolverse, el lead vuelve a
-          // PROPUESTA_ENVIADA y desaparece de acá, que es lo esperable.
-          supabase
-            .from("leads")
-            .select("lead_id,nombre,servicio,notas")
-            .eq("estado", "EN_SEGUIMIENTO")
-            .not("notas", "is", null)
-            .order("fecha_ingreso", {ascending: false}),
-          supabase
-            .from("leads")
-            .select("lead_id,nombre,email,servicio,tier,score,presupuesto,fecha_ingreso")
-            .eq("estado", "NUEVO")
-            .in("tier", ["HOT", "WARM"])
-            .order("score", {ascending: false}),
-        ]);
+      const [
+        resMetrics,
+        resEstados,
+        resLeads,
+        resFacturas,
+        resVencidas,
+        resTrabajos,
+        resPedidos,
+        resPorEnviar,
+      ] = await Promise.all([
+        supabase.from("metrics_mensuales").select("*").order("mes", {ascending: false}).limit(1),
+        // Cuenta el embudo histórico completo (no solo el mes en curso), a
+        // propósito: es la única lectura de todo el tablero que no puede
+        // acotarse a metrics_mensuales, que agrupa por mes y no trae todos
+        // los estados. A la escala actual (decenas de filas) traer solo la
+        // columna `estado` de cada lead no es un costo real.
+        supabase.from("leads").select("estado"),
+        supabase
+          .from("leads")
+          .select("lead_id,nombre,email,servicio,estado,tier,presupuesto,fecha_ingreso")
+          .order("fecha_ingreso", {ascending: false})
+          .limit(LEADS_LIMITE),
+        supabase
+          .from("facturas_pendientes")
+          .select("*")
+          .order("dias_al_vencimiento")
+          .limit(FACTURAS_LIMITE),
+        // La vista sólo trae PENDIENTE (alimenta los recordatorios): las que
+        // el cron ya marcó VENCIDA se leen aparte para que no desaparezcan
+        // del tablero justo cuando más urge cobrarlas.
+        supabase
+          .from("facturas")
+          .select("factura_id,cliente,servicio,monto,moneda,fecha_vencimiento")
+          .eq("estado_pago", "VENCIDA")
+          .order("fecha_vencimiento")
+          .limit(FACTURAS_LIMITE),
+        supabase
+          .from("leads")
+          .select("lead_id,nombre,servicio,estado_trabajo")
+          .in("estado", ["ACEPTADO", "FACTURADO"])
+          .order("fecha_ingreso", {ascending: false}),
+        // Un pedido de cambios pendiente es un lead que está EN_SEGUIMIENTO y
+        // tiene el mensaje del cliente en `notas`. Filtrar sólo por `notas`
+        // no alcanza: nada la limpia al resolver el pedido, así que la
+        // bandeja se llenaba de leads ya facturados, cerrados o perdidos que
+        // alguna vez pidieron un cambio, con sus botones activos y sin forma
+        // de sacarlos de la lista. Al resolverse, el lead vuelve a
+        // PROPUESTA_ENVIADA y desaparece de acá, que es lo esperable.
+        supabase
+          .from("leads")
+          .select("lead_id,nombre,servicio,notas")
+          .eq("estado", "EN_SEGUIMIENTO")
+          .not("notas", "is", null)
+          .order("fecha_ingreso", {ascending: false}),
+        supabase
+          .from("leads")
+          .select("lead_id,nombre,email,servicio,tier,score,presupuesto,fecha_ingreso")
+          .eq("estado", "NUEVO")
+          .in("tier", ["HOT", "WARM"])
+          .order("score", {ascending: false}),
+      ]);
 
       const fallo =
         resMetrics.error ??
         resEstados.error ??
         resLeads.error ??
         resFacturas.error ??
+        resVencidas.error ??
         resTrabajos.error ??
         resPedidos.error ??
         resPorEnviar.error;
@@ -175,7 +224,12 @@ export default function DashboardClient() {
 
       setFunnel(counts);
       setLeads(resLeads.data ?? []);
-      setFacturas((resFacturas.data ?? []).map(aFacturaPendiente).filter((f) => f !== null));
+      setFacturas(
+        [
+          ...(resVencidas.data ?? []).map(aFacturaVencida),
+          ...(resFacturas.data ?? []).map(aFacturaPendiente).filter((f) => f !== null),
+        ].sort((a, b) => a.dias_al_vencimiento - b.dias_al_vencimiento),
+      );
       setTrabajos(resTrabajos.data ?? []);
       setPedidos(resPedidos.data ?? []);
       setPorEnviar(resPorEnviar.data ?? []);
@@ -195,7 +249,9 @@ export default function DashboardClient() {
     const client = supabase;
     let pendiente: ReturnType<typeof setTimeout> | null = null;
 
-    // Refresca en vivo cuando entra o cambia un lead, agrupando la ráfaga.
+    // Refresca en vivo cuando entra o cambia un lead o una factura, agrupando
+    // la ráfaga. Las facturas cambian solas sin tocar su lead: el pago de
+    // MercadoPago, el cron que las marca VENCIDA o una anulación.
     //
     // Cada evento de `postgres_changes` obliga a recargar el tablero entero, que
     // son seis consultas. Sin agrupar, un proceso programado que actualiza N
@@ -203,15 +259,18 @@ export default function DashboardClient() {
     // consultas en ráfaga, más de las que costaría sondear. La espera es corta
     // frente al umbral de 3 s del RNF6, así que no compromete la actualidad del
     // dato: sólo evita repetir la misma recarga N veces.
+    const recargarAgrupado = () => {
+      if (pendiente) clearTimeout(pendiente);
+      pendiente = setTimeout(() => {
+        pendiente = null;
+        cargarDatos();
+      }, RECARGA_AGRUPADA_MS);
+    };
+
     const channel = client
-      .channel("leads-rt")
-      .on("postgres_changes", {event: "*", schema: "public", table: "leads"}, () => {
-        if (pendiente) clearTimeout(pendiente);
-        pendiente = setTimeout(() => {
-          pendiente = null;
-          cargarDatos();
-        }, RECARGA_AGRUPADA_MS);
-      })
+      .channel("tablero-rt")
+      .on("postgres_changes", {event: "*", schema: "public", table: "leads"}, recargarAgrupado)
+      .on("postgres_changes", {event: "*", schema: "public", table: "facturas"}, recargarAgrupado)
       .subscribe();
 
     return () => {
