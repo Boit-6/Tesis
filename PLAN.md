@@ -271,22 +271,21 @@ es roadmap post-defensa.
 
 ---
 
-## Lo que sobra (transversal — no estaba en el plan original)
+## Lo que sobra (transversal — no estaba en el plan original) → **resuelto (2026-09-23)**
 
-| Ítem | Por qué molesta |
+| Ítem | Resolución |
 |---|---|
-| `docs/adenda-informe-evaluacion-20260901.md` | Es una autoevaluación tipo "dictamen CONEAU" generada por IA sobre el propio `tesis.docx`. Huérfana: ningún otro doc del repo la referencia. Si un evaluador real la abre, ve a una IA calificándose a sí misma — mala señal para el repo entregado. |
-| `docs/cumplimiento-ley-25326.md` | Tampoco referenciada desde ningún otro `.md` del repo (puede estar citada desde el `.docx`, no verificado). |
-| `figura06-tablero-20260826.jpg` + `figura06-tablero-20260829.jpg` | Dos versiones de la misma captura conviviendo (~800KB); probablemente solo una está vigente en el Anexo A. |
-| `PLAN_IMPLEMENTACION.md` (raíz, sin trackear) | Reemplazado por este archivo — considerar borrarlo para no tener dos planes desincronizados. |
+| `docs/adenda-informe-evaluacion-20260901.md` | ✅ Borrada. Era una autoevaluación tipo "dictamen CONEAU" generada por IA sobre el propio `tesis.docx`, sin referencias desde ningún otro doc. |
+| `docs/figura06-tablero-20260826.jpg` | ✅ Borrada. Era la captura previa a `1201c2c`, con el correo personal de un autor; la vigente es `figura06-tablero-20260829.jpg`. |
+| `PLAN_IMPLEMENTACION.md` (raíz, sin trackear) | ✅ Borrado; este archivo lo reemplaza. |
+| CRLF en el working tree (71 archivos) | ✅ Descartado (era solo fin de línea, sin cambios de contenido) y `.gitattributes` con `eol=lf` para que no vuelva. |
+| `docs/cumplimiento-ley-25326.md` | Sigue sin referencias desde otro `.md`; queda a confirmar si el `.docx` la cita. |
 
 ---
 
-## Prioridad si solo se ataca un puñado
+## Lo que queda
 
-1. Confirmar `MP_WEBHOOK_SECRET` en producción (Fase 0) — es lo único que sigue dependiendo de vos, no del código.
-2. Sacar `adenda-informe-evaluacion-20260901.md` del repo entregable (sobra).
-3. Borrar o actualizar `PLAN_IMPLEMENTACION.md` para que no quede desincronizado de este archivo.
-4. Reimportar `workflow/crm_postgres.json` en el n8n real para que los fixes de Fase 0 y Fase 1 (XFF, `fecha_envio_email`) queden vivos, no solo en el repo.
+1. Confirmar `MP_WEBHOOK_SECRET` en producción (Fase 0) — depende de quien opere la infra, no del código.
+2. Reimportar `workflow/crm_postgres.json` en el n8n real para que los fixes de Fase 0 y Fase 1 (XFF, `fecha_envio_email`) queden vivos, no solo en el repo.
 
 Con Fase 0 a 4 cerradas, sólo queda Fase 5 (backlog a propósito, no deuda).
