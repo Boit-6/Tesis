@@ -288,7 +288,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE facturas SET estado_pago = 'COBRADO', fecha_cobro = now() WHERE factura_id = $1 AND pago_token = $2::uuid AND estado_pago IN ('PENDIENTE','VENCIDA') RETURNING *;",
+        "query": "UPDATE facturas SET estado_pago = 'COBRADO', fecha_cobro = now(), metodo_cobro = 'DESARROLLO' WHERE factura_id = $1 AND pago_token = $2::uuid AND estado_pago IN ('PENDIENTE','VENCIDA') RETURNING *;",
         "options": {
           "queryReplacement": "={{ [$json.factura_id, $json.pago_token] }}"
         }
@@ -2007,7 +2007,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE facturas SET estado_pago = 'COBRADO', fecha_cobro = now() WHERE lead_id = $1 AND estado_pago = 'PENDIENTE';",
+        "query": "UPDATE facturas SET estado_pago = 'COBRADO', fecha_cobro = now(), metodo_cobro = 'CIERRE_MANUAL' WHERE lead_id = $1 AND estado_pago = 'PENDIENTE';",
         "options": {
           "queryReplacement": "={{ [$('Postgres - Lead Cerrado').item.json.lead_id] }}"
         }
@@ -3741,7 +3741,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE facturas SET estado_pago = 'COBRADO', fecha_cobro = now(), mp_payment_id = $2 WHERE factura_id = $1 AND estado_pago IN ('PENDIENTE','VENCIDA') AND monto = $3::numeric AND moneda = $4 RETURNING *;",
+        "query": "UPDATE facturas SET estado_pago = 'COBRADO', fecha_cobro = now(), metodo_cobro = 'MERCADOPAGO', mp_payment_id = $2 WHERE factura_id = $1 AND estado_pago IN ('PENDIENTE','VENCIDA') AND monto = $3::numeric AND moneda = $4 RETURNING *;",
         "options": {
           "queryReplacement": "={{ [$json.factura_id, $json.mp_payment_id, $json.monto_pagado, $json.moneda_pagada] }}"
         }

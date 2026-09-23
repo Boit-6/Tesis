@@ -49,6 +49,7 @@ function aMetrics(
     pendiente: row.pendiente ?? 0,
     facturas_vencidas: row.facturas_vencidas ?? 0,
     tasa_cobro_pct: row.tasa_cobro_pct ?? 0,
+    cobrado_cierre_manual: row.cobrado_cierre_manual ?? 0,
   };
 }
 

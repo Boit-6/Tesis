@@ -36,6 +36,9 @@ export type LeadEstadoDb =
 
 export type PagoEstado = "PENDIENTE" | "COBRADO" | "VENCIDA" | "ANULADA";
 
+// No es un enum de Postgres: TEXT con CHECK (chk_facturas_metodo_cobro).
+export type MetodoCobro = "MERCADOPAGO" | "DESARROLLO" | "CIERRE_MANUAL";
+
 export type LogNivel = "INFO" | "RECORDATORIO" | "HOY" | "VENCIDA" | "URGENTE" | "WARN" | "ERROR";
 
 export type TrabajoEstadoDb = "PENDIENTE" | "EN_PROGRESO" | "EN_REVISION" | "ENTREGADO";
@@ -135,6 +138,7 @@ export interface Database {
           creado_en: string;
           pay_url: string | null;
           pago_token: string;
+          metodo_cobro: MetodoCobro | null;
         };
         Insert: {
           id?: number;
@@ -157,6 +161,7 @@ export interface Database {
           creado_en?: string;
           pay_url?: string | null;
           pago_token?: string;
+          metodo_cobro?: MetodoCobro | null;
         };
         Update: Partial<Database["public"]["Tables"]["facturas"]["Insert"]>;
         Relationships: [
@@ -288,6 +293,7 @@ export interface Database {
           facturas_vencidas: number | null;
           tasa_cobro_pct: number | null;
           comision_cobrada: number | null;
+          cobrado_cierre_manual: number | null;
         };
         Relationships: [];
       };
@@ -313,6 +319,7 @@ export interface Database {
           creado_en: string | null;
           pay_url: string | null;
           pago_token: string | null;
+          metodo_cobro: MetodoCobro | null;
           dias_al_vencimiento: number | null;
         };
         Relationships: [];

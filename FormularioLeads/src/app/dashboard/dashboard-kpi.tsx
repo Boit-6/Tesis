@@ -22,7 +22,15 @@ export default function DashboardKpi({
           <KpiCard label="Conversión" value={formatPct(metrics?.conversion_pct)} />
           <KpiCard label="Tasa de cobro" value={formatPct(metrics?.tasa_cobro_pct)} />
           <KpiCard label="Facturación" value={formatMoney(metrics?.facturacion)} />
-          <KpiCard label="Cobrado" value={formatMoney(metrics?.cobrado)} />
+          <KpiCard
+            label="Cobrado"
+            nota={
+              metrics && metrics.cobrado_cierre_manual > 0
+                ? `${formatMoney(metrics.cobrado_cierre_manual)} por cierre, sin pago registrado`
+                : undefined
+            }
+            value={formatMoney(metrics?.cobrado)}
+          />
           <KpiCard label="Pendiente" value={formatMoney(metrics?.pendiente)} />
           <KpiCard
             alert={!!metrics && metrics.facturas_vencidas > 0}

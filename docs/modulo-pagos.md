@@ -100,6 +100,20 @@ contra la API real de MercadoPago: el formato de `expiration_date_to` y la
 respuesta del `PUT` salen de la documentación pública, y `tests/mp-doble.mjs`
 los reproduce.
 
+
+### 1.2 Cómo se cobró cada factura (`metodo_cobro`, 23-sep-2026)
+
+Tres caminos dan una factura por COBRADO, y cada uno lo deja anotado:
+
+| `metodo_cobro` | Quién | Hay un pago detrás |
+|---|---|---|
+| `MERCADOPAGO` | `Postgres - Marcar Cobrado MP` | Sí, verificado contra la API |
+| `DESARROLLO` | `Postgres - Marcar Cobrado` (link con `pago_token`) | No: modo sin credenciales |
+| `CIERRE_MANUAL` | `Postgres - Factura Cobrada`, al cerrar el proyecto | No: se asume cobrada por fuera |
+
+`metrics_mensuales.cobrado_cierre_manual` separa la última parte, y el tablero
+la muestra debajo de «Cobrado» cuando no es cero.
+
 ---
 
 ## 2. La comisión de la plataforma

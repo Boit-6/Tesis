@@ -61,13 +61,14 @@ const SQL_LEAD_FACTURADO = consultaDe('Postgres - Lead a Facturado (Reconciliaci
 const SQL_COBRADO_MP = consultaDe('Postgres - Marcar Cobrado MP');
 const SQL_BUSCAR_NO_APLICADO = consultaDe('Postgres - Buscar Pago No Aplicado');
 const SQL_LOG_NO_APLICADO = consultaDe('Postgres - Log Pago No Aplicado');
+const SQL_FACTURA_COBRADA_CIERRE = consultaDe('Postgres - Factura Cobrada');
 const JS_CLASIFICAR_NO_APLICADO = wf.nodes
   .find((n) => n.name === 'Code - Clasificar Pago No Aplicado').parameters.jsCode;
 
 // Si algún `{{ … }}` sobrevivió, la consulta no es ejecutable y el verificador
 // estaría probando otra cosa. Mejor fallar acá y a la vista.
 for (const [nombre, sql] of Object.entries({SQL_INSERT_LEAD, SQL_LEER_ACEPTADO, SQL_INSERT_FACTURA, SQL_LEAD_FACTURADO,
-  SQL_COBRADO_MP, SQL_BUSCAR_NO_APLICADO, SQL_LOG_NO_APLICADO})) {
+  SQL_COBRADO_MP, SQL_BUSCAR_NO_APLICADO, SQL_LOG_NO_APLICADO, SQL_FACTURA_COBRADA_CIERRE})) {
   if (sql.includes('{{')) throw new Error(`${nombre} conserva una expresión sin resolver: ${sql}`);
 }
 
@@ -362,6 +363,8 @@ try {
 
   comprobar('un pago por el monto justo cobra la factura PENDIENTE',
     cobrar(pago('FAC-MP-PEND')) === 1 && estado('FAC-MP-PEND') === 'COBRADO');
+  comprobar('y queda registrado que la cobró MercadoPago',
+    valor("SELECT metodo_cobro FROM facturas WHERE factura_id = 'FAC-MP-PEND';") === 'MERCADOPAGO');
 
   comprobar('la notificación repetida del mismo pago no vuelve a aplicarse',
     cobrar(pago('FAC-MP-PEND')) === 0);
@@ -399,23 +402,33 @@ try {
 
   console.log('\n── metrics_mensuales: una factura ANULADA no es facturación ──\n');
 
-  // Mes propio, lejos de las facturas de los casos de arriba.
+  // Mes propio, lejos de las facturas de los casos de arriba. La de 600 va en
+  // un lead aparte porque el cierre cobra todas las pendientes de su lead.
   psql(`
+    INSERT INTO leads (lead_id, nombre, email, presupuesto, servicio, estado)
+    VALUES ('LD-2000000000009-CIER', 'Cliente Cierre', 'cierre@test.com', 600, 'seo', 'FACTURADO');
     INSERT INTO facturas (factura_id, lead_id, cliente, email, servicio, monto, estado_pago, fecha_emision, fecha_vencimiento)
-    VALUES ('FAC-MET-COBR', 'LD-2000000000002-CONF', 'C', 'c@test.com', 'seo', 600, 'COBRADO',   '2020-01-10', '2020-01-25'),
+    VALUES ('FAC-MET-COBR', 'LD-2000000000009-CIER', 'C', 'c@test.com', 'seo', 600, 'PENDIENTE', '2020-01-10', '2020-01-25'),
            ('FAC-MET-PEND', 'LD-2000000000002-CONF', 'C', 'c@test.com', 'seo', 300, 'PENDIENTE', '2020-01-10', '2020-01-25'),
            ('FAC-MET-VENC', 'LD-2000000000002-CONF', 'C', 'c@test.com', 'seo', 100, 'VENCIDA',   '2020-01-10', '2020-01-25'),
            ('FAC-MET-ANUL', 'LD-2000000000002-CONF', 'C', 'c@test.com', 'seo', 5000, 'ANULADA',  '2020-01-10', '2020-01-25');
   `);
+  // La de 600 se da por cobrada al cerrar el proyecto: la consulta real del
+  // nodo, que no tiene un pago detrás.
+  ejecutar(SQL_FACTURA_COBRADA_CIERRE, ['LD-2000000000009-CIER']);
+  comprobar('cerrar el proyecto marca la factura como cobrada por cierre, no por un pago',
+    valor("SELECT estado_pago || '/' || metodo_cobro FROM facturas WHERE factura_id = 'FAC-MET-COBR';") === 'COBRADO/CIERRE_MANUAL');
+
   const metrica = valor(
-    "SELECT facturacion || '|' || cobrado || '|' || pendiente || '|' || tasa_cobro_pct || '|' || facturas_vencidas FROM metrics_mensuales WHERE mes = '2020-01';");
-  const [facturacion, cobrado, pendienteMes, tasa, vencidas] = metrica.split('|');
+    "SELECT facturacion || '|' || cobrado || '|' || pendiente || '|' || tasa_cobro_pct || '|' || facturas_vencidas || '|' || cobrado_cierre_manual FROM metrics_mensuales WHERE mes = '2020-01';");
+  const [facturacion, cobrado, pendienteMes, tasa, vencidas, cierreManual] = metrica.split('|');
 
   comprobar('la facturación del mes no suma la anulada (600 + 300 + 100)', facturacion === '1000.00', metrica);
   comprobar('lo cobrado es sólo lo COBRADO', cobrado === '600.00', metrica);
   comprobar('lo pendiente suma PENDIENTE y VENCIDA, no la anulada', pendienteMes === '400.00', metrica);
   comprobar('la tasa de cobro se calcula sobre lo facturado sin anular (60 %)', tasa === '60.0', metrica);
   comprobar('las vencidas se siguen contando aparte', vencidas === '1', metrica);
+  comprobar('el tablero puede separar lo cobrado sólo por cierre', cierreManual === '600.00', metrica);
 
   console.log(`\nResultado: ${ok} OK, ${fallas} FALLA`);
   if (fallas) codigoSalida = 1;

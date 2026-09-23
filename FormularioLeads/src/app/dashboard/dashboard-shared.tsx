@@ -28,7 +28,17 @@ export function SectionHeader({num, title}: {num: string; title: string}) {
   );
 }
 
-export function KpiCard({label, value, alert}: {label: string; value: string; alert?: boolean}) {
+export function KpiCard({
+  label,
+  value,
+  alert,
+  nota,
+}: {
+  label: string;
+  value: string;
+  alert?: boolean;
+  nota?: string;
+}) {
   return (
     <div className="border-rule border-t pt-3.5">
       <p className="text-faint mb-2 text-[10px] tracking-[0.16em] uppercase">{label}</p>
@@ -39,6 +49,7 @@ export function KpiCard({label, value, alert}: {label: string; value: string; al
       >
         {value}
       </p>
+      {nota && <p className="text-faint mt-2 text-[11.5px]">{nota}</p>}
     </div>
   );
 }

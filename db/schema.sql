@@ -266,6 +266,18 @@ ALTER TABLE facturas ADD COLUMN IF NOT EXISTS pay_url TEXT;
 -- en vez de un secreto compartido estático.
 ALTER TABLE facturas ADD COLUMN IF NOT EXISTS pago_token UUID NOT NULL DEFAULT gen_random_uuid();
 
+-- Cómo se cobró la factura (23-sep-2026, para bases ya creadas). Cerrar el
+-- proyecto desde el panel da la factura por COBRADO sin que haya entrado
+-- ningún pago registrado (se asume cobrada por fuera del sistema); sin esta
+-- columna ese cierre era indistinguible de un cobro real y engordaba
+-- `cobrado` y `tasa_cobro_pct`. NULL = cobrada antes de la columna, o no
+-- cobrada todavía.
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS metodo_cobro TEXT;
+DO $$ BEGIN
+  ALTER TABLE facturas ADD CONSTRAINT chk_facturas_metodo_cobro
+    CHECK (metodo_cobro IS NULL OR metodo_cobro IN ('MERCADOPAGO','DESARROLLO','CIERRE_MANUAL')) NOT VALID;
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
 -- Términos que fija el profesional antes de enviar la propuesta (para bases ya
 -- creadas). Hasta su incorporación, el precio de la propuesta y el monto de la
 -- factura salían de `leads.presupuesto`, es decir del valor que el propio
@@ -484,7 +496,10 @@ fact_mes AS (
                  / NULLIF(sum(monto) FILTER (WHERE estado_pago <> 'ANULADA'), 0), 1) AS tasa_cobro_pct,
     -- Comisión de la plataforma (MP_COMISION_PORCENTAJE) realizada sobre lo
     -- efectivamente cobrado. Es contable: MercadoPago no la separa sola.
-    coalesce(sum(comision_plataforma) FILTER (WHERE estado_pago = 'COBRADO'), 0) AS comision_cobrada
+    coalesce(sum(comision_plataforma) FILTER (WHERE estado_pago = 'COBRADO'), 0) AS comision_cobrada,
+    -- Parte de `cobrado` que sólo se dio por cobrada al cerrar el proyecto,
+    -- sin un pago registrado por el sistema.
+    coalesce(sum(monto) FILTER (WHERE estado_pago = 'COBRADO' AND metodo_cobro = 'CIERRE_MANUAL'), 0) AS cobrado_cierre_manual
   FROM facturas
   GROUP BY 1
 )
@@ -502,7 +517,8 @@ SELECT
   coalesce(f.pendiente, 0)          AS pendiente,
   coalesce(f.facturas_vencidas, 0)  AS facturas_vencidas,
   coalesce(f.tasa_cobro_pct, 0)     AS tasa_cobro_pct,
-  coalesce(f.comision_cobrada, 0)   AS comision_cobrada
+  coalesce(f.comision_cobrada, 0)   AS comision_cobrada,
+  coalesce(f.cobrado_cierre_manual, 0) AS cobrado_cierre_manual
 FROM lead_mes l
 FULL OUTER JOIN fact_mes f ON l.mes = f.mes
 ORDER BY mes DESC;

@@ -18,6 +18,7 @@ export interface Metrics {
   pendiente: number;
   facturas_vencidas: number;
   tasa_cobro_pct: number;
+  cobrado_cierre_manual: number;
 }
 
 export interface Lead {
