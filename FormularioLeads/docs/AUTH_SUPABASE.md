@@ -37,9 +37,10 @@ configurar).
 
 Next.js 16.2.2 **deprecó el archivo `middleware.ts`** en favor de `proxy.ts` (con un
 export llamado `proxy` en vez de `middleware`). Por eso el archivo se llama
-`src/proxy.ts` y no `src/middleware.ts` — es la convención nueva, no un error. Corre en
-cada request (salvo assets estáticos) y usa `updateSession` para decidir si redirige a
-`/login`.
+`src/proxy.ts` y no `src/middleware.ts` — es la convención nueva, no un error. Corre
+sólo en `/dashboard`, `/api` y `/auth` (desde el 23-sep-2026; antes, en cada request
+salvo assets estáticos) y usa `updateSession` para decidir si redirige a `/login`. Las
+páginas públicas no leen la sesión, así que no pagan el viaje a Supabase Auth.
 
 ### 2.3 Páginas nuevas
 
@@ -92,6 +93,7 @@ NEXT_PUBLIC_N8N_BASE=http://localhost:5678         # ver sección 5, pendiente p
 ```
 
 **Importante:** en el dashboard de Supabase (Settings → API) hay dos sistemas de keys:
+
 - **Nuevo** ("Publishable and secret API keys"): usar `sb_publishable_...`. Es el que
   usamos.
 - **Legacy** ("anon, service_role"): el `anon` (JWT) también funcionaría, pero se
@@ -209,9 +211,11 @@ producción.
 ## 7. Cómo probar
 
 **Local:**
+
 ```bash
 pnpm dev
 ```
+
 - `/` y `/aceptar/[leadId]` — públicas, sin cambios funcionales (salvo que necesitan que
   n8n esté accesible).
 - `/dashboard` sin sesión → redirige a `/login`.
@@ -226,6 +230,7 @@ mismas pruebas contra `https://formulario-leads-psi.vercel.app`.
 ## 8. Archivos tocados en esta sesión
 
 **Nuevos:**
+
 - `src/lib/supabase/{client,server,middleware}.ts`
 - `src/proxy.ts`
 - `src/app/login/{page,login-form}.tsx`
@@ -235,6 +240,7 @@ mismas pruebas contra `https://formulario-leads-psi.vercel.app`.
 - `docs/AUTH_SUPABASE.md` (este archivo)
 
 **Modificados:**
+
 - `src/app/dashboard/page.tsx`
 - `src/app/dashboard/dashboard-client.tsx`
 - `src/app/components/lead-form.tsx` (fix de la URL hardcodeada)
@@ -242,4 +248,5 @@ mismas pruebas contra `https://formulario-leads-psi.vercel.app`.
 - `package.json` / `pnpm-lock.yaml` (dependencia `@supabase/ssr`)
 
 **Borrado:**
+
 - `src/lib/supabase.ts` (reemplazado por `src/lib/supabase/`)
