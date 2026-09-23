@@ -3,12 +3,12 @@
 | campo | valor |
 | --- | --- |
 | comando | `node tests/idempotencia.mjs` |
-| marca temporal (UTC) | 2026-09-18T15:56:37.000Z |
-| commit | f5beedebccb8155858903a1b9352d2c51c5a7a3b |
-| commit (corto) | f5beede |
+| marca temporal (UTC) | 2026-09-23T16:42:18.979Z |
+| commit | 095b250fb42b08f2001da58262882944ee0b8232 |
+| commit (corto) | 095b250 |
 | arbol de trabajo | CON CAMBIOS SIN CONFIRMAR |
 | codigo de salida | 0 |
-| duracion | 12.6 s |
+| duracion | 8.1 s |
 
 ## salida
 
@@ -44,5 +44,21 @@ OK    y una segunda pasada no vuelve a aplicarlo
 OK    reconciliado, el lead ya no aparece como pendiente
 OK    la factura recuperada entra al circuito de recordatorios de pago
 
-Resultado: 22 OK, 0 FALLA
+── Cobro por MercadoPago: ningún pago aprobado se pierde en silencio ──
+
+OK    un pago por el monto justo cobra la factura PENDIENTE
+OK    la notificación repetida del mismo pago no vuelve a aplicarse
+OK    y no genera alerta (MercadoPago reintenta: es ruido esperable)
+OK    un pago tardío cobra la factura VENCIDA (antes se perdía)
+OK    un pago sobre una factura ANULADA no la cobra
+OK    pero deja alerta: la plata ya entró
+OK    un pago por menos de lo facturado no cobra la factura
+OK    y la alerta dice cuánto se pagó y cuánto se facturó
+OK    un pago en otra moneda tampoco la cobra
+OK    un segundo pago sobre una factura ya cobrada se detecta como pago doble
+OK    un pago que apunta a una factura inexistente deja alerta
+OK    un pago no aprobado (factura_id vacío) no toca nada ni alerta
+OK    n8n_writer puede dejar la alerta en logs
+
+Resultado: 35 OK, 0 FALLA
 ```

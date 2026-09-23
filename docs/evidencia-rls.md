@@ -3,12 +3,12 @@
 | campo | valor |
 | --- | --- |
 | comando | `node tests/verificar_rls.mjs` |
-| marca temporal (UTC) | 2026-09-18T15:56:29.828Z |
-| commit | f5beedebccb8155858903a1b9352d2c51c5a7a3b |
-| commit (corto) | f5beede |
+| marca temporal (UTC) | 2026-09-23T16:42:15.824Z |
+| commit | 095b250fb42b08f2001da58262882944ee0b8232 |
+| commit (corto) | 095b250 |
 | arbol de trabajo | CON CAMBIOS SIN CONFIRMAR |
 | codigo de salida | 0 |
-| duracion | 6.6 s |
+| duracion | 3.0 s |
 
 ## salida
 
