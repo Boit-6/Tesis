@@ -1,7 +1,10 @@
-export default function DashboardLoading() {
+import {EsqueletoEncabezado, EsqueletoInicio} from "../esqueletos";
+
+export default function InicioLoading() {
   return (
-    <div>
-      <p className="text-faint text-[11px] tracking-[0.2em] uppercase">Cargando datos…</p>
-    </div>
+    <>
+      <EsqueletoEncabezado />
+      <EsqueletoInicio />
+    </>
   );
 }

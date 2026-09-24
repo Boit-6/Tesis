@@ -110,6 +110,8 @@ function aFacturaVencida(
 }
 
 interface PanelDatos {
+  // true hasta que llega la primera carga: cada página muestra su esqueleto.
+  cargando: boolean;
   metrics: Metrics | null;
   funnel: Record<string, number>;
   leads: Lead[];
@@ -450,6 +452,7 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
   }
 
   const datos: PanelDatos = {
+    cargando: loading,
     metrics,
     funnel,
     leads,
@@ -481,11 +484,7 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
         </div>
       )}
 
-      {loading ? (
-        <p className="text-faint text-[11px] tracking-[0.2em] uppercase">Cargando datos…</p>
-      ) : (
-        children
-      )}
+      {children}
 
       {leadAbierto && (
         <LeadDetalle

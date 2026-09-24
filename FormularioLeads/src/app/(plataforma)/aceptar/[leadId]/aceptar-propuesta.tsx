@@ -2,6 +2,8 @@
 
 import {type ReactNode, useEffect, useRef, useState} from "react";
 
+import {Cargando, Esqueleto} from "@/app/components/esqueleto";
+
 const N8N_BASE = process.env.NEXT_PUBLIC_N8N_BASE;
 // Dirección a la que se invita a escribir cuando el enlace ya no sirve. Las
 // pantallas de error decían "escribinos" sin decir dónde: en la página que
@@ -247,12 +249,26 @@ function StatusView({accent, icon, title, message}: StatusContent) {
   );
 }
 
+// Misma forma que ConfirmarView: saludo, bajada, términos y botones.
 function LoadingView() {
   return (
-    <div className={cardClass}>
-      <span className="text-faint text-[10px] tracking-[0.2em] uppercase">Cargando propuesta…</span>
-      <div className="bg-ochre h-px w-24 animate-pulse" />
-    </div>
+    <Cargando className={cardClass} etiqueta="Cargando propuesta…">
+      <Esqueleto className="h-2.5 w-32" />
+      <Esqueleto className="h-8 w-48" />
+      <Esqueleto className="h-4 w-full max-w-sm" />
+      <div className="border-rule-soft w-full max-w-sm border-t">
+        {Array.from({length: 3}, (_, i) => (
+          <div key={i} className="border-rule-soft flex justify-between gap-6 border-b py-3.5">
+            <Esqueleto className="h-3.5 w-16" />
+            <Esqueleto className="h-3.5 w-28" />
+          </div>
+        ))}
+      </div>
+      <div className="flex w-full max-w-sm flex-col gap-3">
+        <Esqueleto className="h-12 w-full" />
+        <Esqueleto className="h-12 w-full" />
+      </div>
+    </Cargando>
   );
 }
 

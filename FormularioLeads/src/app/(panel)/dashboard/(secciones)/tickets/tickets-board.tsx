@@ -4,6 +4,8 @@ import type {Ticket, TicketsResponse} from "@/lib/tickets";
 
 import {useCallback, useEffect, useRef, useState} from "react";
 
+import {EsqueletoTickets} from "../../esqueletos";
+
 import {esEstado} from "@/lib/tickets";
 
 // Tablero tipo Trello sobre la tabla `tickets`. Se pinta la vista
@@ -252,7 +254,7 @@ export default function TicketsBoard() {
   }
 
   if (cargando) {
-    return <p className="text-faint text-[11px] tracking-[0.2em] uppercase">Cargando tickets…</p>;
+    return <EsqueletoTickets />;
   }
 
   return (

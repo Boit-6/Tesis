@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import {KpiCard, SectionHeader, formatMoney, formatPct} from "../dashboard-shared";
+import {EsqueletoInicio} from "../esqueletos";
 import {usePanelDatos} from "../panel-datos";
 
 import {presupuestoDeclarado} from "@/lib/presupuesto";
@@ -26,6 +27,8 @@ const botonAccionClass =
 
 export default function InicioSecciones({cobrosActivos}: {cobrosActivos: boolean}) {
   const d = usePanelDatos();
+
+  if (d.cargando) return <EsqueletoInicio />;
 
   const pendientes: Pendiente[] = [
     ...d.facturas

@@ -7,6 +7,7 @@ import {useEffect, useRef, useState} from "react";
 import FormPropuesta from "./form-propuesta";
 import {Tag, formatDate, formatMoney} from "./dashboard-shared";
 import {ESTADO_COLOR, TIER_COLOR} from "./dashboard-types";
+import {EsqueletoLeadDetalle} from "./esqueletos";
 
 import {ghostButtonClass} from "@/lib/constants";
 import {presupuestoDeclarado} from "@/lib/presupuesto";
@@ -139,9 +140,7 @@ export default function LeadDetalle({
           </p>
         )}
 
-        {!lead && !error && (
-          <p className="text-faint px-6 py-8 text-[11px] tracking-[0.2em] uppercase">Cargando…</p>
-        )}
+        {!lead && !error && <EsqueletoLeadDetalle />}
 
         {lead && (
           <div className="flex flex-col gap-8 px-6 py-7">
