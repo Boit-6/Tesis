@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import {getClienteUser} from "@/lib/auth";
 
 // El gate usa la sesión en cada request.
@@ -5,8 +7,13 @@ export const dynamic = "force-dynamic";
 
 // Panel del cliente. Por ahora muestra el estado vacío: publicar un proyecto
 // y verlo acá llegan en los pasos siguientes de la etapa 6.
-export default async function ClientePage() {
+export default async function ClientePage({
+  searchParams,
+}: {
+  searchParams: Promise<{publicado?: string}>;
+}) {
   const user = await getClienteUser();
+  const {publicado} = await searchParams;
 
   return (
     <main className="mx-auto w-full max-w-4xl px-6 pt-10 pb-20 sm:px-10">
@@ -27,10 +34,21 @@ export default async function ClientePage() {
         </form>
       </div>
 
-      <p className="text-muted max-w-lg text-[14.5px] leading-relaxed">
-        Todavía no publicaste ningún proyecto. Muy pronto vas a poder publicarlo desde acá y recibir
-        propuestas de desarrolladores.
-      </p>
+      {publicado && (
+        <p
+          className="border-l-moss bg-moss/5 text-ink-soft mb-8 border-l-2 px-5 py-3.5 text-[13.5px]"
+          role="status"
+        >
+          Publicamos tu proyecto. Cuando se postulen desarrolladores, los vas a ver acá.
+        </p>
+      )}
+
+      <Link
+        className="ease bg-ink text-paper hover:bg-ochre inline-block px-6 py-4 text-[11px] font-medium tracking-[0.2em] uppercase transition duration-200"
+        href="/publicar"
+      >
+        Publicar un proyecto
+      </Link>
     </main>
   );
 }

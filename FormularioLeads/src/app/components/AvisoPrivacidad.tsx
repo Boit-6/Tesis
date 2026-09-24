@@ -79,6 +79,13 @@ export default function AvisoPrivacidad() {
           marca la casilla, su consulta no se comparte con nadie más.
         </p>
         <p className="mt-2">
+          <strong>Proyectos publicados por usted.</strong> Si publica un proyecto desde «Publicá tu
+          proyecto», el título, la descripción, el tipo de trabajo, el rango de presupuesto y la
+          urgencia los ven los desarrolladores registrados en la plataforma. Su nombre, correo y
+          teléfono no se publican: se comparten únicamente con el desarrollador que usted elija, y
+          recién cuando lo elija.
+        </p>
+        <p className="mt-2">
           Los datos no serán utilizados para fines distintos de los aquí enunciados, ni cedidos a
           terceros no mencionados en este aviso, salvo obligación legal o requerimiento de autoridad
           competente.
