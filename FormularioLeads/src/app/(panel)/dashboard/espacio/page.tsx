@@ -1,6 +1,7 @@
 import CobrosStripe from "./cobros-stripe";
 import EspacioForm from "./espacio-form";
 import PerfilForm from "./perfil-form";
+import ServiciosForm from "./servicios-form";
 import TelegramVinculo from "./telegram-vinculo";
 
 import {getPanelUser} from "@/lib/auth";
@@ -39,6 +40,8 @@ export default async function EspacioPage() {
       {!bienvenida && <TelegramVinculo vinculado={Boolean(espacio.telegram_chat_id)} />}
 
       {!bienvenida && <PerfilForm espacio={espacio} />}
+
+      {!bienvenida && <ServiciosForm espacio={espacio} />}
     </div>
   );
 }

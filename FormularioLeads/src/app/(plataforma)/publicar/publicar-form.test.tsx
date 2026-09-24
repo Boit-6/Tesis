@@ -52,6 +52,7 @@ describe("PublicarForm", () => {
       p_presupuesto_rango: "2000_5000",
       p_nombre: "Marta Gómez",
       p_telefono: null,
+      p_etiquetas: [],
     });
     expect(push).toHaveBeenCalledWith("/cliente?publicado=1");
   });

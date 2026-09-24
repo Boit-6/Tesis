@@ -1,6 +1,6 @@
 "use client";
 
-import type {Database} from "@/types/supabase";
+import type {Database, ServicioTipo, UrgenciaTipo} from "@/types/supabase";
 
 import {useEffect, useState} from "react";
 
@@ -11,7 +11,7 @@ import FormPostulacion from "./form-postulacion";
 
 import Conversacion from "@/app/components/conversacion";
 import {BotonMensajes} from "@/app/components/postulaciones";
-import {presupuestoDeclarado} from "@/lib/presupuesto";
+import {RANGOS_PRESUPUESTO, presupuestoDeclarado} from "@/lib/presupuesto";
 import {SERVICIO_LEGIBLE, URGENCIA_LEGIBLE} from "@/lib/servicios";
 import {createClient} from "@/lib/supabase/client";
 
@@ -101,6 +101,15 @@ function TarjetaPedido({
       <p className="text-ink-soft mt-3 text-[14.5px] leading-relaxed whitespace-pre-line">
         {pedido.resumen}
       </p>
+      {pedido.etiquetas.length > 0 && (
+        <ul aria-label="Habilidades que busca" className="mt-3 flex flex-wrap gap-1.5">
+          {pedido.etiquetas.map((e) => (
+            <li key={e} className="border-rule text-ink-soft border px-2 py-0.5 text-[12px]">
+              {e}
+            </li>
+          ))}
+        </ul>
+      )}
 
       <div className="text-mist mt-4 flex flex-wrap items-center justify-between gap-3 text-[12px]">
         <span>
@@ -138,9 +147,122 @@ function TarjetaPedido({
 // Bolsa de proyectos: pedidos que otros desarrolladores no pudieron tomar.
 // Todo sale de bolsa_abierta(), que no devuelve datos del cliente, y la
 // postulación pasa por postularme(), que valida las reglas en la base.
-export default function BolsaTablero() {
+interface Filtros {
+  texto: string;
+  servicio: ServicioTipo | "";
+  rango: string;
+  urgencia: UrgenciaTipo | "";
+  soloMios: boolean;
+}
+
+const SIN_FILTROS: Filtros = {
+  texto: "",
+  servicio: "",
+  rango: "",
+  urgencia: "",
+  soloMios: false,
+};
+
+// Filtra en el navegador: la bolsa trae pocos pedidos y así responde al
+// instante. El texto busca en el título, el resumen y las etiquetas.
+function coincide(p: PedidoBolsa, f: Filtros, misServicios: ServicioTipo[]) {
+  const texto = f.texto.trim().toLowerCase();
+
+  if (texto) {
+    const donde = [p.titulo ?? "", p.resumen, ...p.etiquetas].join(" ").toLowerCase();
+
+    if (!donde.includes(texto)) return false;
+  }
+  if (f.servicio && p.servicio !== f.servicio) return false;
+  if (f.rango && p.presupuesto_rango !== f.rango) return false;
+  if (f.urgencia && p.urgencia !== f.urgencia) return false;
+  if (f.soloMios && !misServicios.includes(p.servicio)) return false;
+
+  return true;
+}
+
+const selectClass =
+  "ease border-rule bg-card text-ink-soft focus:border-ochre min-h-10 w-full cursor-pointer border px-3 text-[13px] outline-none";
+
+function BarraFiltros({
+  filtros,
+  onCambio,
+  misServicios,
+}: {
+  filtros: Filtros;
+  onCambio: (f: Filtros) => void;
+  misServicios: ServicioTipo[];
+}) {
+  const cambiar = <K extends keyof Filtros>(k: K, v: Filtros[K]) => onCambio({...filtros, [k]: v});
+
+  return (
+    <div aria-label="Filtros" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" role="search">
+      <input
+        aria-label="Buscar en los pedidos"
+        className={`${selectClass} cursor-text sm:col-span-2 lg:col-span-4`}
+        placeholder="Buscar por título, descripción o habilidad…"
+        type="search"
+        value={filtros.texto}
+        onChange={(e) => cambiar("texto", e.target.value)}
+      />
+      <select
+        aria-label="Tipo de trabajo"
+        className={selectClass}
+        value={filtros.servicio}
+        onChange={(e) => cambiar("servicio", e.target.value as ServicioTipo | "")}
+      >
+        <option value="">Todos los tipos de trabajo</option>
+        {(Object.keys(SERVICIO_LEGIBLE) as ServicioTipo[]).map((s) => (
+          <option key={s} value={s}>
+            {SERVICIO_LEGIBLE[s]}
+          </option>
+        ))}
+      </select>
+      <select
+        aria-label="Presupuesto"
+        className={selectClass}
+        value={filtros.rango}
+        onChange={(e) => cambiar("rango", e.target.value)}
+      >
+        <option value="">Cualquier presupuesto</option>
+        {RANGOS_PRESUPUESTO.map((r) => (
+          <option key={r.clave} value={r.clave}>
+            {r.etiqueta}
+          </option>
+        ))}
+      </select>
+      <select
+        aria-label="Urgencia"
+        className={selectClass}
+        value={filtros.urgencia}
+        onChange={(e) => cambiar("urgencia", e.target.value as UrgenciaTipo | "")}
+      >
+        <option value="">Cualquier urgencia</option>
+        {(Object.keys(URGENCIA_LEGIBLE) as UrgenciaTipo[]).map((u) => (
+          <option key={u} value={u}>
+            {URGENCIA_LEGIBLE[u]}
+          </option>
+        ))}
+      </select>
+      {misServicios.length > 0 && (
+        <label className="text-ink-soft flex min-h-10 cursor-pointer items-center gap-2 text-[13px]">
+          <input
+            checked={filtros.soloMios}
+            className="accent-ochre size-4"
+            type="checkbox"
+            onChange={(e) => cambiar("soloMios", e.target.checked)}
+          />
+          Sólo mis servicios
+        </label>
+      )}
+    </div>
+  );
+}
+
+export default function BolsaTablero({misServicios = []}: {misServicios?: ServicioTipo[]}) {
   const [supabase] = useState(() => createClient());
   const [pestana, setPestana] = useState<Pestana>("abiertos");
+  const [filtros, setFiltros] = useState<Filtros>(SIN_FILTROS);
   // Lo que devolvió la última carga. `ahora` es la hora de esa carga: los
   // textos «hace N días» y «vence en N días» quedan fijos hasta la próxima.
   const [carga, setCarga] = useState<{
@@ -194,10 +316,12 @@ export default function BolsaTablero() {
 
   const {pedidos, error, ahora} = carga;
 
+  const visibles = pedidos.filter((p) => coincide(p, filtros, misServicios));
+  const filtrando = JSON.stringify(filtros) !== JSON.stringify(SIN_FILTROS);
   const grupos: Record<Pestana, PedidoBolsa[]> = {
-    abiertos: pedidos.filter((p) => p.estado === "ABIERTO" && !p.propio && !p.me_postule),
-    postulados: pedidos.filter((p) => p.me_postule),
-    propios: pedidos.filter((p) => p.propio),
+    abiertos: visibles.filter((p) => p.estado === "ABIERTO" && !p.propio && !p.me_postule),
+    postulados: visibles.filter((p) => p.me_postule),
+    propios: visibles.filter((p) => p.propio),
   };
   const PESTANAS: {clave: Pestana; etiqueta: string; vacio: string}[] = [
     {
@@ -248,6 +372,8 @@ export default function BolsaTablero() {
         </div>
       )}
 
+      <BarraFiltros filtros={filtros} misServicios={misServicios} onCambio={setFiltros} />
+
       <div
         aria-label="Pedidos"
         className="border-rule grid grid-cols-3 border-b sm:flex sm:gap-1"
@@ -281,7 +407,18 @@ export default function BolsaTablero() {
       </div>
 
       {grupos[pestana].length === 0 ? (
-        <p className="text-muted max-w-lg text-[14px] leading-relaxed">{actual.vacio}</p>
+        <p className="text-muted max-w-lg text-[14px] leading-relaxed">
+          {filtrando ? "Ningún pedido coincide con los filtros. " : actual.vacio}
+          {filtrando && (
+            <button
+              className="text-ochre hover:text-ochre-deep underline underline-offset-2"
+              type="button"
+              onClick={() => setFiltros(SIN_FILTROS)}
+            >
+              Limpiar filtros
+            </button>
+          )}
+        </p>
       ) : (
         <ul className="grid gap-4 lg:grid-cols-2">
           {grupos[pestana].map((p) => (

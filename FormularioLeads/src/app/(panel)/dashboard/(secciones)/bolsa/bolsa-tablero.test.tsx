@@ -64,7 +64,7 @@ describe("BolsaTablero", () => {
       "true",
     );
     expect(screen.getByText("Resumen del pedido a sin datos personales.")).toBeInTheDocument();
-    expect(screen.getByText("US$ 1.000 – 2.000")).toBeInTheDocument();
+    expect(screen.getByText("US$ 1.000 – 2.000", {selector: "li span"})).toBeInTheDocument();
     expect(screen.getByText("1/5 postulaciones", {exact: false})).toBeInTheDocument();
 
     await user.click(screen.getByRole("tab", {name: "Mis postulaciones · 2"}));
@@ -91,7 +91,40 @@ describe("BolsaTablero", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Lo publicó el cliente")).toBeInTheDocument();
     // El servicio pasa a ser una etiqueta.
-    expect(screen.getByText("Desarrollo web")).toBeInTheDocument();
+    expect(screen.getByText("Desarrollo web", {selector: "li span"})).toBeInTheDocument();
+  });
+
+  it("los filtros acotan por texto, tipo de trabajo y «sólo mis servicios»", async () => {
+    rpc.mockResolvedValue({
+      data: [
+        pedido("a", {
+          titulo: "Tienda en Shopify",
+          servicio: "ecommerce",
+          etiquetas: ["Shopify"],
+        }),
+        pedido("b", {titulo: "Posicionamiento web", servicio: "seo"}),
+      ],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+
+    render(<BolsaTablero misServicios={["ecommerce"]} />);
+    await screen.findByRole("heading", {name: "Tienda en Shopify"});
+
+    // Busca también en las etiquetas.
+    await user.type(screen.getByRole("searchbox", {name: "Buscar en los pedidos"}), "shopify");
+    expect(screen.queryByRole("heading", {name: "Posicionamiento web"})).not.toBeInTheDocument();
+    await user.clear(screen.getByRole("searchbox", {name: "Buscar en los pedidos"}));
+
+    await user.selectOptions(screen.getByRole("combobox", {name: "Tipo de trabajo"}), "seo");
+    expect(screen.getByRole("heading", {name: "Posicionamiento web"})).toBeInTheDocument();
+    expect(screen.queryByRole("heading", {name: "Tienda en Shopify"})).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox", {name: "Sólo mis servicios"}));
+    expect(await screen.findByText(/Ningún pedido coincide con los filtros/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", {name: "Limpiar filtros"}));
+    expect(screen.getByRole("heading", {name: "Tienda en Shopify"})).toBeInTheDocument();
   });
 
   it("postularse llama a postularme() y pasa a «Mis postulaciones»", async () => {

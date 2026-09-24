@@ -24,6 +24,8 @@ interface Proyecto {
   urgencia: UrgenciaTipo;
   nombre: string;
   telefono: string;
+  // Etiquetas de habilidades, separadas por comas (opcionales).
+  etiquetas: string;
 }
 
 const VACIO: Proyecto = {
@@ -34,7 +36,18 @@ const VACIO: Proyecto = {
   urgencia: "media",
   nombre: "",
   telefono: "",
+  etiquetas: "",
 };
+
+// Mismas reglas que publicar_proyecto(): sin vacías ni repetidas, hasta 8.
+function aEtiquetas(texto: string): string[] {
+  const vistas = new Set<string>();
+
+  return texto
+    .split(",")
+    .map((e) => e.trim())
+    .filter((e) => e && !vistas.has(e.toLowerCase()) && vistas.add(e.toLowerCase()));
+}
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -74,6 +87,11 @@ function errores(p: Proyecto): Partial<Record<keyof Proyecto, string>> {
   if (!p.servicio) e.servicio = "Elegí qué tipo de trabajo es.";
   if (!p.presupuesto_rango) e.presupuesto_rango = "Elegí un rango de presupuesto.";
   if (p.nombre.trim().length < 2) e.nombre = "Tu nombre tiene que tener al menos 2 caracteres.";
+  const etiquetas = aEtiquetas(p.etiquetas);
+
+  if (etiquetas.length > 8) e.etiquetas = "Hasta 8 etiquetas.";
+  else if (etiquetas.some((x) => x.length > 40))
+    e.etiquetas = "Cada etiqueta puede tener hasta 40 caracteres.";
 
   return e;
 }
@@ -196,6 +214,7 @@ export default function PublicarForm({tipo}: {tipo: TipoCuenta | null}) {
       p_presupuesto_rango: p.presupuesto_rango,
       p_nombre: p.nombre.trim(),
       p_telefono: p.telefono.trim() || null,
+      p_etiquetas: aEtiquetas(p.etiquetas),
     });
 
     if (err) {
@@ -301,6 +320,32 @@ export default function PublicarForm({tipo}: {tipo: TipoCuenta | null}) {
           </div>
           {e.presupuesto_rango && <p className={errorClass}>{e.presupuesto_rango}</p>}
         </fieldset>
+
+        <div>
+          <label className={labelClass} htmlFor="etiquetas">
+            Habilidades que buscás (opcional)
+          </label>
+          <input
+            className={inputClass}
+            id="etiquetas"
+            placeholder="Shopify, React Native, WordPress"
+            value={p.etiquetas}
+            onChange={(ev) => cambiar("etiquetas", ev.target.value)}
+          />
+          <p className="text-mist mt-1.5 text-[12px]">
+            Separadas por comas, hasta 8. Si no sabés qué tecnología necesitás, dejalo vacío.
+          </p>
+          {aEtiquetas(p.etiquetas).length > 0 && (
+            <ul aria-label="Etiquetas" className="mt-3 flex flex-wrap gap-1.5">
+              {aEtiquetas(p.etiquetas).map((x) => (
+                <li key={x} className="border-rule text-ink-soft border px-2.5 py-1 text-[12px]">
+                  {x}
+                </li>
+              ))}
+            </ul>
+          )}
+          {e.etiquetas && <p className={errorClass}>{e.etiquetas}</p>}
+        </div>
 
         <fieldset>
           <legend className={labelClass}>¿Para cuándo lo necesitás?</legend>
