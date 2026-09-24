@@ -2045,6 +2045,12 @@ GRANT UPDATE (servicios, alerta_presupuesto_min, alertas_correo) ON espacios TO 
 -- n8n arma las alertas: necesita saber qué ofrece cada uno y si completó el alta.
 GRANT SELECT (servicios, alerta_presupuesto_min, alertas_correo, configurado_en) ON espacios TO n8n_writer;
 
+-- Los proyectos que ya estaban en la bolsa antes de las alertas no se
+-- anuncian de golpe. Re-aplicar el esquema no pisa ninguno pendiente: el
+-- cron los avisa en menos de 15 minutos, mucho antes de la hora de margen.
+UPDATE bolsa_pedidos SET alertas_enviadas_en = publicado_en
+WHERE alertas_enviadas_en IS NULL AND publicado_en < now() - interval '1 hour';
+
 -- Directorio público: sólo espacios con el alta completa que declararon al
 -- menos un servicio (así no aparecen perfiles vacíos). Filtra por tipo de
 -- trabajo y por habilidad (sin distinguir mayúsculas), y ordena por estrellas.

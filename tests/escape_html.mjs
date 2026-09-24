@@ -48,6 +48,8 @@ const hostil = {
   fecha_vencimiento_iso: '2026-10-08T00:00:00Z',
   dias_al_vencimiento: 2,
   seguimientos: 0,
+  // Code - Emails Alertas sólo escribe a quien pidió alertas por correo.
+  alertas_correo: true,
 };
 
 function ejecutar(nodo) {
@@ -92,6 +94,8 @@ const NODOS_HTML = [
   'Code - Emails Bolsa Cliente',
   // Aviso de mensajes sin leer (etapa 9).
   'Code - Emails Mensajes',
+  // Alertas de proyectos nuevos en la bolsa (etapa 10).
+  'Code - Emails Alertas',
 ];
 
 for (const nombre of NODOS_HTML) {

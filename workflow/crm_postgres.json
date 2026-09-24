@@ -7465,6 +7465,194 @@
           "name": "Gmail account"
         }
       }
+    },
+    {
+      "parameters": {
+        "content": "## 🔔 RAMA 13 · Alertas de la bolsa (cron cada 15 min)\nToma los proyectos abiertos que todavía no se anunciaron (los marca en la misma consulta) y los cruza con los espacios que **ofrecen ese servicio**, con el alta completa, que no lo publicaron y cuyo **presupuesto mínimo** se cumple. Aviso en el panel para todos; **un correo agrupado** para los que lo pidieron.",
+        "height": 700,
+        "width": 1230,
+        "color": 6
+      },
+      "id": "6b3a87e8-0bf8-4898-b677-a5855236facb",
+      "name": "Nota — 🔔 RAMA 13 · Alertas de la bolsa",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        23675
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/15 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "7cf7355b-81d9-493d-abbe-747c9d273000",
+      "name": "🔔 Cron - Alertas de la Bolsa",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        150,
+        23800
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH nuevos AS (\n  -- Se marcan en la misma consulta: cada proyecto se anuncia una sola vez.\n  UPDATE bolsa_pedidos SET alertas_enviadas_en = now()\n  WHERE alertas_enviadas_en IS NULL AND estado = 'ABIERTO' AND vence_en > now()\n  RETURNING id, titulo, servicio, presupuesto, presupuesto_rango, etiquetas, origen_espacio_id\n)\nSELECT e.id AS espacio_id, e.nombre, e.email_contacto AS email, e.alertas_correo,\n       n.id AS pedido_id, n.titulo, n.servicio, n.presupuesto_rango, n.etiquetas\nFROM nuevos n\nJOIN espacios e ON n.servicio = ANY (e.servicios)\nWHERE e.configurado_en IS NOT NULL\n  -- A quien lo mandó a la bolsa no se le anuncia su propio pedido.\n  AND e.id IS DISTINCT FROM n.origen_espacio_id\n  AND (e.alerta_presupuesto_min IS NULL OR n.presupuesto >= e.alerta_presupuesto_min);",
+        "options": {}
+      },
+      "id": "29f5708c-24d9-4833-9bd1-bf1913dd7ea9",
+      "name": "Postgres - Proyectos que Encajan",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        450,
+        23800
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Un correo por desarrollador con los proyectos nuevos que le encajan (los\n// que pidieron alertas por correo). El aviso en el panel sale aparte, para\n// todos.\nconst esc = (s) => String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');\nconst SERVICIO = {\n  desarrollo_web: 'Desarrollo web', ecommerce: 'Tienda online', app_movil: 'App móvil',\n  automatizacion: 'Automatización', marketing: 'Marketing digital', seo: 'SEO',\n  diseno_ui: 'Diseño UX/UI', consultoria: 'Consultoría', soporte: 'Soporte',\n};\nconst RANGO = {\n  hasta_300: 'menos de US$ 300', '300_1000': 'US$ 300 – 1.000', '1000_2000': 'US$ 1.000 – 2.000',\n  '2000_5000': 'US$ 2.000 – 5.000', mas_5000: 'más de US$ 5.000',\n};\nlet plataforma = 'FormularioLeads';\nlet frontend = '';\ntry {\n  plataforma = ($env && $env.PLATAFORMA_NOMBRE) || plataforma;\n  frontend = String(($env && $env.FRONTEND_URL) || '').replace(/\\/+$/, '');\n} catch (e) {}\nconst porPersona = new Map();\nfor (const item of $input.all()) {\n  const f = item.json;\n  if (!f.email || !f.alertas_correo) continue;\n  const actual = porPersona.get(f.email) || { email: f.email, nombre: f.nombre, filas: [] };\n  const titulo = f.titulo || SERVICIO[f.servicio] || f.servicio;\n  const etiquetas = (f.etiquetas || []).length ? ` · ${(f.etiquetas || []).map(esc).join(', ')}` : '';\n  actual.filas.push(`<li><b>${esc(titulo)}</b> — ${esc(SERVICIO[f.servicio] || f.servicio)}, ${esc(RANGO[f.presupuesto_rango] || 'presupuesto a definir')}${etiquetas}</li>`);\n  porPersona.set(f.email, actual);\n}\nreturn [...porPersona.values()].map((p) => ({ json: {\n  email: p.email,\n  espacio_nombre: '',\n  espacio_email: '',\n  asunto: p.filas.length === 1\n    ? `Nuevo proyecto en la bolsa que te encaja`\n    : `${p.filas.length} proyectos nuevos en la bolsa que te encajan`,\n  cuerpo_html: `<p>Hola ${esc(p.nombre)},</p>\n<p>Se publicaron proyectos de los servicios que ofrecés:</p>\n<ul>${p.filas.join('')}</ul>\n<p><a href=\"${esc(frontend)}/dashboard/bolsa\">Verlos en la Bolsa y postularte</a>. Cada proyecto recibe un número limitado de postulaciones.</p>\n<p>Saludos,<br><b>${esc(plataforma)}</b></p>\n<p style=\"color:#888;font-size:12px\">Cambiá qué te avisamos en «Tu espacio», en Servicios y alertas.</p>`,\n} }));"
+      },
+      "id": "0f3c986a-0b74-4a46-a072-8deec9ec1444",
+      "name": "Code - Emails Alertas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        23800
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "={{ $json.asunto }}",
+        "message": "={{ $json.cuerpo_html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "={{ ($json.espacio_nombre ? $json.espacio_nombre + ' vía ' : '') + ($env.PLATAFORMA_NOMBRE || 'FormularioLeads') }}",
+          "replyTo": "={{ $json.espacio_email || '' }}"
+        }
+      },
+      "id": "91ea9adf-cba4-4ac7-9563-d1616ae409af",
+      "name": "Gmail - Alertas de la Bolsa",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        23800
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "KN5umVWzd1RZZuYM",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "bolsa_alerta",
+            "nivel": "info",
+            "mensaje": "=🔔 <b>Proyecto nuevo en la bolsa que te encaja</b>\n{{ String($json.titulo || $json.servicio || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}",
+            "lead_id": "",
+            "factura_id": "",
+            "espacio_id": "={{ $json.espacio_id || '' }}"
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "id": "4115eef0-edf5-4beb-8108-0db6ac5de32c",
+      "name": "Aviso - Proyecto que te Encaja",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        750,
+        24020
+      ],
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -9779,6 +9967,44 @@
         [
           {
             "node": "Gmail - Mensajes sin Leer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🔔 Cron - Alertas de la Bolsa": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Proyectos que Encajan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Proyectos que Encajan": {
+      "main": [
+        [
+          {
+            "node": "Code - Emails Alertas",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Aviso - Proyecto que te Encaja",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Emails Alertas": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Alertas de la Bolsa",
             "type": "main",
             "index": 0
           }
