@@ -21,6 +21,12 @@ export default async function PlataformaLayout({children}: {children: ReactNode}
           FormularioLeads
         </Link>
         <nav className="flex items-center gap-5 text-[11px] tracking-[0.16em] uppercase">
+          <Link
+            className="text-ink-soft hover:text-ochre transition duration-200 max-md:hidden"
+            href="/desarrolladores"
+          >
+            Desarrolladores
+          </Link>
           {tipo ? (
             <Link
               className="text-ink-soft hover:text-ochre transition duration-200"

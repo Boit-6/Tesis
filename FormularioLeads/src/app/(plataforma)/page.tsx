@@ -83,6 +83,12 @@ export default function PortadaPage() {
           </Link>
           <Link
             className="text-ink-soft hover:text-ochre text-[13px] underline underline-offset-4 transition duration-200"
+            href="/desarrolladores"
+          >
+            Buscar un desarrollador
+          </Link>
+          <Link
+            className="text-ink-soft hover:text-ochre text-[13px] underline underline-offset-4 transition duration-200"
             href="/cliente"
           >
             Ver mis proyectos
