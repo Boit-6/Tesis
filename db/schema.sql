@@ -1762,6 +1762,25 @@ GRANT EXECUTE ON FUNCTION public.calificar(uuid, int, text) TO anon, authenticat
 GRANT EXECUTE ON FUNCTION public.perfil_publico(text) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.resenas_publicas(text) TO anon, authenticated;
 
+-- «Que lo elija la plataforma»: sortea una postulación del pedido con chances
+-- proporcionales a las estrellas de cada postulante. Quien no tiene
+-- calificaciones cuenta como el promedio de la plataforma (o 3 si todavía no
+-- hay ninguna), para no castigar a los nuevos. Método de Efraimidis-Spirakis:
+-- cada uno saca -ln(U)/peso y gana el menor, lo que equivale a elegir con
+-- probabilidad peso / suma de pesos. La usa n8n al asignar (bolsa-elegir).
+CREATE OR REPLACE FUNCTION public.sortear_postulacion(p_pedido uuid) RETURNS uuid
+LANGUAGE sql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+  SELECT po.id
+  FROM postulaciones po
+  CROSS JOIN LATERAL reputacion(po.espacio_id) r
+  WHERE po.pedido_id = p_pedido
+  ORDER BY -ln(1 - random())
+           / GREATEST(COALESCE(r.promedio, (SELECT avg(c.estrellas) FROM calificaciones c), 3), 0.1)
+  LIMIT 1
+$$;
+REVOKE ALL ON FUNCTION public.sortear_postulacion(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.sortear_postulacion(uuid) TO n8n_writer;
+
 -- (Va al final: usa reputacion(), que depende de la tabla calificaciones.)
 -- Los proyectos del cliente con sesión, con sus postulaciones (lo mismo que
 -- ve en /elegir: marca del espacio, mensaje, precio y plazo) y a quién eligió.

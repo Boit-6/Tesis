@@ -9,7 +9,9 @@ import {
   HEADERS,
   N8N_BASE,
   type Postulacion,
+  BotonAlAzar,
   TarjetaPostulacion,
+  elegirAlAzar,
   elegirPostulacion,
   tarjetaClass,
 } from "@/app/components/postulaciones";
@@ -176,6 +178,10 @@ export default function ElegirPostulacion({token}: {token: string}) {
               <TarjetaPostulacion key={p.id} postulacion={p} onElegir={() => elegir(p.id)} />
             ))}
           </ul>
+          <BotonAlAzar
+            cantidad={pedido.postulaciones.length}
+            onElegir={async () => setVista({tipo: "elegido", espacio: await elegirAlAzar(token)})}
+          />
         </>
       )}
     </div>

@@ -40,10 +40,20 @@ const formatoUsd = new Intl.NumberFormat("es-AR", {
 // Elige una postulación. Devuelve la marca del espacio elegido, o lanza el
 // motivo si n8n no pudo (por ejemplo, el proyecto ya se asignó).
 export async function elegirPostulacion(token: string, postulacionId: string): Promise<string> {
+  return pedirEleccion({t: token, postulacion_id: postulacionId});
+}
+
+// «Que lo elija la plataforma»: n8n sortea entre los postulantes, con más
+// chances para los mejor calificados (sortear_postulacion() en la base).
+export async function elegirAlAzar(token: string): Promise<string> {
+  return pedirEleccion({t: token, azar: true});
+}
+
+async function pedirEleccion(cuerpo: Record<string, unknown>): Promise<string> {
   const res = await fetch(`${N8N_BASE}/webhook/bolsa-elegir`, {
     method: "POST",
     headers: HEADERS,
-    body: JSON.stringify({t: token, postulacion_id: postulacionId}),
+    body: JSON.stringify(cuerpo),
   });
   const json = await res.json().catch(() => ({}));
 
@@ -145,3 +155,75 @@ export function TarjetaPostulacion({
 
 // El cliente ve las postulaciones a su pedido (sin que nadie haya visto sus
 // datos todavía) y elige una. Todo pasa por n8n con el token del enlace.
+
+// Botón «Que lo elija la plataforma», con confirmación. Sólo tiene sentido con
+// dos o más postulantes.
+export function BotonAlAzar({
+  cantidad,
+  onElegir,
+}: {
+  cantidad: number;
+  onElegir: () => Promise<void>;
+}) {
+  const [confirmando, setConfirmando] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (cantidad < 2) return null;
+
+  return (
+    <div className="border-rule-soft flex flex-col gap-3 border border-dashed px-6 py-5">
+      {confirmando ? (
+        <>
+          <p className="text-ink-soft text-[14px] leading-relaxed">
+            Sorteamos entre los {cantidad} postulantes: los mejor calificados tienen más chances. Al
+            elegido le pasamos tus datos para que te mande la propuesta formal.
+          </p>
+          {error && (
+            <p className="text-brick text-[13px]" role="alert">
+              {error}
+            </p>
+          )}
+          <div className="flex flex-wrap gap-3">
+            <button
+              className="ease bg-ink text-paper hover:bg-ochre px-6 py-3.5 text-[11px] tracking-[0.16em] uppercase transition duration-200 disabled:opacity-40"
+              disabled={enviando}
+              type="button"
+              onClick={async () => {
+                setEnviando(true);
+                setError(null);
+                try {
+                  await onElegir();
+                } catch (err) {
+                  setError(err instanceof Error ? err.message : "No se pudo elegir.");
+                  setEnviando(false);
+                }
+              }}
+            >
+              {enviando ? "Sorteando…" : "Sí, sorteá"}
+            </button>
+            <button
+              className="ease text-mist hover:text-ink px-4 py-3.5 text-[11px] tracking-[0.14em] uppercase transition duration-200 disabled:opacity-40"
+              disabled={enviando}
+              type="button"
+              onClick={() => setConfirmando(false)}
+            >
+              Volver
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <p className="text-muted text-[13.5px]">¿No sabés a quién elegir?</p>
+          <button
+            className="ease border-ink text-ink hover:border-ochre hover:text-ochre border px-5 py-3 text-[11px] tracking-[0.14em] uppercase transition duration-200"
+            type="button"
+            onClick={() => setConfirmando(true)}
+          >
+            Que lo elija la plataforma
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

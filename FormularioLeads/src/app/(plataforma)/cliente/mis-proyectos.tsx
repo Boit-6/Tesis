@@ -5,7 +5,13 @@ import type {Database} from "@/types/supabase";
 import {useEffect, useState} from "react";
 
 import {Cargando, Esqueleto} from "@/app/components/esqueleto";
-import {TarjetaPostulacion, elegirPostulacion, tarjetaClass} from "@/app/components/postulaciones";
+import {
+  BotonAlAzar,
+  TarjetaPostulacion,
+  elegirAlAzar,
+  elegirPostulacion,
+  tarjetaClass,
+} from "@/app/components/postulaciones";
 import {presupuestoDeclarado} from "@/lib/presupuesto";
 import {SERVICIO_LEGIBLE} from "@/lib/servicios";
 import {createClient} from "@/lib/supabase/client";
@@ -15,7 +21,8 @@ type Proyecto = Database["public"]["Functions"]["mis_proyectos"]["Returns"][numb
 const DIA_MS = 86_400_000;
 
 function situacion(p: Proyecto, ahora: number): {texto: string; clase: string} {
-  if (p.estado === "ASIGNADO") return {texto: `Elegiste a ${p.elegido_nombre}`, clase: "text-moss"};
+  // «Quedó con»: sirve tanto si eligió el cliente como si sorteó la plataforma.
+  if (p.estado === "ASIGNADO") return {texto: `Quedó con ${p.elegido_nombre}`, clase: "text-moss"};
   if (p.estado === "VENCIDO") return {texto: "Venció sin elección", clase: "text-mist"};
   if (p.estado === "EN_ELECCION") return {texto: "Es hora de elegir", clase: "text-ochre"};
 
@@ -94,6 +101,16 @@ function TarjetaProyecto({
             />
           ))}
         </ul>
+      )}
+
+      {puedeElegir && (
+        <BotonAlAzar
+          cantidad={proyecto.detalle.length}
+          onElegir={async () => {
+            await elegirAlAzar(proyecto.eleccion_token);
+            onElegido();
+          }}
+        />
       )}
     </li>
   );

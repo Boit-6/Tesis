@@ -99,6 +99,64 @@ describe("ElegirPostulacion", () => {
     });
   });
 
+  it("con dos o más postulantes, «Que lo elija la plataforma» sortea por n8n", async () => {
+    const dos = pedido({
+      postulaciones: [
+        ...pedido().postulaciones,
+        {
+          id: "b2c3d4e5-0000-4000-8000-000000000002",
+          espacio: "Pablo Dev",
+          mensaje: "Lo hago en un mes.",
+          precio: 900,
+          plazo: "1 mes",
+          slug: "pablo-dev",
+          promedio: null,
+          calificaciones: 0,
+        },
+      ],
+    });
+    const fetchMock = vi.fn(async (url: string) =>
+      url.includes("bolsa-elegir")
+        ? new Response(
+            JSON.stringify({
+              status: "ok",
+              espacio_nombre: "Pablo Dev",
+              azar: true,
+            }),
+          )
+        : new Response(JSON.stringify(dos)),
+    );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+
+    await renderPagina();
+    // El nuevo, sin calificaciones, no muestra estrellas inventadas.
+    expect(await screen.findByText("Sin calificaciones todavía")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", {name: "Que lo elija la plataforma"}));
+    await user.click(screen.getByRole("button", {name: "Sí, sorteá"}));
+
+    const [, init] = fetchMock.mock.calls[1] as unknown as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string)).toEqual({t: TOKEN, azar: true});
+    expect(await screen.findByText("¡Listo!")).toBeInTheDocument();
+    expect(screen.getByText("Pablo Dev")).toBeInTheDocument();
+  });
+
+  it("con un solo postulante no ofrece sortear", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify(pedido()))),
+    );
+    await renderPagina();
+
+    expect(await screen.findByText("Lucía Estudio")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", {name: "Que lo elija la plataforma"}),
+    ).not.toBeInTheDocument();
+  });
+
   it("si ya eligió, dice con quién quedó y no ofrece elegir", async () => {
     vi.stubGlobal(
       "fetch",

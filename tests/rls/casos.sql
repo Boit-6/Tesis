@@ -767,6 +767,46 @@ SELECT probar('la clienta ve la reputación y el perfil de cada postulante (sin 
   'SELECT count(*) FROM mis_proyectos(), json_array_elements(detalle) d WHERE d->>''slug'' IS NOT NULL AND (d->>''calificaciones'')::int = 0 AND d->>''promedio'' IS NULL',
   '1 filas');
 
+-- ── 27. «Que lo elija la plataforma»: sorteo ponderado por estrellas ──────
+-- Pepe tiene 4,0 (sección 26). El admin recibe una calificación de 1: al
+-- sortear entre los dos, Pepe tiene que salir cerca del 80% (4 / (4 + 1)).
+INSERT INTO leads (lead_id, espacio_id, nombre, email, presupuesto, urgencia, servicio, estado)
+VALUES ('LD-ADMIN-CERRADO', (SELECT id FROM espacios WHERE dueno_id = '11111111-1111-4111-8111-111111111111'),
+        'Cliente Enojado', 'enojado@test.com', 500, 'media', 'seo', 'CERRADO');
+INSERT INTO calificaciones (lead_id, espacio_id, estrellas, autor_nombre, origen)
+SELECT 'LD-ADMIN-CERRADO', espacio_id, 1, 'Cliente', 'formulario' FROM leads WHERE lead_id = 'LD-ADMIN-CERRADO';
+-- El proyecto de Marta de la sección 25 tiene la postulación del admin; se
+-- suma la de Pepe.
+SELECT set_config('request.jwt.claims', '{"sub": "22222222-2222-4222-8222-222222222222"}', false);
+SELECT postularme((SELECT id FROM bolsa_pedidos WHERE titulo = 'Tienda online para mi marca'),
+                  'También armo tiendas con pagos online.', 2800, '4 semanas');
+SELECT set_config('request.jwt.claims', '', false);
+
+SELECT probar('n8n sortea una postulación del pedido',
+  'n8n_writer', NULL,
+  'SELECT count(*) FROM (SELECT sortear_postulacion((SELECT id FROM bolsa_pedidos WHERE titulo = ''Tienda online para mi marca'')) AS id) s JOIN postulaciones po ON po.id = s.id',
+  '1 filas');
+SELECT probar('un desarrollador NO puede sortear',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'SELECT count(*) FROM (SELECT sortear_postulacion(gen_random_uuid())) x', 'permiso denegado');
+SELECT probar('ni anon',
+  'anon', NULL, 'SELECT count(*) FROM (SELECT sortear_postulacion(gen_random_uuid())) x', 'permiso denegado');
+-- 2000 sorteos: el de 4 estrellas gana entre el 72% y el 88% (lo esperado es
+-- 80%; el margen es de más de 8 desvíos, así que el caso no falla por azar).
+SELECT probar('el sorteo respeta las estrellas: 4 contra 1 sale cerca del 80%',
+  'n8n_writer', NULL,
+  $q$SELECT CASE WHEN share BETWEEN 0.72 AND 0.88 THEN 1 ELSE 0 END::bigint FROM (
+       SELECT avg((po.espacio_id = (SELECT id FROM espacios WHERE slug = 'estudio-pepe'))::int) AS share
+       FROM generate_series(1, 2000) g
+       -- WHERE g > 0: el LATERAL depende de cada fila, así se sortea 2000 veces
+       -- y no una sola.
+       JOIN LATERAL (SELECT sortear_postulacion((SELECT id FROM bolsa_pedidos WHERE titulo = 'Tienda online para mi marca')) AS id WHERE g > 0) s ON true
+       JOIN postulaciones po ON po.id = s.id) t$q$,
+  '1 filas');
+SELECT probar('un pedido sin postulaciones no sortea a nadie',
+  'n8n_writer', NULL,
+  'SELECT count(*) FROM (SELECT sortear_postulacion(gen_random_uuid()) AS id) x WHERE id IS NOT NULL', '0 filas');
+
 -- ── Reporte ────────────────────────────────────────────────────────────────
 \o
 \pset border 2

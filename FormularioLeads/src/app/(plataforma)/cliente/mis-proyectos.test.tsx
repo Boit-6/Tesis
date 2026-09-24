@@ -83,7 +83,7 @@ describe("MisProyectos", () => {
       }),
     );
     // Recarga: el proyecto queda asignado y ya no ofrece elegir.
-    expect(await screen.findByText("Elegiste a Lucía Estudio")).toBeInTheDocument();
+    expect(await screen.findByText("Quedó con Lucía Estudio")).toBeInTheDocument();
     expect(screen.queryByRole("button", {name: /Elegir a/})).not.toBeInTheDocument();
   });
 
