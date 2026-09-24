@@ -73,7 +73,7 @@ function TarjetaPedido({
     <li className="border-rule-soft bg-card flex flex-col border px-5 py-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h3 className="text-ink font-serif text-[21px] leading-tight">
-          {SERVICIO_LEGIBLE[pedido.servicio]}
+          {pedido.titulo ?? SERVICIO_LEGIBLE[pedido.servicio]}
         </h3>
         <span className="text-ink text-[14px]">
           {presupuestoDeclarado(pedido.presupuesto_rango, pedido.presupuesto)}
@@ -83,6 +83,8 @@ function TarjetaPedido({
         <Tag className={pedido.urgencia === "alta" ? "text-brick" : "text-ochre"}>
           {URGENCIA_LEGIBLE[pedido.urgencia]}
         </Tag>
+        {pedido.titulo && <Tag className="text-muted">{SERVICIO_LEGIBLE[pedido.servicio]}</Tag>}
+        {pedido.directo && <Tag className="text-moss">Lo publicó el cliente</Tag>}
         {pedido.propio && <Tag className="text-muted">Lo publicaste vos</Tag>}
         {pedido.me_postule && pedido.estado === "ABIERTO" && (
           <Tag className="text-moss">Te postulaste</Tag>

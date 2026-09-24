@@ -28,6 +28,8 @@ const pedido = (id: string, extra: Partial<PedidoBolsa> = {}): PedidoBolsa => ({
   propio: false,
   me_postule: false,
   asignado_a_mi: false,
+  titulo: null,
+  directo: false,
   ...extra,
 });
 
@@ -70,6 +72,24 @@ describe("BolsaTablero", () => {
     expect(screen.getByText("Lo publicaste vos")).toBeInTheDocument();
     // A lo propio no se puede postular.
     expect(screen.queryByRole("button", {name: "Postularme"})).not.toBeInTheDocument();
+  });
+
+  it("un proyecto publicado por el cliente muestra su título y de dónde viene", async () => {
+    rpc.mockResolvedValue({
+      data: [pedido("x", {titulo: "Tienda online para mi marca", directo: true})],
+      error: null,
+    });
+
+    render(<BolsaTablero />);
+
+    expect(
+      await screen.findByRole("heading", {
+        name: "Tienda online para mi marca",
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Lo publicó el cliente")).toBeInTheDocument();
+    // El servicio pasa a ser una etiqueta.
+    expect(screen.getByText("Desarrollo web")).toBeInTheDocument();
   });
 
   it("postularse llama a postularme() y pasa a «Mis postulaciones»", async () => {

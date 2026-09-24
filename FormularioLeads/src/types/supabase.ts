@@ -506,6 +506,9 @@ export interface Database {
           propio: boolean;
           me_postule: boolean;
           asignado_a_mi: boolean;
+          // Proyectos publicados directo por un cliente (etapa 6).
+          titulo: string | null;
+          directo: boolean;
         }[];
       };
       postularme: {
@@ -516,6 +519,44 @@ export interface Database {
           p_plazo: string;
         };
         Returns: undefined;
+      };
+      // El cliente publica su proyecto (sólo cuentas de cliente).
+      publicar_proyecto: {
+        Args: {
+          p_titulo: string;
+          p_descripcion: string;
+          p_servicio: ServicioTipo;
+          p_urgencia: UrgenciaTipo;
+          p_presupuesto_rango: string;
+          p_nombre: string;
+          p_telefono: string | null;
+        };
+        Returns: string;
+      };
+      // Los proyectos del cliente con sesión y sus postulaciones.
+      mis_proyectos: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          titulo: string | null;
+          resumen: string;
+          servicio: ServicioTipo;
+          urgencia: UrgenciaTipo;
+          presupuesto_rango: string | null;
+          estado: BolsaEstado;
+          postulaciones: number;
+          tope_postulaciones: number;
+          publicado_en: string;
+          vence_en: string;
+          elegido_nombre: string | null;
+          detalle: {
+            id: string;
+            espacio: string;
+            mensaje: string;
+            precio: number;
+            plazo: string;
+          }[];
+        }[];
       };
     };
     Enums: {

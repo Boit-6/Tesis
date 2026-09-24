@@ -1397,22 +1397,47 @@ CREATE INDEX IF NOT EXISTS idx_bolsa_pedidos_estado ON bolsa_pedidos (estado, ve
 -- vencer con postulaciones). Lo marca el cron de la bolsa, así no se repite.
 ALTER TABLE bolsa_pedidos ADD COLUMN IF NOT EXISTS eleccion_avisada_en TIMESTAMPTZ;
 
--- Al publicar: exige el consentimiento y copia del lead los datos que se
--- muestran, para que quien publica no pueda poner otros (ni personales).
+-- Proyectos que publica un cliente directo (etapa 6, 24-sep-2026). No vienen
+-- de un lead ni de un espacio: los datos de contacto quedan acá, sin salir
+-- por bolsa_abierta(), y el lead recién se crea en el espacio que el cliente
+-- elige (ahí se completa lead_id). Los pedidos por rechazo siguen igual.
+ALTER TABLE bolsa_pedidos ALTER COLUMN lead_id DROP NOT NULL;
+ALTER TABLE bolsa_pedidos ALTER COLUMN origen_espacio_id DROP NOT NULL;
+ALTER TABLE bolsa_pedidos ADD COLUMN IF NOT EXISTS cliente_id UUID REFERENCES profiles(id) ON DELETE RESTRICT;
+ALTER TABLE bolsa_pedidos ADD COLUMN IF NOT EXISTS titulo TEXT
+  CHECK (titulo IS NULL OR length(btrim(titulo)) BETWEEN 5 AND 120);
+ALTER TABLE bolsa_pedidos ADD COLUMN IF NOT EXISTS contacto_nombre TEXT;
+ALTER TABLE bolsa_pedidos ADD COLUMN IF NOT EXISTS contacto_email TEXT;
+ALTER TABLE bolsa_pedidos ADD COLUMN IF NOT EXISTS contacto_telefono TEXT;
+DO $$ BEGIN
+  ALTER TABLE bolsa_pedidos ADD CONSTRAINT chk_bolsa_origen CHECK (
+    (cliente_id IS NULL AND lead_id IS NOT NULL AND origen_espacio_id IS NOT NULL)
+    OR (cliente_id IS NOT NULL AND origen_espacio_id IS NULL AND titulo IS NOT NULL
+        AND contacto_nombre IS NOT NULL AND contacto_email IS NOT NULL)
+  );
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+CREATE INDEX IF NOT EXISTS idx_bolsa_pedidos_cliente ON bolsa_pedidos (cliente_id);
+
+-- Al publicar un pedido rechazado: exige el consentimiento y copia del lead
+-- los datos que se muestran, para que quien publica no pueda poner otros (ni
+-- personales). Los proyectos de un cliente llegan armados por
+-- publicar_proyecto(), que valida lo suyo.
 CREATE OR REPLACE FUNCTION public.bolsa_publicar() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   l leads%ROWTYPE;
 BEGIN
-  SELECT * INTO l FROM leads WHERE lead_id = NEW.lead_id;
-  IF NOT l.compartir_bolsa THEN
-    RAISE EXCEPTION 'El cliente no aceptó compartir el pedido con otros desarrolladores';
+  IF NEW.cliente_id IS NULL THEN
+    SELECT * INTO l FROM leads WHERE lead_id = NEW.lead_id;
+    IF NOT l.compartir_bolsa THEN
+      RAISE EXCEPTION 'El cliente no aceptó compartir el pedido con otros desarrolladores';
+    END IF;
+    NEW.origen_espacio_id := l.espacio_id;
+    NEW.servicio := l.servicio;
+    NEW.urgencia := l.urgencia;
+    NEW.presupuesto_rango := l.presupuesto_rango;
+    NEW.presupuesto := l.presupuesto;
   END IF;
-  NEW.origen_espacio_id := l.espacio_id;
-  NEW.servicio := l.servicio;
-  NEW.urgencia := l.urgencia;
-  NEW.presupuesto_rango := l.presupuesto_rango;
-  NEW.presupuesto := l.presupuesto;
   NEW.estado := 'ABIERTO';
   NEW.postulaciones := 0;
   NEW.resumen := btrim(NEW.resumen);
@@ -1426,13 +1451,17 @@ CREATE TRIGGER trg_bolsa_publicar
 
 -- Lo que ve un desarrollador en la bolsa: los pedidos abiertos y los que le
 -- tocan (los que rechazó, a los que se postuló o que le asignaron). Sin
--- lead_id, sin token y sin quién lo rechazó: sólo si es propio.
-CREATE OR REPLACE FUNCTION public.bolsa_abierta()
+-- lead_id, sin token, sin datos de contacto y sin quién lo rechazó: sólo si
+-- es propio. `directo`: lo publicó un cliente (trae título).
+-- DROP antes de recrear: CREATE OR REPLACE no deja cambiar las columnas.
+DROP FUNCTION IF EXISTS public.bolsa_abierta();
+CREATE FUNCTION public.bolsa_abierta()
 RETURNS TABLE (
   id uuid, resumen text, servicio servicio_tipo, urgencia urgencia_tipo,
   presupuesto_rango text, presupuesto numeric, estado bolsa_estado,
   postulaciones int, tope_postulaciones int, publicado_en timestamptz,
-  vence_en timestamptz, propio boolean, me_postule boolean, asignado_a_mi boolean
+  vence_en timestamptz, propio boolean, me_postule boolean, asignado_a_mi boolean,
+  titulo text, directo boolean
 )
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   WITH mio AS (
@@ -1440,9 +1469,10 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   )
   SELECT b.id, b.resumen, b.servicio, b.urgencia, b.presupuesto_rango, b.presupuesto, b.estado,
          b.postulaciones, b.tope_postulaciones, b.publicado_en, b.vence_en,
-         b.origen_espacio_id = mio.id,
+         b.origen_espacio_id IS NOT DISTINCT FROM mio.id,
          EXISTS (SELECT 1 FROM postulaciones p WHERE p.pedido_id = b.id AND p.espacio_id = mio.id),
-         b.asignado_espacio_id IS NOT DISTINCT FROM mio.id
+         b.asignado_espacio_id IS NOT DISTINCT FROM mio.id,
+         b.titulo, b.cliente_id IS NOT NULL
   FROM bolsa_pedidos b, mio
   WHERE (b.estado = 'ABIERTO' AND b.vence_en > now())
      OR b.origen_espacio_id = mio.id
@@ -1490,6 +1520,85 @@ REVOKE ALL ON FUNCTION public.bolsa_abierta() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.postularme(uuid, text, numeric, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.bolsa_abierta() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.postularme(uuid, text, numeric, text) TO authenticated;
+
+-- Un cliente publica su proyecto directo en la bolsa (etapa 6). Sólo cuentas
+-- de cliente. Tope de postulaciones y días de vigencia configurables por base
+-- (ALTER DATABASE ... SET app.bolsa_tope_directo = '20'), con 15 y 7 por
+-- defecto. Hasta 5 proyectos abiertos por cliente,
+-- para que una cuenta no llene la bolsa. El importe es el piso del rango, con
+-- la misma tabla que Code - Normalizar Lead.
+CREATE OR REPLACE FUNCTION public.publicar_proyecto(
+  p_titulo text, p_descripcion text, p_servicio servicio_tipo, p_urgencia urgencia_tipo,
+  p_presupuesto_rango text, p_nombre text, p_telefono text
+) RETURNS uuid
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  correo text;
+  piso numeric;
+  nuevo uuid;
+  tope int := coalesce(nullif(current_setting('app.bolsa_tope_directo', true), '')::int, 15);
+  dias int := coalesce(nullif(current_setting('app.bolsa_dias', true), '')::int, 7);
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND tipo = 'cliente') THEN
+    RAISE EXCEPTION 'Sólo una cuenta de cliente puede publicar proyectos';
+  END IF;
+  SELECT u.email INTO correo FROM auth.users u
+  WHERE u.id = auth.uid() AND u.email_confirmed_at IS NOT NULL;
+  IF correo IS NULL THEN RAISE EXCEPTION 'Confirmá tu correo antes de publicar'; END IF;
+
+  IF (SELECT count(*) FROM bolsa_pedidos
+      WHERE cliente_id = auth.uid() AND estado IN ('ABIERTO','EN_ELECCION')) >= 5 THEN
+    RAISE EXCEPTION 'Ya tenés 5 proyectos abiertos: elegí o esperá a que cierre alguno';
+  END IF;
+  IF length(btrim(coalesce(p_nombre, ''))) NOT BETWEEN 2 AND 100 THEN
+    RAISE EXCEPTION 'El nombre tiene que tener entre 2 y 100 caracteres';
+  END IF;
+
+  piso := CASE p_presupuesto_rango
+    WHEN 'hasta_300' THEN 100 WHEN '300_1000' THEN 300 WHEN '1000_2000' THEN 1000
+    WHEN '2000_5000' THEN 2000 WHEN 'mas_5000' THEN 5000 END;
+  IF piso IS NULL THEN RAISE EXCEPTION 'Rango de presupuesto inválido'; END IF;
+
+  INSERT INTO bolsa_pedidos (
+    cliente_id, titulo, resumen, servicio, urgencia, presupuesto_rango, presupuesto,
+    contacto_nombre, contacto_email, contacto_telefono, tope_postulaciones, vence_en
+  ) VALUES (
+    auth.uid(), btrim(p_titulo), btrim(p_descripcion), p_servicio, p_urgencia, p_presupuesto_rango, piso,
+    btrim(p_nombre), correo, nullif(btrim(coalesce(p_telefono, '')), ''), tope, now() + make_interval(days => dias)
+  ) RETURNING id INTO nuevo;
+
+  RETURN nuevo;
+END;
+$$;
+
+-- Los proyectos del cliente con sesión, con sus postulaciones (lo mismo que
+-- ve en /elegir: marca del espacio, mensaje, precio y plazo) y a quién eligió.
+CREATE OR REPLACE FUNCTION public.mis_proyectos()
+RETURNS TABLE (
+  id uuid, titulo text, resumen text, servicio servicio_tipo, urgencia urgencia_tipo,
+  presupuesto_rango text, estado bolsa_estado, postulaciones int, tope_postulaciones int,
+  publicado_en timestamptz, vence_en timestamptz, elegido_nombre text, detalle json
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT b.id, b.titulo, b.resumen, b.servicio, b.urgencia, b.presupuesto_rango, b.estado,
+         b.postulaciones, b.tope_postulaciones, b.publicado_en, b.vence_en,
+         (SELECT e.nombre FROM espacios e WHERE e.id = b.asignado_espacio_id),
+         COALESCE((
+           SELECT json_agg(json_build_object(
+                    'id', p.id, 'espacio', e.nombre, 'mensaje', p.mensaje,
+                    'precio', p.precio_estimado, 'plazo', p.plazo) ORDER BY p.creado_en)
+           FROM postulaciones p JOIN espacios e ON e.id = p.espacio_id
+           WHERE p.pedido_id = b.id
+         ), '[]'::json)
+  FROM bolsa_pedidos b
+  WHERE b.cliente_id = auth.uid()
+  ORDER BY b.publicado_en DESC
+$$;
+
+REVOKE ALL ON FUNCTION public.publicar_proyecto(text, text, servicio_tipo, urgencia_tipo, text, text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.mis_proyectos() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.publicar_proyecto(text, text, servicio_tipo, urgencia_tipo, text, text, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.mis_proyectos() TO authenticated;
 
 -- RLS sin políticas para authenticated ni anon: denegado por defecto. n8n
 -- publica, lee las postulaciones para la página del cliente, asigna y vence.

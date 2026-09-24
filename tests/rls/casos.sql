@@ -627,6 +627,57 @@ SELECT probar('ni puede postularse',
          (SELECT id FROM bolsa_pedidos LIMIT 1), 'Me quiero postular siendo cliente', '1 día'),
   'error: La cuenta no tiene un espacio configurado');
 
+-- ── 25. Proyectos que publica un cliente directo ───────────────────────────
+-- 7777 es la clienta confirmada de la sección 24; 1111 y 2222, desarrolladores.
+SELECT probar('una clienta publica su proyecto',
+  'authenticated', '77777777-7777-4777-8777-777777777777',
+  'SELECT count(*) FROM (SELECT publicar_proyecto(''Tienda online para mi marca'', ''Necesito una tienda con catálogo, carrito y pagos online.'', ''ecommerce'', ''media'', ''2000_5000'', ''Marta Gómez'', ''11 5555 1234'')) x',
+  '1 filas');
+SELECT probar('queda abierto, con tope 15, el piso del rango y el correo de la cuenta',
+  'service_role', NULL,
+  'SELECT count(*) FROM bolsa_pedidos WHERE cliente_id = ''77777777-7777-4777-8777-777777777777'' AND estado = ''ABIERTO'' AND tope_postulaciones = 15 AND presupuesto = 2000 AND contacto_email = ''marta.cliente@gmail.com'' AND lead_id IS NULL AND origen_espacio_id IS NULL',
+  '1 filas');
+SELECT probar('un desarrollador NO puede publicar como cliente',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'SELECT count(*) FROM (SELECT publicar_proyecto(''Tienda online para mi marca'', ''Necesito una tienda con catálogo, carrito y pagos online.'', ''ecommerce'', ''media'', ''2000_5000'', ''Pepe'', NULL)) x',
+  'error: Sólo una cuenta de cliente puede publicar proyectos');
+SELECT probar('anon NO puede publicar',
+  'anon', NULL,
+  'SELECT count(*) FROM (SELECT publicar_proyecto(''Tienda online para mi marca'', ''Necesito una tienda con catálogo, carrito y pagos online.'', ''ecommerce'', ''media'', ''2000_5000'', ''Nadie'', NULL)) x',
+  'permiso denegado');
+SELECT probar('un rango inventado no se acepta',
+  'authenticated', '77777777-7777-4777-8777-777777777777',
+  'SELECT count(*) FROM (SELECT publicar_proyecto(''Tienda online para mi marca'', ''Necesito una tienda con catálogo, carrito y pagos online.'', ''ecommerce'', ''media'', ''mil_millones'', ''Marta'', NULL)) x',
+  'error: Rango de presupuesto inválido');
+SELECT probar('la clienta NO lee la tabla de la bolsa directo',
+  'authenticated', '77777777-7777-4777-8777-777777777777', 'SELECT count(*) FROM bolsa_pedidos', 'permiso denegado');
+SELECT probar('ve su proyecto en mis_proyectos()',
+  'authenticated', '77777777-7777-4777-8777-777777777777',
+  'SELECT count(*) FROM mis_proyectos() WHERE titulo = ''Tienda online para mi marca''', '1 filas');
+SELECT probar('otra clienta NO ve los proyectos ajenos',
+  'authenticated', '88888888-8888-4888-8888-888888888888', 'SELECT count(*) FROM mis_proyectos()', '0 filas');
+SELECT probar('un desarrollador lo ve en la bolsa, con título y marcado como directo',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  'SELECT count(*) FROM bolsa_abierta() WHERE directo AND titulo = ''Tienda online para mi marca'' AND NOT propio', '1 filas');
+SELECT probar('y se postula',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  'SELECT count(*) FROM (SELECT postularme(id, ''Armé varias tiendas con pagos online.'', 3000, ''5 semanas'') FROM bolsa_abierta() WHERE directo) x',
+  '1 filas');
+SELECT probar('la clienta ve la postulación en su proyecto',
+  'authenticated', '77777777-7777-4777-8777-777777777777',
+  'SELECT count(*) FROM mis_proyectos() WHERE postulaciones = 1 AND json_array_length(detalle) = 1', '1 filas');
+SELECT probar('pero no a quién pertenece más allá de la marca (sin dueño ni correo del espacio)',
+  'authenticated', '77777777-7777-4777-8777-777777777777',
+  'SELECT count(*) FROM mis_proyectos(), json_array_elements(detalle) d WHERE d::jsonb ? ''email'' OR d::jsonb ? ''espacio_id''', '0 filas');
+-- Límite de proyectos abiertos por cliente.
+SELECT publicar_proyecto('Proyecto número ' || n, 'Descripción suficientemente larga del proyecto ' || n, 'seo', 'baja', 'hasta_300', 'Marta', NULL)
+FROM (SELECT set_config('request.jwt.claims', '{"sub": "77777777-7777-4777-8777-777777777777"}', true)) c,
+     generate_series(2, 5) n;
+SELECT probar('con 5 proyectos abiertos no puede publicar otro',
+  'authenticated', '77777777-7777-4777-8777-777777777777',
+  'SELECT count(*) FROM (SELECT publicar_proyecto(''Un sexto proyecto más'', ''Descripción suficientemente larga del sexto proyecto.'', ''seo'', ''baja'', ''hasta_300'', ''Marta'', NULL)) x',
+  'error: Ya tenés 5 proyectos abiertos: elegí o esperá a que cierre alguno');
+
 -- ── Reporte ────────────────────────────────────────────────────────────────
 \o
 \pset border 2
