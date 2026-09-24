@@ -56,8 +56,8 @@ export async function getPanelStatus(): Promise<EstadoPanel> {
 }
 
 // Compuerta de las páginas del panel: exige sesión + espacio, o redirige (sin
-// sesión -> /login; con sesión pero sin espacio, que es una cuenta sin
-// confirmar -> /).
+// sesión -> /login; una cuenta de cliente -> su panel; otra cuenta sin
+// espacio, que es una sin confirmar -> /).
 export async function getPanelUser(): Promise<{
   user: User;
   espacio: Espacio;
@@ -65,9 +65,46 @@ export async function getPanelUser(): Promise<{
   const {user, espacio} = await getPanelStatus();
 
   if (!user) redirect("/login");
-  if (!espacio) redirect("/");
+  if (!espacio) redirect((await tipoDeCuenta()) === "cliente" ? "/cliente" : "/");
 
   return {user, espacio};
+}
+
+export type TipoCuenta = "desarrollador" | "cliente";
+
+// El tipo de la cuenta con sesión (lo fija la base al crearla), o null sin
+// sesión. Cada uno lee sólo su fila de profiles.
+export async function tipoDeCuenta(): Promise<TipoCuenta | null> {
+  const supabase = await createClient();
+
+  if (!supabase) return null;
+
+  const {
+    data: {user},
+  } = await supabase.auth.getUser();
+
+  if (!user) return null;
+
+  const {data} = await supabase.from("profiles").select("tipo").eq("id", user.id).maybeSingle();
+
+  return data?.tipo === "cliente" ? "cliente" : "desarrollador";
+}
+
+// Compuerta del panel de clientes: sin sesión, a la página de entrada; una
+// cuenta de desarrollador, a su panel.
+export async function getClienteUser(): Promise<User> {
+  const supabase = await createClient();
+
+  if (!supabase) redirect("/cliente/entrar");
+
+  const {
+    data: {user},
+  } = await supabase.auth.getUser();
+
+  if (!user) redirect("/cliente/entrar");
+  if ((await tipoDeCuenta()) !== "cliente") redirect("/dashboard");
+
+  return user;
 }
 
 // Compuerta de los route handlers: no pasan por el gate de /dashboard, así que

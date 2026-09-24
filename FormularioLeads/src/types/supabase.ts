@@ -353,6 +353,8 @@ export interface Database {
           id: string;
           email: string | null;
           role: string;
+          // "desarrollador" | "cliente": lo fija la base al crear la cuenta.
+          tipo: string;
           creado_en: string;
         };
         Insert: {

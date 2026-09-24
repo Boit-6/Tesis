@@ -589,6 +589,44 @@ SELECT probar('un pedido vencido tampoco recibe postulaciones',
          (SELECT id FROM bolsa_pedidos WHERE lead_id = 'LD-PEPE-0001'), 'Me postulo después del vencimiento', '2 semanas'),
   'error: El pedido ya no recibe postulaciones');
 
+-- ── 24. Cuentas de cliente: entran con enlace mágico y no tienen espacio ───
+-- La página de clientes manda {tipo: 'cliente'} en los metadatos. Una se
+-- crea ya confirmada (como con el enlace mágico) y otra sin confirmar, que se
+-- confirma después.
+INSERT INTO auth.users (id, email, email_confirmed_at, raw_user_meta_data) VALUES
+  ('77777777-7777-4777-8777-777777777777', 'marta.cliente@gmail.com', now(), '{"tipo": "cliente"}'),
+  ('88888888-8888-4888-8888-888888888888', 'otro.cliente@gmail.com', NULL, '{"tipo": "cliente"}'),
+  ('99999999-9999-4999-8999-999999999990', 'nueva.dev@gmail.com', now(), '{"tipo": "desarrollador"}');
+UPDATE auth.users SET email_confirmed_at = now() WHERE id = '88888888-8888-4888-8888-888888888888';
+
+SELECT probar('una cuenta de cliente queda marcada como cliente',
+  'authenticated', '77777777-7777-4777-8777-777777777777',
+  'SELECT count(*) FROM profiles WHERE tipo = ''cliente''', '1 filas');
+SELECT probar('una cuenta de cliente NO recibe espacio',
+  'service_role', NULL,
+  'SELECT count(*) FROM espacios WHERE dueno_id = ''77777777-7777-4777-8777-777777777777''', '0 filas');
+SELECT probar('tampoco al confirmarse después',
+  'service_role', NULL,
+  'SELECT count(*) FROM espacios WHERE dueno_id = ''88888888-8888-4888-8888-888888888888''', '0 filas');
+SELECT probar('una cuenta de desarrollador sigue recibiendo su espacio',
+  'service_role', NULL,
+  'SELECT count(*) FROM espacios e JOIN profiles p ON p.id = e.dueno_id WHERE e.dueno_id = ''99999999-9999-4999-8999-999999999990'' AND p.tipo = ''desarrollador''', '1 filas');
+SELECT probar('las cuentas creadas sin tipo (las de /register) son de desarrollador',
+  'service_role', NULL,
+  'SELECT count(*) FROM profiles WHERE id = ''22222222-2222-4222-8222-222222222222'' AND tipo = ''desarrollador''', '1 filas');
+SELECT probar('un cliente NO puede cambiarse el tipo de cuenta',
+  'authenticated', '77777777-7777-4777-8777-777777777777',
+  'WITH x AS (UPDATE profiles SET tipo = ''desarrollador'' RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
+SELECT probar('un cliente NO ve pedidos de nadie',
+  'authenticated', '77777777-7777-4777-8777-777777777777', 'SELECT count(*) FROM leads', '0 filas');
+SELECT probar('ni la bolsa de los desarrolladores',
+  'authenticated', '77777777-7777-4777-8777-777777777777', 'SELECT count(*) FROM bolsa_abierta()', '0 filas');
+SELECT probar('ni puede postularse',
+  'authenticated', '77777777-7777-4777-8777-777777777777',
+  format('SELECT count(*) FROM (SELECT postularme(%L, %L, 100, %L)) x',
+         (SELECT id FROM bolsa_pedidos LIMIT 1), 'Me quiero postular siendo cliente', '1 día'),
+  'error: La cuenta no tiene un espacio configurado');
+
 -- ── Reporte ────────────────────────────────────────────────────────────────
 \o
 \pset border 2

@@ -4,8 +4,12 @@ import {NextResponse, type NextRequest} from "next/server";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-// Rutas internas que requieren sesión. Agregar acá para proteger más rutas.
-const PROTECTED_ROUTES = ["/dashboard"];
+// Rutas internas que requieren sesión, y a dónde se entra en cada caso: los
+// desarrolladores con contraseña, los clientes con enlace mágico.
+const PROTECTED_ROUTES = [
+  {prefijo: "/dashboard", entrada: "/login"},
+  {prefijo: "/cliente", entrada: "/cliente/entrar", salvo: "/cliente/entrar"},
+];
 
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({request});
@@ -39,12 +43,15 @@ export async function updateSession(request: NextRequest) {
     data: {user},
   } = await supabase.auth.getUser();
 
-  const isProtected = PROTECTED_ROUTES.some((route) => request.nextUrl.pathname.startsWith(route));
+  const {pathname} = request.nextUrl;
+  const protegida = PROTECTED_ROUTES.find(
+    (r) => pathname.startsWith(r.prefijo) && !(r.salvo && pathname.startsWith(r.salvo)),
+  );
 
-  if (isProtected && !user) {
+  if (protegida && !user) {
     const url = request.nextUrl.clone();
 
-    url.pathname = "/login";
+    url.pathname = protegida.entrada;
     url.searchParams.set("redirectTo", request.nextUrl.pathname);
 
     return NextResponse.redirect(url);

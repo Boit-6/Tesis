@@ -2,14 +2,14 @@ import type {ReactNode} from "react";
 
 import Link from "next/link";
 
-import {createClient} from "@/lib/supabase/server";
+import {tipoDeCuenta} from "@/lib/auth";
 
 // Encabezado de las páginas de la plataforma (portada, alta, panel, etc.). El
 // formulario de cada desarrollador (/f/<slug>) queda afuera de este grupo: ahí
 // el cliente ve la marca del espacio, no la de la plataforma.
 export default async function PlataformaLayout({children}: {children: ReactNode}) {
-  const supabase = await createClient();
-  const conSesion = supabase ? !!(await supabase.auth.getUser()).data.user : false;
+  // null sin sesión. El cliente va a sus proyectos; el desarrollador, a su panel.
+  const tipo = await tipoDeCuenta();
 
   return (
     <div className="flex flex-col">
@@ -21,15 +21,21 @@ export default async function PlataformaLayout({children}: {children: ReactNode}
           FormularioLeads
         </Link>
         <nav className="flex items-center gap-5 text-[11px] tracking-[0.16em] uppercase">
-          {conSesion ? (
+          {tipo ? (
             <Link
               className="text-ink-soft hover:text-ochre transition duration-200"
-              href="/dashboard"
+              href={tipo === "cliente" ? "/cliente" : "/dashboard"}
             >
-              Panel
+              {tipo === "cliente" ? "Mis proyectos" : "Panel"}
             </Link>
           ) : (
             <>
+              <Link
+                className="text-ink-soft hover:text-ochre transition duration-200 max-sm:hidden"
+                href="/cliente/entrar"
+              >
+                Soy cliente
+              </Link>
               <Link
                 className="text-ink-soft hover:text-ochre transition duration-200"
                 href="/login"

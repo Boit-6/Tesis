@@ -209,6 +209,17 @@ CREATE TABLE IF NOT EXISTS profiles (
   creado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Tipo de cuenta (24-sep-2026, clientes que publican proyectos): una cuenta
+-- es de desarrollador (tiene espacio y panel) o de cliente (entra con enlace
+-- mágico y ve sus proyectos). Lo fija handle_new_user() al crear la cuenta,
+-- según lo que pidió la página de alta; el usuario no puede cambiarlo después
+-- (profiles no tiene permiso de escritura para authenticated). Las cuentas
+-- anteriores son todas de desarrollador.
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS tipo TEXT NOT NULL DEFAULT 'desarrollador';
+DO $$ BEGIN
+  ALTER TABLE profiles ADD CONSTRAINT chk_profiles_tipo CHECK (tipo IN ('desarrollador','cliente'));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
 -- Whitelist de admins editable sin tocar este archivo (antes era un string
 -- literal comparado en handle_new_user(), lo que además de forzar un cambio
 -- de schema para sumar un admin, era un vector de privilege escalation: quien
@@ -810,12 +821,14 @@ CREATE TRIGGER trg_leads_propagar_espacio
 -- de la casilla; el desarrollador los cambia al completar su alta (etapa 2).
 -- ON CONFLICT: una cuenta que ya tiene espacio (por ejemplo, el admin al que
 -- la migración le dio el "principal") no recibe otro.
+-- Las cuentas de cliente no tienen espacio: no reciben pedidos.
 CREATE OR REPLACE FUNCTION public.crear_espacio_propio(uid uuid, correo text) RETURNS void
 LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
   INSERT INTO espacios (slug, nombre, dueno_id, email_contacto)
-  VALUES ('e-' || replace(uid::text, '-', ''),
-          coalesce(nullif(left(split_part(correo, '@', 1), 80), ''), 'Mi espacio'),
-          uid, correo)
+  SELECT 'e-' || replace(uid::text, '-', ''),
+         coalesce(nullif(left(split_part(correo, '@', 1), 80), ''), 'Mi espacio'),
+         uid, correo
+  WHERE NOT EXISTS (SELECT 1 FROM profiles p WHERE p.id = uid AND p.tipo = 'cliente')
   ON CONFLICT DO NOTHING;
 $$;
 REVOKE ALL ON FUNCTION public.crear_espacio_propio(uuid, text) FROM PUBLIC;
@@ -823,13 +836,16 @@ REVOKE ALL ON FUNCTION public.crear_espacio_propio(uuid, text) FROM PUBLIC;
 CREATE OR REPLACE FUNCTION public.handle_new_user() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  INSERT INTO public.profiles (id, email, role)
+  INSERT INTO public.profiles (id, email, role, tipo)
   VALUES (
     NEW.id,
     NEW.email,
     CASE WHEN NEW.email_confirmed_at IS NOT NULL
           AND EXISTS (SELECT 1 FROM public.admin_emails WHERE email = NEW.email)
-      THEN 'admin' ELSE 'user' END
+      THEN 'admin' ELSE 'user' END,
+    -- La página de clientes pide {tipo: 'cliente'} en los metadatos. Cualquier
+    -- otra cosa (o nada, como /register) es una cuenta de desarrollador.
+    CASE WHEN NEW.raw_user_meta_data ->> 'tipo' = 'cliente' THEN 'cliente' ELSE 'desarrollador' END
   )
   ON CONFLICT (id) DO NOTHING;
 

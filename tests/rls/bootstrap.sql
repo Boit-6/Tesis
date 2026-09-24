@@ -30,8 +30,11 @@ CREATE SCHEMA IF NOT EXISTS auth;
 CREATE TABLE IF NOT EXISTS auth.users (
   id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email              TEXT UNIQUE,
-  email_confirmed_at TIMESTAMPTZ
+  email_confirmed_at TIMESTAMPTZ,
+  -- Lo que manda el cliente al registrarse (options.data en supabase-js).
+  raw_user_meta_data JSONB
 );
+ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS raw_user_meta_data JSONB;
 
 -- Misma semántica que la de Supabase: lee el `sub` del JWT de la sesión.
 -- En los tests la sesión se simula con `SET request.jwt.claims`.
