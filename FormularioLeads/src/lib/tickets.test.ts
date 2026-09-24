@@ -3,6 +3,7 @@ import {describe, expect, it} from "vitest";
 describe("aTicket", () => {
   const fila = {
     id: "0f0e0d0c-0b0a-4090-8080-707060605050",
+    espacio_id: "e5e5e5e5-0000-4000-8000-000000000001",
     titulo: "Kickoff con Cliente",
     estado: "EN_CURSO" as const,
     prioridad: "ALTA" as const,

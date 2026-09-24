@@ -1,13 +1,32 @@
 import {NextRequest} from "next/server";
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 
-import {requireAdmin} from "@/lib/auth";
+import {requirePanel} from "@/lib/auth";
+import {createClient} from "@/lib/supabase/server";
 
 // `vi.mock` queda hoisteado por Vitest al tope del archivo, antes que
 // cualquier import — no hace falta escribirlo primero a mano.
 vi.mock("@/lib/auth", () => ({
-  requireAdmin: vi.fn(),
+  requirePanel: vi.fn(),
 }));
+
+vi.mock("@/lib/supabase/server", () => ({
+  createClient: vi.fn(),
+}));
+
+// La cadena `.from(tabla).select(campo).eq(campo, valor).maybeSingle()` con la
+// que el route handler comprueba que el pedido sea del espacio de quien llama.
+// `visibles` son los ids que la RLS le deja ver.
+function mockSupabase(visibles: string[]) {
+  const eq = vi.fn((_campo: string, valor: string) => ({
+    maybeSingle: vi.fn().mockResolvedValue({
+      data: visibles.includes(valor) ? {id: valor} : null,
+    }),
+  }));
+  const from = vi.fn(() => ({select: vi.fn(() => ({eq}))}));
+
+  return {from, eq};
+}
 
 function post(body: unknown) {
   return new NextRequest("http://localhost/api/crm/cancelar", {
@@ -28,20 +47,21 @@ describe("POST /api/crm/[accion]", () => {
       N8N_BASE: "http://n8n.local",
       CRM_PANEL_TOKEN: "panel-secreto",
     };
-    vi.mocked(requireAdmin).mockReset();
-    vi.mocked(requireAdmin).mockResolvedValue(null);
+    vi.mocked(requirePanel).mockReset();
+    vi.mocked(requirePanel).mockResolvedValue(null);
+    vi.mocked(createClient).mockResolvedValue(mockSupabase(["LD-1", "FAC-1"]) as never);
   });
 
   afterEach(() => {
     process.env = {...envOriginal};
   });
 
-  it("respeta lo que devuelva requireAdmin() sin llegar a llamar a n8n", async () => {
+  it("respeta lo que devuelva requirePanel() sin llegar a llamar a n8n", async () => {
     const denegado = new Response(JSON.stringify({ok: false, error: "No autenticado."}), {
       status: 401,
     });
 
-    vi.mocked(requireAdmin).mockResolvedValue(denegado as never);
+    vi.mocked(requirePanel).mockResolvedValue(denegado as never);
 
     const fetchMock = vi.fn();
 
@@ -100,6 +120,60 @@ describe("POST /api/crm/[accion]", () => {
     });
 
     expect(res.status).toBe(400);
+  });
+
+  it("404 sin llamar a n8n si el pedido es de otro espacio (la RLS no lo deja ver)", async () => {
+    const fetchMock = vi.fn();
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const {POST} = await import("./route");
+    const res = await POST(post({lead_id: "LD-AJENO"}), {
+      params: Promise.resolve({accion: "cancelar"}),
+    });
+
+    expect(res.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("404 sin llamar a n8n si la factura es de otro espacio", async () => {
+    const fetchMock = vi.fn();
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const {POST} = await import("./route");
+    const res = await POST(post({factura_id: "FAC-AJENA"}), {
+      params: Promise.resolve({accion: "factura-anular"}),
+    });
+
+    expect(res.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("404 si uno de los dos ids es ajeno, aunque el otro sea propio", async () => {
+    const fetchMock = vi.fn();
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const {POST} = await import("./route");
+    const res = await POST(post({lead_id: "LD-1", factura_id: "FAC-AJENA"}), {
+      params: Promise.resolve({accion: "factura-anular"}),
+    });
+
+    expect(res.status).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("400 sin lead_id ni factura_id, o con uno que no es texto", async () => {
+    const {POST} = await import("./route");
+
+    for (const body of [{}, {lead_id: 42}, {lead_id: ""}, ["LD-1"]]) {
+      const res = await POST(post(body), {
+        params: Promise.resolve({accion: "cancelar"}),
+      });
+
+      expect(res.status).toBe(400);
+    }
   });
 
   it("manda el header del panel a n8n y reenvía su respuesta JSON", async () => {

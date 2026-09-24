@@ -2,17 +2,17 @@ import Link from "next/link";
 
 import DashboardClient from "./dashboard-client";
 
-import {getAdminUser} from "@/lib/auth";
+import {getPanelUser} from "@/lib/auth";
 
 // Sin esto, Next.js puede prerenderizar esta página como estática: si
 // createClient() devuelve null (env vars de Supabase ausentes en build), la
 // verificación de sesión nunca llega a llamar cookies() y no hay ninguna
-// señal que fuerce el render dinámico. El gate de admin tiene que correr en
+// señal que fuerce el render dinámico. El gate del panel tiene que correr en
 // cada request, no una sola vez al buildear.
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const user = await getAdminUser();
+  const {user, espacio} = await getPanelUser();
 
   return (
     <main className="mx-auto w-full max-w-6xl px-6 pt-8 pb-20 sm:px-10">
@@ -25,6 +25,7 @@ export default async function DashboardPage() {
         </div>
 
         <div className="flex flex-col items-end gap-2">
+          <span className="text-muted text-[12.5px]">{espacio.nombre}</span>
           <span className="text-faint text-[12.5px]">{user.email}</span>
           <Link
             className="ease text-muted hover:text-ochre text-[11px] tracking-[0.14em] uppercase transition duration-200"

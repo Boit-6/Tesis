@@ -2,7 +2,8 @@ import type {NextRequest} from "next/server";
 
 import {NextResponse} from "next/server";
 
-import {requireAdmin} from "@/lib/auth";
+import {requirePanel} from "@/lib/auth";
+import {createClient} from "@/lib/supabase/server";
 
 // Proxy server-side de las acciones del panel interno hacia n8n.
 //
@@ -13,6 +14,12 @@ import {requireAdmin} from "@/lib/auth";
 //
 // El formulario público y los enlaces del cliente NO pasan por acá: no pueden
 // llevar un secreto (el navegador lo expondría) y se protegen con el token UUID.
+//
+// Con la plataforma compartida, la credencial del panel es la misma para todos
+// los desarrolladores y n8n actúa sobre el lead_id o factura_id que le llegue.
+// Por eso, antes de reenviar, se comprueba con la sesión de quien llama que ese
+// pedido o esa factura sean de su espacio. La RLS sólo le deja ver los suyos,
+// así que uno ajeno aparece como inexistente.
 
 const N8N_BASE = process.env.N8N_BASE ?? process.env.NEXT_PUBLIC_N8N_BASE;
 const PANEL_TOKEN = process.env.CRM_PANEL_TOKEN;
@@ -29,8 +36,45 @@ const ACCIONES: Record<string, string> = {
   "factura-anular": "factura-anular",
 };
 
+// Las acciones del panel mandan un lead_id, un factura_id, o los dos. `null` =
+// no vino ninguno, o vino uno que no es texto.
+async function esDeMiEspacio(body: Record<string, unknown>): Promise<boolean | null> {
+  const {lead_id: leadId, factura_id: facturaId} = body;
+
+  if (leadId === undefined && facturaId === undefined) return null;
+  for (const id of [leadId, facturaId]) {
+    if (id !== undefined && (typeof id !== "string" || !id)) return null;
+  }
+
+  const supabase = await createClient();
+
+  if (!supabase) return false;
+
+  if (typeof leadId === "string") {
+    const {data} = await supabase
+      .from("leads")
+      .select("lead_id")
+      .eq("lead_id", leadId)
+      .maybeSingle();
+
+    if (!data) return false;
+  }
+
+  if (typeof facturaId === "string") {
+    const {data} = await supabase
+      .from("facturas")
+      .select("factura_id")
+      .eq("factura_id", facturaId)
+      .maybeSingle();
+
+    if (!data) return false;
+  }
+
+  return true;
+}
+
 export async function POST(request: NextRequest, {params}: {params: Promise<{accion: string}>}) {
-  const denegado = await requireAdmin();
+  const denegado = await requirePanel();
 
   if (denegado) return denegado;
 
@@ -65,6 +109,19 @@ export async function POST(request: NextRequest, {params}: {params: Promise<{acc
   } catch {
     return NextResponse.json({ok: false, error: "Body inválido."}, {status: 400});
   }
+
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ok: false, error: "Body inválido."}, {status: 400});
+  }
+
+  const propio = await esDeMiEspacio(body as Record<string, unknown>);
+
+  if (propio === null) {
+    return NextResponse.json({ok: false, error: "Falta lead_id o factura_id."}, {status: 400});
+  }
+
+  // 404 y no 403: no se confirma que exista algo en otro espacio.
+  if (!propio) return NextResponse.json({ok: false, error: "No encontrado."}, {status: 404});
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",

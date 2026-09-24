@@ -8,17 +8,26 @@
 \set ON_ERROR_STOP on
 
 -- ── Datos de prueba ────────────────────────────────────────────────────────
-INSERT INTO auth.users (id, email) VALUES
-  ('11111111-1111-4111-8111-111111111111', 'admin@gmail.com'),
-  ('22222222-2222-4222-8222-222222222222', 'pepe@gmail.com')
+-- Dos desarrolladores con la cuenta confirmada, cada uno con su espacio (lo
+-- crea el trigger al confirmar), y una cuenta sin confirmar, que no tiene.
+-- 1111 es además el admin de la plataforma: el rol no le da acceso a nada
+-- ajeno, sólo decide a qué espacio van los leads que llegan sin espacio
+-- (transitorio, ver leads_espacio_por_defecto).
+INSERT INTO auth.users (id, email, email_confirmed_at) VALUES
+  ('11111111-1111-4111-8111-111111111111', 'admin@gmail.com', now()),
+  ('22222222-2222-4222-8222-222222222222', 'pepe@gmail.com', now()),
+  ('66666666-6666-4666-8666-666666666666', 'sin-confirmar@gmail.com', NULL)
 ON CONFLICT (id) DO NOTHING;
 
 -- El trigger handle_new_user ya creó los profiles; nos aseguramos de los roles.
 UPDATE profiles SET role = 'admin' WHERE email = 'admin@gmail.com';
 UPDATE profiles SET role = 'user'  WHERE email = 'pepe@gmail.com';
 
-INSERT INTO leads (lead_id, nombre, email, presupuesto, urgencia, servicio, estado, score, tier)
-VALUES ('LD-TEST-0001', 'Cliente de prueba', 'cliente@test.com', 5000, 'alta', 'ecommerce', 'NUEVO', 90, 'HOT')
+INSERT INTO leads (lead_id, espacio_id, nombre, email, presupuesto, urgencia, servicio, estado, score, tier)
+VALUES ('LD-TEST-0001', (SELECT id FROM espacios WHERE dueno_id = '11111111-1111-4111-8111-111111111111'),
+        'Cliente de prueba', 'cliente@test.com', 5000, 'alta', 'ecommerce', 'NUEVO', 90, 'HOT'),
+       ('LD-PEPE-0001', (SELECT id FROM espacios WHERE dueno_id = '22222222-2222-4222-8222-222222222222'),
+        'Cliente de Pepe', 'otro@test.com', 1000, 'media', 'desarrollo_web', 'NUEVO', 40, 'WARM')
 ON CONFLICT (lead_id) DO NOTHING;
 
 INSERT INTO facturas (factura_id, lead_id, cliente, email, monto, fecha_vencimiento)
@@ -73,13 +82,16 @@ SELECT probar('anon NO puede leer profiles',             'anon', NULL, 'SELECT c
 SELECT probar('anon NO puede leer metrics_mensuales',    'anon', NULL, 'SELECT count(*) FROM metrics_mensuales',   'permiso denegado');
 SELECT probar('anon NO puede leer facturas_pendientes',  'anon', NULL, 'SELECT count(*) FROM facturas_pendientes', 'permiso denegado');
 
--- ── 2. Estar logueado NO alcanza: hace falta el rol admin ──────────────────
-SELECT probar('usuario logueado sin rol admin ve 0 leads',    'authenticated', '22222222-2222-4222-8222-222222222222', 'SELECT count(*) FROM leads',            '0 filas');
-SELECT probar('usuario logueado sin rol admin ve 0 facturas', 'authenticated', '22222222-2222-4222-8222-222222222222', 'SELECT count(*) FROM facturas',         '0 filas');
-SELECT probar('usuario sin rol admin ve 0 en las métricas',   'authenticated', '22222222-2222-4222-8222-222222222222', 'SELECT count(*) FROM metrics_mensuales', '0 filas');
+-- ── 2. Cada desarrollador ve sólo lo de su espacio ─────────────────────────
+SELECT probar('Pepe ve sólo su lead, no el del otro espacio',  'authenticated', '22222222-2222-4222-8222-222222222222', 'SELECT count(*) FROM leads',            '1 filas');
+SELECT probar('Pepe NO ve el lead del otro espacio por su id', 'authenticated', '22222222-2222-4222-8222-222222222222', 'SELECT count(*) FROM leads WHERE lead_id = ''LD-TEST-0001''', '0 filas');
+SELECT probar('Pepe NO ve las facturas del otro espacio',      'authenticated', '22222222-2222-4222-8222-222222222222', 'SELECT count(*) FROM facturas',         '0 filas');
+SELECT probar('las métricas de Pepe son sólo las suyas',       'authenticated', '22222222-2222-4222-8222-222222222222', 'SELECT sum(total_leads)::bigint FROM metrics_mensuales', '1 filas');
+SELECT probar('una cuenta sin confirmar no tiene espacio ni ve leads', 'authenticated', '66666666-6666-4666-8666-666666666666', 'SELECT count(*) FROM leads', '0 filas');
+SELECT probar('una cuenta sin confirmar no ve métricas',       'authenticated', '66666666-6666-4666-8666-666666666666', 'SELECT count(*) FROM metrics_mensuales', '0 filas');
 
--- ── 3. El admin sí lee el tablero ──────────────────────────────────────────
-SELECT probar('admin lee leads',                'authenticated', '11111111-1111-4111-8111-111111111111', 'SELECT count(*) FROM leads',               '1 filas');
+-- ── 3. El dueño lee el tablero de su espacio ───────────────────────────────
+SELECT probar('admin lee leads (sólo los de su espacio)', 'authenticated', '11111111-1111-4111-8111-111111111111', 'SELECT count(*) FROM leads',               '1 filas');
 SELECT probar('admin lee facturas',             'authenticated', '11111111-1111-4111-8111-111111111111', 'SELECT count(*) FROM facturas',            '1 filas');
 SELECT probar('admin lee facturas_pendientes',  'authenticated', '11111111-1111-4111-8111-111111111111', 'SELECT count(*) FROM facturas_pendientes', '1 filas');
 SELECT probar('admin lee las métricas',         'authenticated', '11111111-1111-4111-8111-111111111111', 'SELECT count(*) FROM metrics_mensuales',   '1 filas');
@@ -100,7 +112,7 @@ SELECT probar('un usuario ve sólo su propio profile',   'authenticated', '22222
 SELECT probar('el admin también ve sólo su propio profile', 'authenticated', '11111111-1111-4111-8111-111111111111', 'SELECT count(*) FROM profiles', '1 filas');
 
 -- ── 8. service_role (n8n) escribe y lee todo: evade la RLS por diseño ──────
-SELECT probar('service_role lee leads',      'service_role', NULL, 'SELECT count(*) FROM leads', '1 filas');
+SELECT probar('service_role lee los leads de todos los espacios', 'service_role', NULL, 'SELECT count(*) FROM leads', '2 filas');
 SELECT probar('service_role lee logs',       'service_role', NULL, 'SELECT count(*) FROM logs',  '1 filas');
 SELECT probar('service_role puede escribir', 'service_role', NULL, 'WITH x AS (UPDATE leads SET notas = ''ok'' WHERE lead_id = ''LD-TEST-0001'' RETURNING 1) SELECT count(*) FROM x', '1 filas');
 
@@ -119,8 +131,12 @@ SELECT probar('n8n_writer actualiza el lead que acaba de insertar',
   'n8n_writer', NULL,
   'WITH x AS (UPDATE leads SET notas = ''actualizado por n8n_writer'' WHERE lead_id = ''LD-N8NW-0001'' RETURNING 1) SELECT count(*) FROM x',
   '1 filas');
-SELECT probar('n8n_writer lee las dos filas de leads que ya existen',
-  'n8n_writer', NULL, 'SELECT count(*) FROM leads', '2 filas');
+SELECT probar('n8n_writer lee los leads de todos los espacios',
+  'n8n_writer', NULL, 'SELECT count(*) FROM leads', '3 filas');
+SELECT probar('un lead que llega sin espacio va al del admin (transitorio, hasta /f/<slug>)',
+  'service_role', NULL,
+  'SELECT count(*) FROM leads l JOIN espacios e ON e.id = l.espacio_id WHERE l.lead_id = ''LD-N8NW-0001'' AND e.dueno_id = ''11111111-1111-4111-8111-111111111111''',
+  '1 filas');
 SELECT probar('n8n_writer lee logs',
   'n8n_writer', NULL, 'SELECT count(*) FROM logs', '1 filas');
 SELECT probar('n8n_writer inserta en logs',
@@ -162,15 +178,15 @@ SELECT probar('anon NO puede borrar un lead',
   'WITH x AS (DELETE FROM leads WHERE lead_id = ''LD-TEST-0001'' RETURNING 1) SELECT count(*) FROM x',
   'permiso denegado');
 
--- ── 13. La RLS está habilitada Y forzada en las 7 tablas de negocio ────────
+-- ── 13. La RLS está habilitada Y forzada en las 9 tablas de negocio ────────
 -- No alcanza con que cada caso de arriba dé el resultado esperado: si a una
 -- tabla nueva se le olvida `ENABLE`/`FORCE ROW LEVEL SECURITY`, este es el
 -- único caso que lo detecta directo contra el catálogo, sin depender de que
 -- alguien se acuerde de sumarle sus propios casos de permisos.
-SELECT probar('las 7 tablas de negocio tienen RLS habilitada y forzada',
+SELECT probar('las 9 tablas de negocio tienen RLS habilitada y forzada',
   'service_role', NULL,
-  'SELECT count(*) FROM pg_class WHERE relname IN (''leads'',''facturas'',''seguimientos'',''logs'',''profiles'',''rate_limit_log'',''admin_emails'') AND relrowsecurity AND relforcerowsecurity',
-  '7 filas');
+  'SELECT count(*) FROM pg_class WHERE relname IN (''leads'',''facturas'',''seguimientos'',''logs'',''profiles'',''rate_limit_log'',''admin_emails'',''tickets'',''espacios'') AND relrowsecurity AND relforcerowsecurity',
+  '9 filas');
 
 -- ── 14. seguimientos: mismo patrón de acceso que facturas ──────────────────
 SELECT probar('n8n_writer inserta un seguimiento',
@@ -179,7 +195,7 @@ SELECT probar('n8n_writer inserta un seguimiento',
   '1 filas');
 SELECT probar('admin lee seguimientos',
   'authenticated', '11111111-1111-4111-8111-111111111111', 'SELECT count(*) FROM seguimientos', '1 filas');
-SELECT probar('un usuario sin rol admin NO ve seguimientos',
+SELECT probar('Pepe NO ve los seguimientos del otro espacio',
   'authenticated', '22222222-2222-4222-8222-222222222222', 'SELECT count(*) FROM seguimientos', '0 filas');
 SELECT probar('anon NO puede leer seguimientos',
   'anon', NULL, 'SELECT count(*) FROM seguimientos', 'permiso denegado');
@@ -245,18 +261,34 @@ SELECT probar('un admin bajado a mano no vuelve a subir por otro cambio de la cu
   'SELECT count(*) FROM profiles WHERE id = ''55555555-5555-4555-8555-555555555555'' AND role = ''user''',
   '1 filas');
 
--- ── 16.2 Tickets: el tablero escribe, pero sólo el admin ──────────────────
+-- ── 16.2 Tickets: el tablero escribe, pero sólo en su espacio ─────────────
 INSERT INTO tickets (id, titulo) VALUES ('99999999-9999-4999-8999-999999999999', 'Ticket de prueba');
 SELECT probar('anon NO puede leer tickets', 'anon', NULL, 'SELECT count(*) FROM tickets', 'permiso denegado');
 SELECT probar('anon NO puede leer tickets_tablero', 'anon', NULL, 'SELECT count(*) FROM tickets_tablero', 'permiso denegado');
-SELECT probar('usuario sin rol admin ve 0 tickets',
+SELECT probar('Pepe no ve los tickets del otro espacio',
   'authenticated', '22222222-2222-4222-8222-222222222222', 'SELECT count(*) FROM tickets_tablero', '0 filas');
-SELECT probar('usuario sin rol admin NO puede crear tickets',
-  'authenticated', '22222222-2222-4222-8222-222222222222',
+SELECT probar('una cuenta sin espacio NO puede crear tickets',
+  'authenticated', '66666666-6666-4666-8666-666666666666',
   'WITH x AS (INSERT INTO tickets (titulo) VALUES (''intruso'') RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
-SELECT probar('usuario sin rol admin NO puede mover tickets (0 filas afectadas)',
+SELECT probar('Pepe NO puede mover los tickets del otro espacio (0 filas afectadas)',
   'authenticated', '22222222-2222-4222-8222-222222222222',
   'WITH x AS (UPDATE tickets SET estado = ''HECHO'' RETURNING 1) SELECT count(*) FROM x', '0 filas');
+SELECT probar('Pepe crea un ticket y queda en su espacio',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (INSERT INTO tickets (titulo) VALUES (''de Pepe'') RETURNING espacio_id) SELECT count(*) FROM x JOIN espacios e ON e.id = x.espacio_id WHERE e.dueno_id = auth.uid()', '1 filas');
+SELECT probar('Pepe NO puede colgar un ticket del lead de otro espacio',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (INSERT INTO tickets (titulo, lead_id) VALUES (''colado'', ''LD-TEST-0001'') RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
+-- El id del espacio ajeno se arma acá afuera, como postgres: Pepe no podría
+-- leerlo, pero alguien podría adivinarlo o haberlo visto.
+SELECT probar('Pepe NO puede crear un ticket en el espacio de otro',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  format('WITH x AS (INSERT INTO tickets (titulo, espacio_id) VALUES (''colado'', %L) RETURNING 1) SELECT count(*) FROM x',
+         (SELECT id FROM espacios WHERE dueno_id = '11111111-1111-4111-8111-111111111111')),
+  'permiso denegado');
+SELECT probar('Pepe NO puede llevarse su ticket a otro espacio',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (UPDATE tickets SET lead_id = ''LD-TEST-0001'' WHERE titulo = ''de Pepe'' RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
 SELECT probar('el admin ve los tickets en el tablero',
   'authenticated', '11111111-1111-4111-8111-111111111111', 'SELECT count(*) FROM tickets_tablero', '1 filas');
 SELECT probar('el admin puede crear un ticket',
@@ -280,6 +312,49 @@ SELECT probar('actualizar un lead bumpea actualizado_en',
   'service_role', NULL,
   'WITH antes AS (SELECT actualizado_en FROM leads WHERE lead_id = ''LD-TEST-0001''), upd AS (UPDATE leads SET notas = ''trigger-check'' WHERE lead_id = ''LD-TEST-0001'' RETURNING actualizado_en) SELECT count(*) FROM upd, antes WHERE upd.actualizado_en > antes.actualizado_en',
   '1 filas');
+
+-- ── 18. Espacios: uno por cuenta confirmada, y cada uno ve el suyo ─────────
+SELECT probar('cada cuenta confirmada tiene su espacio; la sin confirmar, no',
+  'service_role', NULL,
+  'SELECT count(*) FROM espacios WHERE dueno_id IN (''11111111-1111-4111-8111-111111111111'', ''22222222-2222-4222-8222-222222222222'', ''66666666-6666-4666-8666-666666666666'')',
+  '2 filas');
+SELECT probar('un desarrollador ve sólo su espacio',
+  'authenticated', '22222222-2222-4222-8222-222222222222', 'SELECT count(*) FROM espacios', '1 filas');
+SELECT probar('anon NO puede leer espacios', 'anon', NULL, 'SELECT count(*) FROM espacios', 'permiso denegado');
+SELECT probar('un desarrollador NO puede quedarse con el espacio de otro',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (UPDATE espacios SET dueno_id = auth.uid() RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
+SELECT probar('n8n_writer no lee espacios (todavía no le hace falta)',
+  'n8n_writer', NULL, 'SELECT count(*) FROM espacios', 'permiso denegado');
+
+UPDATE auth.users SET email_confirmed_at = now() WHERE id = '66666666-6666-4666-8666-666666666666';
+SELECT probar('al confirmar la cuenta se crea su espacio',
+  'authenticated', '66666666-6666-4666-8666-666666666666', 'SELECT count(*) FROM espacios', '1 filas');
+
+-- ── 19. Lo que cuelga de un lead es siempre del espacio del lead ──────────
+SELECT probar('una factura hereda el espacio de su lead aunque n8n mande otro',
+  'n8n_writer', NULL,
+  format('WITH x AS (INSERT INTO facturas (factura_id, lead_id, espacio_id, cliente, email, monto, fecha_vencimiento) VALUES (''FAC-PEPE-0001'', ''LD-PEPE-0001'', %L, ''c'', ''c@c.com'', 10, now() + interval ''5 days'') RETURNING espacio_id) SELECT count(*) FROM x JOIN leads l ON l.espacio_id = x.espacio_id WHERE l.lead_id = ''LD-PEPE-0001''',
+         (SELECT id FROM espacios WHERE dueno_id = '11111111-1111-4111-8111-111111111111')),
+  '1 filas');
+SELECT probar('un log de un lead queda en el espacio del lead',
+  'service_role', NULL,
+  'SELECT count(*) FROM logs g JOIN leads l USING (lead_id) WHERE g.lead_id = ''LD-TEST-0001'' AND g.espacio_id = l.espacio_id',
+  '1 filas');
+
+-- Un pedido que pasa a otro espacio (lo que va a hacer la bolsa de
+-- proyectos) se lleva sus facturas, seguimientos, tickets y logs.
+UPDATE leads SET espacio_id = (SELECT id FROM espacios WHERE dueno_id = '22222222-2222-4222-8222-222222222222')
+WHERE lead_id = 'LD-TEST-0001';
+SELECT probar('al mover un lead de espacio, sus facturas lo siguen',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'SELECT count(*) FROM facturas WHERE lead_id = ''LD-TEST-0001''', '2 filas');
+SELECT probar('al mover un lead de espacio, sus seguimientos lo siguen',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'SELECT count(*) FROM seguimientos WHERE lead_id = ''LD-TEST-0001''', '1 filas');
+SELECT probar('y el dueño anterior deja de verlo',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  'SELECT count(*) FROM facturas WHERE lead_id = ''LD-TEST-0001''', '0 filas');
 
 -- ── Reporte ────────────────────────────────────────────────────────────────
 \o

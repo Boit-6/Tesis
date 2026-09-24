@@ -1,7 +1,7 @@
 import {redirect} from "next/navigation";
 import {beforeEach, describe, expect, it, vi} from "vitest";
 
-import {getAdminStatus, getAdminUser, requireAdmin} from "./auth";
+import {getPanelStatus, getPanelUser, requirePanel} from "./auth";
 
 import {createClient} from "@/lib/supabase/server";
 
@@ -17,9 +17,11 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-// Reproduce sólo la parte de la cadena de Supabase que usa getAdminStatus:
-// `.from("profiles").select("role").eq("id", ...).single()`.
-function mockSupabase(options: {user: {id: string} | null; role?: string}) {
+const ESPACIO = {id: "esp-1", slug: "mi-espacio", nombre: "Mi espacio"};
+
+// Reproduce sólo la parte de la cadena de Supabase que usa getPanelStatus:
+// `.from("espacios").select(...).eq("dueno_id", ...).maybeSingle()`.
+function mockSupabase(options: {user: {id: string} | null; espacio?: typeof ESPACIO}) {
   return {
     auth: {
       getUser: vi.fn().mockResolvedValue({data: {user: options.user}}),
@@ -27,16 +29,14 @@ function mockSupabase(options: {user: {id: string} | null; role?: string}) {
     from: vi.fn().mockReturnValue({
       select: vi.fn().mockReturnValue({
         eq: vi.fn().mockReturnValue({
-          single: vi.fn().mockResolvedValue({
-            data: options.role ? {role: options.role} : null,
-          }),
+          maybeSingle: vi.fn().mockResolvedValue({data: options.espacio ?? null}),
         }),
       }),
     }),
   };
 }
 
-describe("getAdminStatus", () => {
+describe("getPanelStatus", () => {
   beforeEach(() => {
     vi.mocked(createClient).mockReset();
   });
@@ -44,54 +44,60 @@ describe("getAdminStatus", () => {
   it("marca supabaseDisponible en false si faltan las variables de Supabase", async () => {
     vi.mocked(createClient).mockResolvedValue(null);
 
-    const estado = await getAdminStatus();
+    const estado = await getPanelStatus();
 
     expect(estado).toEqual({
       user: null,
-      esAdmin: false,
+      espacio: null,
       supabaseDisponible: false,
     });
   });
 
-  it("no llega a pedir el rol si no hay sesión", async () => {
+  it("no llega a buscar el espacio si no hay sesión", async () => {
     const supabase = mockSupabase({user: null});
 
     vi.mocked(createClient).mockResolvedValue(supabase as any);
 
-    const estado = await getAdminStatus();
+    const estado = await getPanelStatus();
 
     expect(estado).toEqual({
       user: null,
-      esAdmin: false,
+      espacio: null,
       supabaseDisponible: true,
     });
     expect(supabase.from).not.toHaveBeenCalled();
   });
 
-  it("esAdmin es true sólo cuando profiles.role === 'admin'", async () => {
+  it("devuelve el espacio del usuario, buscado por dueno_id", async () => {
     const user = {id: "user-1"};
-    const supabase = mockSupabase({user, role: "admin"});
+    const supabase = mockSupabase({user, espacio: ESPACIO});
 
     vi.mocked(createClient).mockResolvedValue(supabase as any);
 
-    const estado = await getAdminStatus();
+    const estado = await getPanelStatus();
 
-    expect(estado).toEqual({user, esAdmin: true, supabaseDisponible: true});
+    expect(estado).toEqual({
+      user,
+      espacio: ESPACIO,
+      supabaseDisponible: true,
+    });
+    expect(supabase.from).toHaveBeenCalledWith("espacios");
+    expect(supabase.from("espacios").select("").eq).toHaveBeenCalledWith("dueno_id", "user-1");
   });
 
-  it("esAdmin es false para cualquier otro rol, no sólo para 'user'", async () => {
+  it("espacio es null para una cuenta sin espacio (sin confirmar)", async () => {
     const user = {id: "user-2"};
-    const supabase = mockSupabase({user, role: "otro-rol-inventado"});
+    const supabase = mockSupabase({user});
 
     vi.mocked(createClient).mockResolvedValue(supabase as any);
 
-    const estado = await getAdminStatus();
+    const estado = await getPanelStatus();
 
-    expect(estado.esAdmin).toBe(false);
+    expect(estado.espacio).toBeNull();
   });
 });
 
-describe("getAdminUser", () => {
+describe("getPanelUser", () => {
   beforeEach(() => {
     vi.mocked(createClient).mockReset();
     vi.mocked(redirect).mockClear();
@@ -100,31 +106,31 @@ describe("getAdminUser", () => {
   it("redirige a /login sin sesión", async () => {
     vi.mocked(createClient).mockResolvedValue(null);
 
-    await expect(getAdminUser()).rejects.toThrow("REDIRECT:/login");
+    await expect(getPanelUser()).rejects.toThrow("REDIRECT:/login");
     expect(redirect).toHaveBeenCalledWith("/login");
   });
 
-  it("redirige a / con sesión pero sin rol admin", async () => {
-    const supabase = mockSupabase({user: {id: "u"}, role: "user"});
+  it("redirige a / con sesión pero sin espacio", async () => {
+    const supabase = mockSupabase({user: {id: "u"}});
 
     vi.mocked(createClient).mockResolvedValue(supabase as any);
 
-    await expect(getAdminUser()).rejects.toThrow("REDIRECT:/");
+    await expect(getPanelUser()).rejects.toThrow("REDIRECT:/");
     expect(redirect).toHaveBeenCalledWith("/");
   });
 
-  it("devuelve el usuario cuando es admin, sin redirigir", async () => {
-    const user = {id: "admin-1"};
-    const supabase = mockSupabase({user, role: "admin"});
+  it("devuelve el usuario y su espacio, sin redirigir", async () => {
+    const user = {id: "dev-1"};
+    const supabase = mockSupabase({user, espacio: ESPACIO});
 
     vi.mocked(createClient).mockResolvedValue(supabase as any);
 
-    await expect(getAdminUser()).resolves.toBe(user);
+    await expect(getPanelUser()).resolves.toEqual({user, espacio: ESPACIO});
     expect(redirect).not.toHaveBeenCalled();
   });
 });
 
-describe("requireAdmin", () => {
+describe("requirePanel", () => {
   beforeEach(() => {
     vi.mocked(createClient).mockReset();
   });
@@ -132,28 +138,26 @@ describe("requireAdmin", () => {
   it("500 si faltan las variables de Supabase en el servidor", async () => {
     vi.mocked(createClient).mockResolvedValue(null);
 
-    expect((await requireAdmin())?.status).toBe(500);
+    expect((await requirePanel())?.status).toBe(500);
   });
 
   it("401 sin sesión", async () => {
     vi.mocked(createClient).mockResolvedValue(mockSupabase({user: null}) as never);
 
-    expect((await requireAdmin())?.status).toBe(401);
+    expect((await requirePanel())?.status).toBe(401);
   });
 
-  it("403 con sesión pero sin rol admin", async () => {
-    vi.mocked(createClient).mockResolvedValue(
-      mockSupabase({user: {id: "u1"}, role: "user"}) as never,
-    );
+  it("403 con sesión pero sin espacio", async () => {
+    vi.mocked(createClient).mockResolvedValue(mockSupabase({user: {id: "u1"}}) as never);
 
-    expect((await requireAdmin())?.status).toBe(403);
+    expect((await requirePanel())?.status).toBe(403);
   });
 
-  it("null (deja pasar) con sesión y rol admin", async () => {
+  it("null (deja pasar) con sesión y espacio", async () => {
     vi.mocked(createClient).mockResolvedValue(
-      mockSupabase({user: {id: "u1"}, role: "admin"}) as never,
+      mockSupabase({user: {id: "u1"}, espacio: ESPACIO}) as never,
     );
 
-    expect(await requireAdmin()).toBeNull();
+    expect(await requirePanel()).toBeNull();
   });
 });

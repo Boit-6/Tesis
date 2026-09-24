@@ -2,13 +2,13 @@ import type {NextRequest} from "next/server";
 
 import {NextResponse} from "next/server";
 
-import {requireAdmin} from "@/lib/auth";
+import {requirePanel} from "@/lib/auth";
 import {ESTADOS, PRIORIDADES, aTicket, esEstado, esPrioridad} from "@/lib/tickets";
 import {createClient} from "@/lib/supabase/server";
 
 // GET /api/tickets?estado=&prioridad=&abiertos=&limite=
 export async function GET(request: NextRequest) {
-  const denegado = await requireAdmin();
+  const denegado = await requirePanel();
 
   if (denegado) return denegado;
 
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
 
 // POST /api/tickets → crea un ticket desde el tablero
 export async function POST(request: NextRequest) {
-  const denegado = await requireAdmin();
+  const denegado = await requirePanel();
 
   if (denegado) return denegado;
 

@@ -1,10 +1,10 @@
 import {NextRequest} from "next/server";
 import {beforeEach, describe, expect, it, vi} from "vitest";
 
-import {requireAdmin} from "@/lib/auth";
+import {requirePanel} from "@/lib/auth";
 import {createClient} from "@/lib/supabase/server";
 
-vi.mock("@/lib/auth", () => ({requireAdmin: vi.fn()}));
+vi.mock("@/lib/auth", () => ({requirePanel: vi.fn()}));
 vi.mock("@/lib/supabase/server", () => ({createClient: vi.fn()}));
 
 const ID = "0f0e0d0c-0b0a-4090-8080-707060605050";
@@ -31,11 +31,11 @@ function supabaseFalso(filas: {id: string}[] = [{id: ID}]) {
 
 describe("POST /api/tickets/estado", () => {
   beforeEach(() => {
-    vi.mocked(requireAdmin).mockResolvedValue(null);
+    vi.mocked(requirePanel).mockResolvedValue(null);
   });
 
-  it("403 sin rol admin, sin tocar la base", async () => {
-    vi.mocked(requireAdmin).mockResolvedValue(Response.json({ok: false}, {status: 403}) as never);
+  it("403 sin espacio, sin tocar la base", async () => {
+    vi.mocked(requirePanel).mockResolvedValue(Response.json({ok: false}, {status: 403}) as never);
     const update = supabaseFalso();
     const {POST} = await import("./route");
 

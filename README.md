@@ -35,7 +35,7 @@ El sistema está desacoplado en tres capas con responsabilidades claras:
 │  Next.js + Vercel       │ ──▶ │  n8n (webhooks)      │ ──▶ │  PostgreSQL / Supabase  │
 │  • Formulario de leads  │     │  • Lógica de negocio │     │  • Fuente de verdad     │
 │  • Página de aceptación │     │  • Integraciones     │     │  • Vistas / métricas    │
-│  • Dashboard interno    │     │  • Automatizaciones  │     │  • RLS (rol admin)      │
+│  • Dashboard interno    │     │  • Automatizaciones  │     │  • RLS (por espacio)    │
 └─────────────────────────┘     └──────────────────────┘     └─────────────────────────┘
 ```
 
@@ -113,13 +113,15 @@ cd tesis
 ```
 
 **2. Base de datos (Supabase):**
-Ejecutar [`db/schema.sql`](db/schema.sql) en el SQL Editor de Supabase (crea tablas, enums, vistas, triggers y las políticas RLS con rol `admin`).
+Ejecutar [`db/schema.sql`](db/schema.sql) en el SQL Editor de Supabase (crea tablas, enums, vistas, triggers y las políticas RLS por espacio).
 
-Después, dar de alta la dirección del administrador (el esquema no trae ninguna precargada):
+La plataforma es compartida: cada cuenta que confirma su email recibe su propio **espacio** y ve en el panel sólo lo de ese espacio. Sobre una base anterior a los espacios, el script pasa todo lo que había a un espacio `principal` a nombre del primer admin.
+
+Después, dar de alta la dirección del administrador de la plataforma (el esquema no trae ninguna precargada):
 ```sql
 INSERT INTO admin_emails (email) VALUES ('tu-correo@dominio.com');
 ```
-Esa cuenta pasa a `admin` recién cuando confirma el email.
+Esa cuenta pasa a `admin` recién cuando confirma el email. El rol no da acceso a los datos de otros espacios. Por ahora, los pedidos del formulario público van al espacio del admin, hasta que cada desarrollador tenga su propio formulario en `/f/<slug>`.
 
 **3. Orquestación (n8n + Gotenberg):**
 ```bash
@@ -176,7 +178,7 @@ npm run test:docker
 | Prueba | Qué verifica |
 |---|---|
 | `test:sql` | Compila con `PREPARE` las **28 consultas SQL** de los workflows contra el esquema real. Una columna mal escrita en un nodo Postgres se detecta acá y no en producción |
-| `test:rls` | Aplica `db/schema.sql` **tal cual está en el repositorio** y ejecuta **66 casos** de RLS rol por rol: que `anon` no acceda a nada, que estar logueado no alcance sin rol `admin`, que la auditoría esté cerrada, que nadie pueda escribir desde el navegador ni auto-ascenderse a admin, y que la whitelist de admins exija un email confirmado |
+| `test:rls` | Aplica `db/schema.sql` **tal cual está en el repositorio** y ejecuta **85 casos** de RLS rol por rol: que `anon` no acceda a nada, que cada desarrollador vea sólo lo de su espacio y no pueda tocar lo de otro, que lo que cuelga de un lead siga siempre a su espacio, que la auditoría esté cerrada, que nadie pueda escribir desde el navegador ni auto-ascenderse a admin, y que la whitelist de admins exija un email confirmado |
 | `test:idempotencia` | Ejecuta de verdad las consultas de deduplicación (S6) y de reconciliación de facturas (S5) sobre el esquema real, leyendo el SQL del propio workflow: si un nodo deja de ser idempotente, se pone en rojo |
 
 Ambas levantan un PostgreSQL desechable: no tocan ninguna instancia real.
@@ -249,8 +251,8 @@ tesis/
 - **Aceptación atómica:** `UPDATE ... WHERE lead_id = $1 AND estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO')` — evita doble facturación ante aceptaciones concurrentes.
 - **Pago idempotente:** `UPDATE ... WHERE estado_pago = 'PENDIENTE'` evita cobrar dos veces, tanto en el cobro real con MercadoPago como en el modo de desarrollo.
 - **Pago verificado contra la fuente:** la notificación de MercadoPago (`/webhook/mp/notificacion`) nunca se toma como verdad por sí sola — antes de marcar COBRADO se consulta el pago por su ID en la API de MercadoPago. Firma obligatoria (`MP_WEBHOOK_SECRET`, HMAC-SHA256 sobre `x-signature`): sin ese secreto, o con firma inválida, el nodo descarta la notificación. Detalle en [`docs/modulo-pagos.md`](docs/modulo-pagos.md).
-- **Dashboard con control de acceso:** Supabase Auth + compuerta de rol `admin` (`profiles.role`) en el middleware y en la página; lee con la anon key bajo sesión, nunca la service key.
-- **RLS en la base:** políticas que exigen rol `admin` para leer, vistas con `security_invoker`, `anon` revocado.
+- **Dashboard con control de acceso:** Supabase Auth + compuerta de espacio propio en la página y en cada route handler; lee con la anon key bajo sesión, nunca la service key. Las acciones que pasan por n8n comprueban antes que el pedido sea del espacio de quien llama.
+- **RLS en la base:** cada fila de negocio lleva `espacio_id` y las políticas sólo dejan leer lo del espacio propio; vistas con `security_invoker`, `anon` revocado.
 - **Secretos fuera del repo:** credenciales en n8n y en `.env.local` (ignorado por git). El workflow versionado usa `REEMPLAZAR_AL_IMPORTAR` en lugar de IDs reales, y **ninguna URL ni ID queda escrito a mano dentro de los nodos**: todo sale de variables de entorno.
 - **RLS verificada, no sólo declarada:** `npm run test:rls` ejecuta 24 casos contra un PostgreSQL real (ver [`docs/verificacion-y-seguridad.md`](docs/verificacion-y-seguridad.md)).
 - **Pendiente:** rate limiting / captcha en el formulario público. Es el endpoint que no puede llevar secreto (lo ejecuta el navegador de un tercero), así que la mitigación que corresponde ahí es limitar el abuso, no autenticar.

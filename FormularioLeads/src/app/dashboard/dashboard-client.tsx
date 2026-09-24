@@ -280,7 +280,8 @@ export default function DashboardClient() {
   }, [cargarDatos, supabase]);
 
   // Las acciones del panel van por /api/crm/*, no directo a n8n: el route
-  // handler revalida el rol admin y agrega la credencial del lado del servidor.
+  // handler revalida la sesión, que el pedido sea de tu espacio, y agrega la
+  // credencial del lado del servidor.
   // El body es genérico (no siempre es `lead_id`: factura-anular manda
   // `factura_id`) porque el route handler sólo reenvía lo que reciba.
   async function accionPanel(accion: string, body: Record<string, unknown>, mensajeError: string) {

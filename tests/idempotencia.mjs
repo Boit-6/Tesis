@@ -139,6 +139,13 @@ try {
   console.log('· Aplicando el esquema …');
   psql(readFileSync(path.join(aqui, 'rls', 'bootstrap.sql'), 'utf8'));
   psql(readFileSync(path.join(raiz, 'db', 'schema.sql'), 'utf8'));
+  // Un admin con la cuenta confirmada, y por lo tanto con su espacio: mientras
+  // el formulario no diga de qué espacio viene el pedido, los leads van al del
+  // admin (leads_espacio_por_defecto). Sin ninguno, la base los rechaza.
+  psql(`
+    INSERT INTO admin_emails (email) VALUES ('admin@test.com');
+    INSERT INTO auth.users (email, email_confirmed_at) VALUES ('admin@test.com', now());
+  `);
 
   const lit = (v) => (v === null ? 'NULL' : `'${String(v).replace(/'/g, "''")}'`);
 

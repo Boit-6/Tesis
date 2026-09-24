@@ -50,10 +50,30 @@ export type TicketPrioridadDb = "BAJA" | "MEDIA" | "ALTA" | "CRITICA";
 export interface Database {
   public: {
     Tables: {
+      espacios: {
+        Row: {
+          id: string;
+          slug: string;
+          nombre: string;
+          dueno_id: string | null;
+          creado_en: string;
+        };
+        // Los crea la base al confirmar la cuenta (crear_espacio_propio).
+        Insert: {
+          id?: string;
+          slug: string;
+          nombre: string;
+          dueno_id?: string | null;
+          creado_en?: string;
+        };
+        Update: Partial<Database["public"]["Tables"]["espacios"]["Insert"]>;
+        Relationships: [];
+      };
       leads: {
         Row: {
           id: number;
           lead_id: string;
+          espacio_id: string;
           nombre: string;
           email: string;
           telefono: string | null;
@@ -86,6 +106,8 @@ export interface Database {
         Insert: {
           id?: number;
           lead_id: string;
+          // Opcional: sin él, el trigger trg_leads_espacio lo completa.
+          espacio_id?: string;
           nombre: string;
           email: string;
           telefono?: string | null;
@@ -122,6 +144,7 @@ export interface Database {
         Row: {
           id: number;
           factura_id: string;
+          espacio_id: string;
           lead_id: string;
           cliente: string;
           email: string;
@@ -145,6 +168,8 @@ export interface Database {
         Insert: {
           id?: number;
           factura_id: string;
+          // Lo fija el trigger con el del lead.
+          espacio_id?: string;
           lead_id: string;
           cliente: string;
           email: string;
@@ -179,6 +204,7 @@ export interface Database {
       tickets: {
         Row: {
           id: string;
+          espacio_id: string;
           titulo: string;
           estado: TicketEstadoDb;
           prioridad: TicketPrioridadDb;
@@ -195,6 +221,8 @@ export interface Database {
         };
         Insert: {
           id?: string;
+          // Lo fija el trigger: el del lead, o el de quien crea el ticket.
+          espacio_id?: string;
           titulo: string;
           estado?: TicketEstadoDb;
           prioridad?: TicketPrioridadDb;
@@ -224,6 +252,7 @@ export interface Database {
         Row: {
           id: number;
           lead_id: string;
+          espacio_id: string;
           numero: number;
           canal: string;
           asunto: string | null;
@@ -233,6 +262,7 @@ export interface Database {
         Insert: {
           id?: number;
           lead_id: string;
+          espacio_id?: string;
           numero: number;
           canal?: string;
           asunto?: string | null;
@@ -255,6 +285,7 @@ export interface Database {
           id: number;
           workflow: string | null;
           lead_id: string | null;
+          espacio_id: string | null;
           evento: string | null;
           nivel: LogNivel;
           detalle: string | null;
@@ -265,6 +296,7 @@ export interface Database {
           id?: number;
           workflow?: string | null;
           lead_id?: string | null;
+          espacio_id?: string | null;
           evento?: string | null;
           nivel?: LogNivel;
           detalle?: string | null;
@@ -323,6 +355,7 @@ export interface Database {
       tickets_tablero: {
         Row: {
           id: string | null;
+          espacio_id: string | null;
           titulo: string | null;
           estado: TicketEstadoDb | null;
           prioridad: TicketPrioridadDb | null;
@@ -371,6 +404,7 @@ export interface Database {
         Row: {
           id: number | null;
           factura_id: string | null;
+          espacio_id: string | null;
           lead_id: string | null;
           cliente: string | null;
           email: string | null;

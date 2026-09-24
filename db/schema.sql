@@ -15,11 +15,12 @@
 --     acotado a esas cuatro tablas, no a la base entera. `service_role`
 --     sigue existiendo (GRANT más abajo) para uso administrativo puntual,
 --     pero deja de ser la credencial que usa la conexión de n8n.
---   • La LECTURA del tablero requiere rol de aplicación `admin`: cada
---     usuario de `auth.users` tiene una fila en `profiles` (creada por
---     trigger) con `role` en {'user','admin'}. Las políticas de SELECT
---     de las tablas de negocio verifican `profiles.role = 'admin'`, no
---     alcanza con estar autenticado.
+--   • La plataforma es compartida: cada desarrollador tiene un ESPACIO
+--     (tabla `espacios`, se crea al confirmar la cuenta) y todas las filas
+--     de negocio llevan `espacio_id`. La LECTURA del tablero exige que la
+--     fila sea del espacio de quien consulta; estar autenticado no alcanza.
+--     `profiles.role = 'admin'` queda para el administrador de la
+--     plataforma y no da acceso a los datos de ningún espacio.
 --   • El rol `anon` (público, sin sesión) no tiene acceso a las tablas
 --     de negocio (deny por defecto de la RLS). El formulario público no
 --     lee la base: envía los datos a n8n por webhook.
@@ -60,9 +61,27 @@ EXCEPTION WHEN duplicate_object THEN null; END $$;
 -- ---------------------------------------------------------------------
 -- Tablas
 -- ---------------------------------------------------------------------
+
+-- Espacios (23-sep-2026): la plataforma pasa a ser compartida. Cada
+-- desarrollador que se registra tiene el suyo, con su marca, y todo lo de
+-- negocio (leads, facturas, seguimientos, tickets, logs) pertenece a un
+-- espacio. La RLS deja ver a cada uno sólo lo de su espacio.
+-- `dueno_id` UNIQUE: un espacio por cuenta. ON DELETE SET NULL y no CASCADE:
+-- las facturas son registro contable y no se pueden ir con la cuenta.
+CREATE TABLE IF NOT EXISTS espacios (
+  id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Identificador público del formulario (/f/<slug>).
+  slug       TEXT UNIQUE NOT NULL CHECK (slug ~ '^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$'),
+  -- La marca que ve el cliente en el formulario, los correos y la factura.
+  nombre     TEXT NOT NULL CHECK (length(btrim(nombre)) BETWEEN 1 AND 80),
+  dueno_id   UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
+  creado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS leads (
   id                        BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   lead_id                   TEXT UNIQUE NOT NULL,
+  espacio_id                UUID NOT NULL REFERENCES espacios(id),
   nombre                    TEXT NOT NULL,
   email                     TEXT NOT NULL CHECK (position('@' in email) > 1),
   telefono                  TEXT,
@@ -96,6 +115,8 @@ CREATE TABLE IF NOT EXISTS leads (
 CREATE TABLE IF NOT EXISTS facturas (
   id                     BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   factura_id             TEXT UNIQUE NOT NULL,
+  -- Siempre el del lead: lo fija el trigger trg_facturas_espacio.
+  espacio_id             UUID NOT NULL REFERENCES espacios(id),
   -- RESTRICT (no CASCADE): las facturas son el registro financiero/legal del
   -- negocio. Un DELETE FROM leads (vía service_role, que evade RLS) no puede
   -- llevarse puestas las facturas asociadas en silencio.
@@ -133,6 +154,7 @@ CREATE TABLE IF NOT EXISTS facturas (
 CREATE TABLE IF NOT EXISTS seguimientos (
   id           BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   lead_id      TEXT NOT NULL REFERENCES leads(lead_id) ON DELETE CASCADE,
+  espacio_id   UUID NOT NULL REFERENCES espacios(id),
   numero       INT NOT NULL,
   canal        TEXT NOT NULL DEFAULT 'email',
   asunto       TEXT,
@@ -144,6 +166,8 @@ CREATE TABLE IF NOT EXISTS logs (
   id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   workflow    TEXT,
   lead_id     TEXT,
+  -- NULL en los eventos que no son de un lead (crons, errores generales).
+  espacio_id  UUID REFERENCES espacios(id),
   evento      TEXT,
   nivel       log_nivel NOT NULL DEFAULT 'INFO',
   detalle     TEXT,
@@ -151,7 +175,8 @@ CREATE TABLE IF NOT EXISTS logs (
   creado_en   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Rol de aplicación por usuario (admin ve el tablero interno, user no).
+-- Rol de aplicación por usuario. 'admin' es el administrador de la plataforma
+-- y no da acceso a los datos de ningún espacio (ver la sección de RLS).
 -- Se completa sola vía trigger al registrarse (ver handle_new_user más abajo).
 CREATE TABLE IF NOT EXISTS profiles (
   id         UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -194,6 +219,7 @@ EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 CREATE TABLE IF NOT EXISTS tickets (
   id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  espacio_id         UUID NOT NULL REFERENCES espacios(id),
   titulo             TEXT NOT NULL CHECK (length(btrim(titulo)) BETWEEN 1 AND 200),
   estado             ticket_estado NOT NULL DEFAULT 'BACKLOG',
   prioridad          ticket_prioridad NOT NULL DEFAULT 'MEDIA',
@@ -347,6 +373,57 @@ DO $$ BEGIN
     CHECK (moneda IN ('ARS','USD')) NOT VALID;
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
+-- Espacios (23-sep-2026, para bases ya creadas). Todo lo que ya existía era de
+-- un único dueño, así que va a un espacio "principal" a nombre del primer
+-- admin. Si no hay ningún admin, el espacio queda sin dueño y se asigna a mano:
+--   UPDATE espacios SET dueno_id = '<uuid de auth.users>' WHERE slug = 'principal';
+ALTER TABLE leads        ADD COLUMN IF NOT EXISTS espacio_id UUID REFERENCES espacios(id);
+ALTER TABLE facturas     ADD COLUMN IF NOT EXISTS espacio_id UUID REFERENCES espacios(id);
+ALTER TABLE seguimientos ADD COLUMN IF NOT EXISTS espacio_id UUID REFERENCES espacios(id);
+ALTER TABLE logs         ADD COLUMN IF NOT EXISTS espacio_id UUID REFERENCES espacios(id);
+ALTER TABLE tickets      ADD COLUMN IF NOT EXISTS espacio_id UUID REFERENCES espacios(id);
+
+DO $$
+DECLARE
+  principal uuid;
+BEGIN
+  IF EXISTS (SELECT 1 FROM leads WHERE espacio_id IS NULL)
+     OR EXISTS (SELECT 1 FROM tickets WHERE espacio_id IS NULL) THEN
+    SELECT id INTO principal FROM espacios ORDER BY creado_en LIMIT 1;
+    IF principal IS NULL THEN
+      INSERT INTO espacios (slug, nombre, dueno_id)
+      VALUES ('principal', 'Mi espacio',
+              (SELECT id FROM profiles WHERE role = 'admin' ORDER BY creado_en LIMIT 1))
+      RETURNING id INTO principal;
+    END IF;
+
+    -- Sin tocar actualizado_en: la migración no es un cambio del lead. Si el
+    -- trigger todavía no existe (primera pasada sobre una base vieja), el
+    -- DISABLE falla y se ignora.
+    BEGIN
+      ALTER TABLE leads DISABLE TRIGGER trg_leads_updated;
+    EXCEPTION WHEN undefined_object THEN null;
+    END;
+    UPDATE leads SET espacio_id = principal WHERE espacio_id IS NULL;
+    BEGIN
+      ALTER TABLE leads ENABLE TRIGGER trg_leads_updated;
+    EXCEPTION WHEN undefined_object THEN null;
+    END;
+
+    UPDATE tickets SET espacio_id = principal WHERE espacio_id IS NULL AND lead_id IS NULL;
+  END IF;
+END $$;
+
+UPDATE facturas f     SET espacio_id = l.espacio_id FROM leads l WHERE f.lead_id = l.lead_id AND f.espacio_id IS NULL;
+UPDATE seguimientos s SET espacio_id = l.espacio_id FROM leads l WHERE s.lead_id = l.lead_id AND s.espacio_id IS NULL;
+UPDATE tickets t      SET espacio_id = l.espacio_id FROM leads l WHERE t.lead_id = l.lead_id AND t.espacio_id IS NULL;
+UPDATE logs g         SET espacio_id = l.espacio_id FROM leads l WHERE g.lead_id = l.lead_id AND g.espacio_id IS NULL;
+
+ALTER TABLE leads        ALTER COLUMN espacio_id SET NOT NULL;
+ALTER TABLE facturas     ALTER COLUMN espacio_id SET NOT NULL;
+ALTER TABLE seguimientos ALTER COLUMN espacio_id SET NOT NULL;
+ALTER TABLE tickets      ALTER COLUMN espacio_id SET NOT NULL;
+
 
 -- ---------------------------------------------------------------------
 -- Índices
@@ -390,6 +467,13 @@ DROP INDEX IF EXISTS idx_leads_token_venc;
 -- siembra del CRM no puede duplicar un ticket del mismo proyecto.
 CREATE INDEX IF NOT EXISTS idx_tickets_estado ON tickets(estado, ultimo_movimiento);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tickets_lead_titulo ON tickets(lead_id, titulo) WHERE lead_id IS NOT NULL;
+
+-- Espacios: todas las políticas del tablero filtran por espacio_id.
+CREATE INDEX IF NOT EXISTS idx_leads_espacio        ON leads(espacio_id, fecha_ingreso DESC);
+CREATE INDEX IF NOT EXISTS idx_facturas_espacio     ON facturas(espacio_id);
+CREATE INDEX IF NOT EXISTS idx_seguimientos_espacio ON seguimientos(espacio_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_espacio      ON tickets(espacio_id, estado);
+CREATE INDEX IF NOT EXISTS idx_logs_espacio         ON logs(espacio_id) WHERE espacio_id IS NOT NULL;
 
 -- Nota de alcance: a la escala del MVP (decenas de filas) estos índices no
 -- cambian los tiempos de forma observable. Se agregan porque las consultas que
@@ -449,6 +533,111 @@ CREATE TRIGGER trg_tickets_movimiento
   FOR EACH ROW EXECUTE FUNCTION tickets_movimiento();
 
 -- ---------------------------------------------------------------------
+-- Espacios: a qué espacio pertenece cada fila
+-- ---------------------------------------------------------------------
+-- Un lead sin espacio_id va al espacio del primer admin (o al "principal"
+-- migrado). Es el comportamiento de un solo dueño y es TRANSITORIO: se usa
+-- mientras el formulario público no diga de qué espacio viene el pedido (etapa
+-- 3 del plan, formulario en /f/<slug>). SECURITY DEFINER porque n8n_writer no
+-- lee espacios ni profiles.
+CREATE OR REPLACE FUNCTION public.leads_espacio_por_defecto() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NEW.espacio_id IS NULL THEN
+    SELECT e.id INTO NEW.espacio_id
+    FROM espacios e
+    LEFT JOIN profiles p ON p.id = e.dueno_id
+    WHERE p.role = 'admin' OR e.slug = 'principal'
+    ORDER BY (p.role = 'admin') DESC NULLS LAST, e.creado_en
+    LIMIT 1;
+
+    IF NEW.espacio_id IS NULL THEN
+      RAISE EXCEPTION 'No hay ningún espacio al que asignar el lead %', NEW.lead_id;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_leads_espacio ON leads;
+CREATE TRIGGER trg_leads_espacio
+  BEFORE INSERT ON leads
+  FOR EACH ROW EXECUTE FUNCTION public.leads_espacio_por_defecto();
+
+-- Lo que cuelga de un lead es del espacio del lead, siempre: nadie lo fija a
+-- mano, ni n8n ni el tablero. Así una factura no puede quedar en un espacio
+-- distinto del de su pedido, y un ticket que apunta al lead de otro espacio
+-- queda en ESE espacio y la política del tablero lo rechaza.
+-- Un ticket sin lead, creado desde el tablero, va al espacio de quien lo crea.
+-- SECURITY DEFINER: tiene que ver el lead aunque la RLS se lo oculte a quien
+-- inserta; si no, un lead ajeno pasaría por "sin lead".
+CREATE OR REPLACE FUNCTION public.espacio_desde_lead() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  del_lead uuid;
+BEGIN
+  IF NEW.lead_id IS NOT NULL THEN
+    SELECT espacio_id INTO del_lead FROM leads WHERE lead_id = NEW.lead_id;
+    IF del_lead IS NOT NULL THEN
+      NEW.espacio_id := del_lead;
+    END IF;
+  END IF;
+
+  IF NEW.espacio_id IS NULL AND TG_TABLE_NAME = 'tickets' THEN
+    SELECT id INTO NEW.espacio_id FROM espacios WHERE dueno_id = auth.uid();
+    -- Sin sesión (n8n): mismo criterio transitorio que los leads.
+    IF NEW.espacio_id IS NULL THEN
+      SELECT e.id INTO NEW.espacio_id
+      FROM espacios e
+      LEFT JOIN profiles p ON p.id = e.dueno_id
+      WHERE p.role = 'admin' OR e.slug = 'principal'
+      ORDER BY (p.role = 'admin') DESC NULLS LAST, e.creado_en
+      LIMIT 1;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_facturas_espacio ON facturas;
+CREATE TRIGGER trg_facturas_espacio
+  BEFORE INSERT OR UPDATE ON facturas
+  FOR EACH ROW EXECUTE FUNCTION public.espacio_desde_lead();
+DROP TRIGGER IF EXISTS trg_seguimientos_espacio ON seguimientos;
+CREATE TRIGGER trg_seguimientos_espacio
+  BEFORE INSERT OR UPDATE ON seguimientos
+  FOR EACH ROW EXECUTE FUNCTION public.espacio_desde_lead();
+DROP TRIGGER IF EXISTS trg_logs_espacio ON logs;
+CREATE TRIGGER trg_logs_espacio
+  BEFORE INSERT OR UPDATE ON logs
+  FOR EACH ROW EXECUTE FUNCTION public.espacio_desde_lead();
+DROP TRIGGER IF EXISTS trg_tickets_espacio ON tickets;
+CREATE TRIGGER trg_tickets_espacio
+  BEFORE INSERT OR UPDATE ON tickets
+  FOR EACH ROW EXECUTE FUNCTION public.espacio_desde_lead();
+
+-- Un lead que cambia de espacio se lleva lo suyo. Hoy nada lo mueve; lo va a
+-- hacer la bolsa de proyectos (etapa 5), cuando otro desarrollador tome un
+-- pedido. Alcanza con "tocar" las filas: el trigger de arriba las recalcula.
+CREATE OR REPLACE FUNCTION public.leads_propagar_espacio() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  UPDATE facturas     SET espacio_id = NEW.espacio_id WHERE lead_id = NEW.lead_id;
+  UPDATE seguimientos SET espacio_id = NEW.espacio_id WHERE lead_id = NEW.lead_id;
+  UPDATE tickets      SET espacio_id = NEW.espacio_id WHERE lead_id = NEW.lead_id;
+  UPDATE logs         SET espacio_id = NEW.espacio_id WHERE lead_id = NEW.lead_id;
+  RETURN NULL;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_leads_propagar_espacio ON leads;
+CREATE TRIGGER trg_leads_propagar_espacio
+  AFTER UPDATE OF espacio_id ON leads
+  FOR EACH ROW
+  WHEN (OLD.espacio_id IS DISTINCT FROM NEW.espacio_id)
+  EXECUTE FUNCTION public.leads_propagar_espacio();
+
+-- ---------------------------------------------------------------------
 -- Trigger: crea el perfil (rol 'user' por defecto) al registrarse.
 -- Se promueve a 'admin' si el email está en `admin_emails` (whitelist
 -- editable con un INSERT/DELETE puntual, sin tocar este archivo) Y ya está
@@ -466,6 +655,21 @@ CREATE TRIGGER trg_tickets_movimiento
 -- `SECURITY DEFINER` es necesario porque el usuario recién registrado
 -- todavía no tiene fila en `profiles` desde la que autorizarse solo.
 -- ---------------------------------------------------------------------
+-- Cada cuenta confirmada tiene su espacio (registro abierto, 23-sep-2026). Se
+-- crea con un slug provisorio derivado del id, que es único, y el nombre sale
+-- de la casilla; el desarrollador los cambia al completar su alta (etapa 2).
+-- ON CONFLICT: una cuenta que ya tiene espacio (por ejemplo, el admin al que
+-- la migración le dio el "principal") no recibe otro.
+CREATE OR REPLACE FUNCTION public.crear_espacio_propio(uid uuid, correo text) RETURNS void
+LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  INSERT INTO espacios (slug, nombre, dueno_id)
+  VALUES ('e-' || replace(uid::text, '-', ''),
+          coalesce(nullif(left(split_part(correo, '@', 1), 80), ''), 'Mi espacio'),
+          uid)
+  ON CONFLICT DO NOTHING;
+$$;
+REVOKE ALL ON FUNCTION public.crear_espacio_propio(uuid, text) FROM PUBLIC;
+
 CREATE OR REPLACE FUNCTION public.handle_new_user() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -478,6 +682,10 @@ BEGIN
       THEN 'admin' ELSE 'user' END
   )
   ON CONFLICT (id) DO NOTHING;
+
+  IF NEW.email_confirmed_at IS NOT NULL THEN
+    PERFORM public.crear_espacio_propio(NEW.id, NEW.email);
+  END IF;
 
   RETURN NEW;
 END;
@@ -498,6 +706,8 @@ BEGIN
   WHERE id = NEW.id
     AND role = 'user'
     AND EXISTS (SELECT 1 FROM public.admin_emails WHERE email = NEW.email);
+
+  PERFORM public.crear_espacio_propio(NEW.id, NEW.email);
 
   RETURN NEW;
 END;
@@ -520,6 +730,14 @@ SELECT id, email, CASE WHEN email_confirmed_at IS NOT NULL
   THEN 'admin' ELSE 'user' END
 FROM auth.users
 ON CONFLICT (id) DO NOTHING;
+
+-- Backfill de espacios: cuentas confirmadas antes de que existieran.
+DO $$ BEGIN
+  PERFORM public.crear_espacio_propio(u.id, u.email)
+  FROM auth.users u
+  WHERE u.email_confirmed_at IS NOT NULL
+    AND NOT EXISTS (SELECT 1 FROM espacios e WHERE e.dueno_id = u.id);
+END $$;
 
 -- ---------------------------------------------------------------------
 -- Vistas (con security_invoker: respetan la RLS de las tablas base)
@@ -648,6 +866,7 @@ ALTER TABLE profiles        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rate_limit_log  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_emails    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tickets         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE espacios        ENABLE ROW LEVEL SECURITY;
 
 -- 1.1) FORCE: sin esto, el OWNER de la tabla evade la RLS igual que si
 --      tuviera BYPASSRLS (una tarea de backup o una migración conectada con
@@ -662,27 +881,36 @@ ALTER TABLE profiles        FORCE ROW LEVEL SECURITY;
 ALTER TABLE rate_limit_log  FORCE ROW LEVEL SECURITY;
 ALTER TABLE admin_emails    FORCE ROW LEVEL SECURITY;
 ALTER TABLE tickets         FORCE ROW LEVEL SECURITY;
+ALTER TABLE espacios        FORCE ROW LEVEL SECURITY;
 
 -- 2) Políticas de LECTURA sobre las tablas que alimentan el tablero.
---    No alcanza con `authenticated`: se exige además `profiles.role =
---    'admin'` (la subconsulta puede leer la propia fila por la política
---    profiles_select_own de más abajo). No se crean políticas de
---    escritura: la inserción/actualización la hace n8n con la
---    service_role (evade RLS).
+--    Cada desarrollador ve sólo lo de su espacio (23-sep-2026). Hasta
+--    entonces se exigía `profiles.role = 'admin'` y el admin veía todo: con
+--    la plataforma compartida, `role` pasó a ser sólo del administrador de
+--    la plataforma y ya no da acceso a los datos de nadie.
+--    La subconsulta sobre `espacios` pasa por su propia política (cada uno
+--    lee su fila), así que no hace falta una función SECURITY DEFINER.
+--    `(SELECT auth.uid())` y no `auth.uid()` suelto: así Postgres la evalúa
+--    una vez por consulta y no una vez por fila.
+--    No se crean políticas de escritura: la escritura la hace n8n.
+DROP POLICY IF EXISTS espacios_select_dueno ON espacios;
+CREATE POLICY espacios_select_dueno ON espacios
+  FOR SELECT TO authenticated USING (dueno_id = (SELECT auth.uid()));
+
 DROP POLICY IF EXISTS leads_select_authenticated ON leads;
 CREATE POLICY leads_select_authenticated ON leads
   FOR SELECT TO authenticated
-  USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+  USING (espacio_id IN (SELECT id FROM espacios WHERE dueno_id = (SELECT auth.uid())));
 
 DROP POLICY IF EXISTS facturas_select_authenticated ON facturas;
 CREATE POLICY facturas_select_authenticated ON facturas
   FOR SELECT TO authenticated
-  USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+  USING (espacio_id IN (SELECT id FROM espacios WHERE dueno_id = (SELECT auth.uid())));
 
 DROP POLICY IF EXISTS seguimientos_select_authenticated ON seguimientos;
 CREATE POLICY seguimientos_select_authenticated ON seguimientos
   FOR SELECT TO authenticated
-  USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+  USING (espacio_id IN (SELECT id FROM espacios WHERE dueno_id = (SELECT auth.uid())));
 
 -- 2.1) `profiles`: cada usuario solo puede leer su propia fila (para que
 --      el frontend sepa si mostrar el link al dashboard). Nadie puede
@@ -703,23 +931,30 @@ CREATE POLICY profiles_select_own ON profiles
 
 -- 4) Privilegios de tabla (GRANT). La RLS filtra filas, pero el rol
 --    igual necesita el privilegio SELECT sobre el objeto.
-GRANT SELECT ON leads, facturas, seguimientos, profiles TO authenticated;
+GRANT SELECT ON leads, facturas, seguimientos, profiles, espacios TO authenticated;
 
 -- 4.1) Tickets: a diferencia del resto, el tablero SÍ escribe (crear y mover
---      tickets desde /api/tickets, con la sesión del admin). Sin DELETE.
+--      tickets desde /api/tickets, con la sesión del desarrollador), siempre
+--      dentro de su espacio. Sin DELETE. El WITH CHECK es lo que impide
+--      llevarse un ticket a otro espacio o colgarlo del lead de otro: el
+--      trigger trg_tickets_espacio le pone el espacio de ese lead.
+--      Hasta el 23-sep-2026 se llamaban tickets_*_admin y exigían el rol admin.
 DROP POLICY IF EXISTS tickets_select_admin ON tickets;
-CREATE POLICY tickets_select_admin ON tickets
+DROP POLICY IF EXISTS tickets_select_espacio ON tickets;
+CREATE POLICY tickets_select_espacio ON tickets
   FOR SELECT TO authenticated
-  USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+  USING (espacio_id IN (SELECT id FROM espacios WHERE dueno_id = (SELECT auth.uid())));
 DROP POLICY IF EXISTS tickets_insert_admin ON tickets;
-CREATE POLICY tickets_insert_admin ON tickets
+DROP POLICY IF EXISTS tickets_insert_espacio ON tickets;
+CREATE POLICY tickets_insert_espacio ON tickets
   FOR INSERT TO authenticated
-  WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+  WITH CHECK (espacio_id IN (SELECT id FROM espacios WHERE dueno_id = (SELECT auth.uid())));
 DROP POLICY IF EXISTS tickets_update_admin ON tickets;
-CREATE POLICY tickets_update_admin ON tickets
+DROP POLICY IF EXISTS tickets_update_espacio ON tickets;
+CREATE POLICY tickets_update_espacio ON tickets
   FOR UPDATE TO authenticated
-  USING (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'))
-  WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin'));
+  USING (espacio_id IN (SELECT id FROM espacios WHERE dueno_id = (SELECT auth.uid())))
+  WITH CHECK (espacio_id IN (SELECT id FROM espacios WHERE dueno_id = (SELECT auth.uid())));
 GRANT SELECT, INSERT, UPDATE ON tickets TO authenticated;
 GRANT SELECT ON tickets_tablero TO authenticated;
 GRANT SELECT ON metrics_mensuales, facturas_pendientes TO authenticated;
@@ -731,7 +966,7 @@ GRANT SELECT ON metrics_mensuales, facturas_pendientes TO authenticated;
 --    autoalojado del docker-compose) NO, y BYPASSRLS solo evade la RLS, no
 --    otorga el privilegio de tabla. Se conceden explícitamente para que
 --    funcione en ambos entornos.
-GRANT SELECT, INSERT, UPDATE, DELETE ON leads, facturas, seguimientos, logs, profiles, rate_limit_log, admin_emails, tickets TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON leads, facturas, seguimientos, logs, profiles, rate_limit_log, admin_emails, tickets, espacios TO service_role;
 GRANT SELECT ON tickets_tablero TO service_role;
 GRANT SELECT ON metrics_mensuales, facturas_pendientes TO service_role;
 
@@ -761,6 +996,10 @@ GRANT SELECT, INSERT ON rate_limit_log TO n8n_writer;
 GRANT SELECT ON metrics_mensuales, facturas_pendientes TO n8n_writer;
 REVOKE ALL ON profiles FROM n8n_writer;
 REVOKE ALL ON admin_emails FROM n8n_writer;
+-- `espacios` todavía no la necesita n8n: la va a leer cuando los correos
+-- salgan con la marca de cada espacio (etapa 3). Los triggers que la leen son
+-- SECURITY DEFINER.
+REVOKE ALL ON espacios FROM n8n_writer;
 
 -- Políticas de escritura de `n8n_writer`. No filtran filas (USING/WITH CHECK
 -- en true): a diferencia de las políticas de `authenticated`, el límite de
@@ -849,7 +1088,7 @@ CREATE POLICY tickets_update_n8n_writer ON tickets FOR UPDATE TO n8n_writer USIN
 -- 6) El rol público (`anon`) no debe leer las tablas de negocio ni las
 --    vistas. Se revoca explícitamente por si el default privilege de la
 --    plataforma lo hubiera otorgado.
-REVOKE ALL ON leads, facturas, seguimientos, logs, profiles, rate_limit_log, admin_emails, tickets FROM anon;
+REVOKE ALL ON leads, facturas, seguimientos, logs, profiles, rate_limit_log, admin_emails, tickets, espacios FROM anon;
 REVOKE ALL ON metrics_mensuales, facturas_pendientes, tickets_tablero FROM anon;
 
 -- 7) Realtime: el tablero se suscribe a los cambios de `leads`
@@ -859,7 +1098,7 @@ REVOKE ALL ON metrics_mensuales, facturas_pendientes, tickets_tablero FROM anon;
 --    tablero no se enteraba hasta recargar. Se agregan las tablas a la
 --    publicación de Supabase, de forma idempotente y sin romper en un
 --    PostgreSQL vanilla donde esa publicación no exista. La RLS sigue
---    aplicando: sólo un admin recibe los eventos.
+--    aplicando: cada desarrollador recibe sólo los eventos de su espacio.
 DO $$
 DECLARE
   t text;

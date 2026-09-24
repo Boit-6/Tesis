@@ -3,7 +3,7 @@ import type {NextRequest} from "next/server";
 
 import {NextResponse} from "next/server";
 
-import {requireAdmin} from "@/lib/auth";
+import {requirePanel} from "@/lib/auth";
 import {esEstado, esPrioridad} from "@/lib/tickets";
 import {createClient} from "@/lib/supabase/server";
 
@@ -11,7 +11,7 @@ import {createClient} from "@/lib/supabase/server";
 // prioridad o las notas. Mover o cambiar la prioridad reinicia el reloj del
 // envejecimiento (trigger trg_tickets_movimiento en la base).
 export async function POST(request: NextRequest) {
-  const denegado = await requireAdmin();
+  const denegado = await requirePanel();
 
   if (denegado) return denegado;
 
