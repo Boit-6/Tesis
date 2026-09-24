@@ -222,8 +222,10 @@ function medirCualitativas() {
     .map((n) => n.parameters.path).sort();
   // stripe-conectar y stripe-estado desde el 24-sep-2026: el alta de cobros de
   // cada desarrollador, que también pasa por /api/crm con la credencial.
+  // pedido-rechazar desde el 24-sep-2026 (bolsa de proyectos).
   const panelEsperado = ['cambio-aceptar', 'cambio-rechazar', 'factura-anular', 'lead-cancelar',
-    'propuesta-enviar', 'proyecto-cerrado', 'trabajo-estado', 'stripe-conectar', 'stripe-estado'].sort();
+    'propuesta-enviar', 'proyecto-cerrado', 'trabajo-estado', 'stripe-conectar', 'stripe-estado',
+    'pedido-rechazar'].sort();
 
   return [
     {

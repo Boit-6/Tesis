@@ -130,6 +130,11 @@ interface PanelDatos {
   aceptarCambio: (leadId: string) => Promise<boolean>;
   rechazarCambio: (leadId: string) => Promise<boolean>;
   anularFactura: (facturaId: string) => void;
+  rechazarPedido: (
+    leadId: string,
+    destino: "bolsa" | "descartar",
+    resumen: string,
+  ) => Promise<boolean>;
   cambiarEstadoTrabajo: (leadId: string, estado: Trabajo["estado_trabajo"]) => void;
   // Abre el detalle del lead en el panel lateral.
   abrirLead: (leadId: string) => void;
@@ -371,6 +376,41 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
     }
   }
 
+  // «No puedo tomarlo»: a la bolsa o descartado. Devuelve false si el
+  // desarrollador se arrepintió en la confirmación; si falla, lanza el error
+  // para que lo muestre el panel lateral, que tapa el aviso del tablero.
+  async function rechazarPedido(
+    leadId: string,
+    destino: "bolsa" | "descartar",
+    resumen: string,
+  ): Promise<boolean> {
+    const ok = await confirmar({
+      descripcion:
+        destino === "bolsa"
+          ? "¿Mandar el pedido a la bolsa? Queda como PERDIDO en tu panel, otros desarrolladores lo ven sin los datos del cliente, y le avisamos al cliente."
+          : "¿Descartar el pedido? Queda como PERDIDO y le avisamos al cliente que esta vez no podés tomarlo.",
+      textoConfirmar: destino === "bolsa" ? "Mandar a la bolsa" : "Descartar",
+      peligroso: destino === "descartar",
+    });
+
+    if (!ok) return false;
+
+    const res = await fetch("/api/crm/pedido-rechazar", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({lead_id: leadId, destino, resumen}),
+    });
+    const json = await res.json().catch(() => ({}));
+
+    if (!res.ok || json.ok === false || json.status !== "ok") {
+      throw new Error(json.mensaje ?? json.error ?? `Error ${res.status}`);
+    }
+
+    cargarDatos();
+
+    return true;
+  }
+
   async function cancelar(leadId: string) {
     const ok = await confirmar({
       descripcion: "¿Cancelar este pedido? Se marca como PERDIDO y se avisa al cliente.",
@@ -466,6 +506,7 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
     aceptarCambio,
     rechazarCambio,
     anularFactura,
+    rechazarPedido,
     cambiarEstadoTrabajo: (leadId, estado) =>
       setTrabajos((prev) =>
         prev.map((x) => (x.lead_id === leadId ? {...x, estado_trabajo: estado} : x)),
@@ -494,6 +535,7 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
           onCerrar={() => setLeadAbierto(null)}
           onEnviarPropuesta={enviarPropuesta}
           onRechazarCambio={rechazarCambio}
+          onRechazarPedido={rechazarPedido}
         />
       )}
 

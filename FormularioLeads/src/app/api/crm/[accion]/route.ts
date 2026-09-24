@@ -34,6 +34,8 @@ const ACCIONES: Record<string, string> = {
   cerrar: "proyecto-cerrado",
   "propuesta-enviar": "propuesta-enviar",
   "factura-anular": "factura-anular",
+  // No puedo tomarlo: a la bolsa (si el cliente lo autorizó) o descartado.
+  "pedido-rechazar": "pedido-rechazar",
   "stripe-conectar": "stripe-conectar",
   "stripe-estado": "stripe-estado",
 };

@@ -84,6 +84,8 @@ const NODOS_HTML = [
   'Code - Re-Propuesta',
   'Code - Email No Cambios',
   'Code - Resumen Facturas Vencidas',
+  // Correo al cliente cuando el desarrollador no puede tomar su pedido.
+  'Code - Email Rechazo Pedido',
 ];
 
 for (const nombre of NODOS_HTML) {

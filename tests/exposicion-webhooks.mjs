@@ -71,6 +71,8 @@ const WEBHOOKS = [
     cuerpo: {lead_id: INEXISTENTE, estado: 'EN_PROGRESO'}},
   {ruta: 'lead-cancelar', metodo: 'POST', esperado: 'Header Auth', grupo: 'panel',
     cuerpo: {lead_id: INEXISTENTE}},
+  {ruta: 'pedido-rechazar', metodo: 'POST', esperado: 'Header Auth', grupo: 'panel',
+    cuerpo: {lead_id: INEXISTENTE, destino: 'descartar'}},
   {ruta: 'cambio-aceptar', metodo: 'POST', esperado: 'Header Auth', grupo: 'panel',
     cuerpo: {lead_id: INEXISTENTE}},
   {ruta: 'cambio-rechazar', metodo: 'POST', esperado: 'Header Auth', grupo: 'panel',

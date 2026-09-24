@@ -47,6 +47,9 @@ const sample = {
     descripcion: 'Necesito una tienda online completa con varias funcionalidades.',
     // Panel → n8n: el espacio de la sesión (cobros con Stripe).
     espacio_id: '6e6466dc-a839-442b-9278-6b84b9e31ff8',
+    // Rechazo de un pedido desde el panel (bolsa de proyectos).
+    destino: 'bolsa',
+    resumen: 'Tienda online con stock y pagos, para una pyme de indumentaria.',
     // Tickets
     titulo: 'Arreglar el PDF de la factura',
     prioridad: 'ALTA',

@@ -39,7 +39,8 @@ function correr(nombre, entrada, env = {}) {
 }
 
 const PLANTILLAS = ['Code - Generar Propuesta', 'Code - Generar Factura HTML', 'Code - Preparar Follow-up',
-  'Code - Email Testimonio', 'Code - Re-Propuesta', 'Code - Email No Cambios', 'Code - Filtrar Vencimientos'];
+  'Code - Email Testimonio', 'Code - Re-Propuesta', 'Code - Email No Cambios', 'Code - Filtrar Vencimientos',
+  'Code - Email Rechazo Pedido'];
 
 for (const nombre of PLANTILLAS) {
   const entrada = nombre === 'Code - Filtrar Vencimientos' ? {...lead, cliente: 'Juan', dias_al_vencimiento: 2} : lead;

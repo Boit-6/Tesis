@@ -6555,6 +6555,189 @@
         12570
       ],
       "id": "8e8aeb27-cf22-4ff3-a180-802cf174b9c9"
+    },
+    {
+      "parameters": {
+        "content": "## 🙅 Rechazar pedido (dashboard)\nEl desarrollador **no puede tomar** un pedido → PERDIDO. Si el cliente lo autorizó (`compartir_bolsa`), puede mandarlo a la **bolsa** con un resumen sin datos personales. Correo al cliente en los dos casos. Tope y vencimiento: `BOLSA_TOPE` (5) y `BOLSA_DIAS` (7).",
+        "height": 830,
+        "width": 1830,
+        "color": 2
+      },
+      "id": "1f924954-33df-44ea-bbf6-d02fc897e3ac",
+      "name": "Nota — 🙅 Rechazar pedido (dashboard)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        19325
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pedido-rechazar",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
+        },
+        "authentication": "headerAuth"
+      },
+      "id": "f4208b31-1b33-4036-80b3-781c96861b76",
+      "name": "🙅 Webhook - Rechazar Pedido (panel)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        150,
+        19450
+      ],
+      "webhookId": "3658ad0b-6f5d-46e4-af0a-93c6b63616f2",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "CRM - Header Auth (panel)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Rechazo de un pedido desde el panel: el desarrollador no puede tomarlo y\n// elige mandarlo a la bolsa (si el cliente lo autorizó) o descartarlo.\n// /api/crm ya comprobó que el lead es de su espacio.\nconst b = $input.first().json.body || {};\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\nif (!b.lead_id || typeof b.lead_id !== 'string') throw new Error('Falta lead_id');\nif (b.destino !== 'bolsa' && b.destino !== 'descartar') throw new Error('Destino invalido');\nconst resumen = typeof b.resumen === 'string' ? b.resumen.trim() : '';\n// Mismo rango que el CHECK de bolsa_pedidos.resumen: mejor un error claro acá\n// que un fallo de la consulta.\nif (b.destino === 'bolsa' && (resumen.length < 20 || resumen.length > 2000)) {\n  throw new Error('El resumen tiene que tener entre 20 y 2000 caracteres');\n}\nconst entero = (clave, porDefecto) => {\n  const n = parseInt(leerEnv(clave, String(porDefecto)), 10);\n  return Number.isFinite(n) && n > 0 ? n : porDefecto;\n};\nreturn [{ json: {\n  lead_id: b.lead_id,\n  destino: b.destino,\n  resumen,\n  bolsa_tope: entero('BOLSA_TOPE', 5),\n  bolsa_dias: entero('BOLSA_DIAS', 7),\n} }];"
+      },
+      "id": "92189c0d-db4b-4315-a65f-20f7b4fc9fed",
+      "name": "Code - Leer Rechazo Pedido",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        450,
+        19450
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH l AS (\n  UPDATE leads SET estado = 'PERDIDO'\n  WHERE lead_id = $1\n    AND estado IN ('NUEVO','PROPUESTA_ENVIADA','EN_SEGUIMIENTO')\n    AND ($2::text <> 'bolsa' OR compartir_bolsa)\n  RETURNING *\n), b AS (\n  INSERT INTO bolsa_pedidos (lead_id, origen_espacio_id, resumen, tope_postulaciones, vence_en)\n  SELECT l.lead_id, l.espacio_id, $3::text, $4::int, now() + make_interval(days => $5::int)\n  FROM l WHERE $2::text = 'bolsa'\n  RETURNING id\n)\nSELECT l.lead_id, l.nombre, l.email, l.servicio, $2::text AS destino,\n       (SELECT count(*) FROM b) AS publicados,\n       e.nombre AS espacio_nombre, e.email_contacto AS espacio_email\nFROM l JOIN espacios e ON e.id = l.espacio_id;",
+        "options": {
+          "queryReplacement": "={{ [$json.lead_id, $json.destino, $json.resumen, $json.bolsa_tope, $json.bolsa_dias] }}"
+        }
+      },
+      "id": "52d5e9f1-37c7-49d1-af5b-521c02d9ea19",
+      "name": "Postgres - Rechazar Pedido",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        750,
+        19450
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.lead_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5123a526-1bd2-49ad-941a-1b2ee210abaa",
+      "name": "IF - Rechazo Pedido OK?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        19450
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'ok', destino: $json.destino, mensaje: $json.destino === 'bolsa' ? 'Pedido publicado en la bolsa.' : 'Pedido descartado.' }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "4b87ef67-0955-4c33-8677-f16cef8a8ada",
+      "name": "Respond - Rechazo Pedido OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1350,
+        19450
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Correo al cliente cuando el desarrollador no puede tomar su pedido. Si lo\n// mandó a la bolsa, le explica qué pasa ahora; si lo descartó, sólo le avisa.\nconst l = $input.first().json;\nconst esc = (s) => String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');\nconst SERVICIO = {\n  desarrollo_web: 'desarrollo web', ecommerce: 'tienda online', app_movil: 'app móvil',\n  automatizacion: 'automatización', marketing: 'marketing digital', seo: 'SEO',\n  diseno_ui: 'diseño UX/UI', consultoria: 'consultoría', soporte: 'soporte',\n};\nlet plataforma = 'FormularioLeads';\ntry { plataforma = ($env && $env.PLATAFORMA_NOMBRE) || plataforma; } catch (e) {}\nconst marca = l.espacio_nombre || plataforma;\nconst servicio = SERVICIO[l.servicio] || String(l.servicio || '').replaceAll('_', ' ');\nconst enBolsa = l.destino === 'bolsa' && Number(l.publicados) > 0;\nconst cuerpo = enBolsa\n  ? `<p>Hola ${esc(l.nombre)},</p>\n<p>Gracias por escribirnos. Esta vez no vamos a poder tomar tu proyecto de <b>${esc(servicio)}</b>.</p>\n<p>Como lo autorizaste en el formulario, lo compartimos <b>sin tus datos de contacto</b> con otros desarrolladores de ${esc(plataforma)}. Si alguno se interesa, te escribimos con sus propuestas para que elijas. Tus datos sólo se comparten con quien elijas, y recién cuando lo elijas.</p>\n<p>Saludos,<br><b>${esc(marca)}</b></p>`\n  : `<p>Hola ${esc(l.nombre)},</p>\n<p>Gracias por escribirnos. Esta vez no vamos a poder tomar tu proyecto de <b>${esc(servicio)}</b>.</p>\n<p>Te deseamos mucha suerte con él.</p>\n<p>Saludos,<br><b>${esc(marca)}</b></p>`;\nreturn [{ json: {\n  ...l,\n  asunto: `Sobre tu consulta de ${servicio} — ${marca}`,\n  cuerpo_html: cuerpo,\n} }];"
+      },
+      "id": "1e6b13df-1e4e-4398-b456-baf03faa5007",
+      "name": "Code - Email Rechazo Pedido",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1350,
+        19630
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "={{ $json.asunto }}",
+        "message": "={{ $json.cuerpo_html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "={{ ($json.espacio_nombre ? $json.espacio_nombre + ' vía ' : '') + ($env.PLATAFORMA_NOMBRE || 'FormularioLeads') }}",
+          "replyTo": "={{ $json.espacio_email || '' }}"
+        }
+      },
+      "id": "561ad210-ab0f-4179-8c37-70fee84f1ef3",
+      "name": "Gmail - Aviso Rechazo Pedido",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        1650,
+        19630
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "KN5umVWzd1RZZuYM",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"invalido\", \"mensaje\": \"No se pudo rechazar: el pedido ya avanzó, ya estaba cerrado, o el cliente no autorizó compartirlo.\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "2c37fddd-f6cd-4951-98ce-f194448f2695",
+      "name": "Respond - Rechazo Pedido Invalido",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1350,
+        19810
+      ]
     }
   ],
   "connections": {
@@ -8586,6 +8769,73 @@
         [
           {
             "node": "Respond - Stripe Estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🙅 Webhook - Rechazar Pedido (panel)": {
+      "main": [
+        [
+          {
+            "node": "Code - Leer Rechazo Pedido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Leer Rechazo Pedido": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Rechazar Pedido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Rechazar Pedido": {
+      "main": [
+        [
+          {
+            "node": "IF - Rechazo Pedido OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Rechazo Pedido OK?": {
+      "main": [
+        [
+          {
+            "node": "Respond - Rechazo Pedido OK",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code - Email Rechazo Pedido",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Rechazo Pedido Invalido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Email Rechazo Pedido": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Aviso Rechazo Pedido",
             "type": "main",
             "index": 0
           }

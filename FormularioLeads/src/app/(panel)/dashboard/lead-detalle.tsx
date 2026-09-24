@@ -5,6 +5,7 @@ import type {Database} from "@/types/supabase";
 import {useEffect, useRef, useState} from "react";
 
 import FormPropuesta from "./form-propuesta";
+import RechazoPedido from "./rechazo-pedido";
 import {Tag, formatDate, formatMoney} from "./dashboard-shared";
 import {ESTADO_COLOR, TIER_COLOR} from "./dashboard-types";
 import {EsqueletoLeadDetalle} from "./esqueletos";
@@ -34,10 +35,11 @@ type LeadCompleto = Pick<
   | "precio_propuesto"
   | "plazo_propuesto"
   | "alcance_propuesto"
+  | "compartir_bolsa"
 >;
 
 const COLUMNAS =
-  "lead_id,nombre,email,telefono,servicio,urgencia,presupuesto,presupuesto_rango,descripcion,estado,estado_trabajo,tier,score,notas,fecha_ingreso,fecha_propuesta,precio_propuesto,plazo_propuesto,alcance_propuesto";
+  "lead_id,nombre,email,telefono,servicio,urgencia,presupuesto,presupuesto_rango,descripcion,estado,estado_trabajo,tier,score,notas,fecha_ingreso,fecha_propuesta,precio_propuesto,plazo_propuesto,alcance_propuesto,compartir_bolsa";
 
 const URGENCIA: Record<string, string> = {
   alta: "Lo antes posible",
@@ -64,6 +66,7 @@ export default function LeadDetalle({
   onEnviarPropuesta,
   onAceptarCambio,
   onRechazarCambio,
+  onRechazarPedido,
 }: {
   leadId: string;
   onCerrar: () => void;
@@ -75,6 +78,11 @@ export default function LeadDetalle({
   ) => Promise<void>;
   onAceptarCambio: (leadId: string) => Promise<boolean>;
   onRechazarCambio: (leadId: string) => Promise<boolean>;
+  onRechazarPedido: (
+    leadId: string,
+    destino: "bolsa" | "descartar",
+    resumen: string,
+  ) => Promise<boolean>;
 }) {
   const [supabase] = useState(() => createClient());
   const [lead, setLead] = useState<LeadCompleto | null>(null);
@@ -108,6 +116,12 @@ export default function LeadDetalle({
 
   const porEnviar = lead?.estado === "NUEVO" && (lead.tier === "HOT" || lead.tier === "WARM");
   const pedidoCambio = lead?.estado === "EN_SEGUIMIENTO" && Boolean(lead.notas);
+  // Mismos estados que acepta Postgres - Rechazar Pedido: después de aceptado
+  // ya es un trabajo, y se cancela desde Trabajos.
+  const rechazable =
+    lead?.estado === "NUEVO" ||
+    lead?.estado === "PROPUESTA_ENVIADA" ||
+    lead?.estado === "EN_SEGUIMIENTO";
 
   return (
     // El clic en el fondo cae sobre el propio <dialog> (el contenido lo tapa
@@ -251,6 +265,18 @@ export default function LeadDetalle({
                   </button>
                 </div>
               </section>
+            )}
+
+            {rechazable && (
+              <RechazoPedido
+                compartirBolsa={lead.compartir_bolsa}
+                descripcion={lead.descripcion ?? ""}
+                onRechazar={async (destino, resumen) => {
+                  if (await onRechazarPedido(lead.lead_id, destino, resumen)) {
+                    dialogRef.current?.close();
+                  }
+                }}
+              />
             )}
           </div>
         )}
