@@ -88,6 +88,8 @@ const NODOS_HTML = [
   'Code - Email Rechazo Pedido',
   // Correos al asignar un pedido de la bolsa (cliente y desarrollador elegido).
   'Code - Emails Asignación Bolsa',
+  // Cron de la bolsa: invitación a elegir y aviso de vencimiento.
+  'Code - Emails Bolsa Cliente',
 ];
 
 for (const nombre of NODOS_HTML) {

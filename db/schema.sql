@@ -1377,6 +1377,9 @@ CREATE TABLE IF NOT EXISTS postulaciones (
   UNIQUE (pedido_id, espacio_id)
 );
 CREATE INDEX IF NOT EXISTS idx_bolsa_pedidos_estado ON bolsa_pedidos (estado, vence_en);
+-- Cuándo se le mandó al cliente el correo para elegir (al llegar al tope o al
+-- vencer con postulaciones). Lo marca el cron de la bolsa, así no se repite.
+ALTER TABLE bolsa_pedidos ADD COLUMN IF NOT EXISTS eleccion_avisada_en TIMESTAMPTZ;
 
 -- Al publicar: exige el consentimiento y copia del lead los datos que se
 -- muestran, para que quien publica no pueda poner otros (ni personales).

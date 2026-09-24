@@ -7079,6 +7079,196 @@
         1350,
         21350
       ]
+    },
+    {
+      "parameters": {
+        "content": "## 📬 RAMA 11 · Bolsa de proyectos (cron cada 15 min)\nUna consulta resuelve los tres casos: **invitar** al cliente a elegir (llegó al tope `BOLSA_TOPE` o venció con postulaciones; se marca `eleccion_avisada_en` para no repetir), **vencido sin postulaciones** y **vencido sin elección** (`BOLSA_DIAS_ELECCION`, 7). Correo al cliente en los dos primeros; aviso a quien lo publicó en los tres.",
+        "height": 700,
+        "width": 1530,
+        "color": 6
+      },
+      "id": "c1a3d720-99ff-46c9-9ecd-607c31ebee22",
+      "name": "Nota — 📬 RAMA 11 · Bolsa de proyectos",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        21825
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/15 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "96b46192-6104-4bff-88d2-29847d56f8da",
+      "name": "📬 Cron - Bolsa de Proyectos",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        150,
+        21950
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH invitar AS (\n  -- Llegó al tope (postularme() ya lo pasó a EN_ELECCION) o venció con al\n  -- menos una postulación: se le manda al cliente el enlace para elegir, una\n  -- sola vez.\n  UPDATE bolsa_pedidos\n  SET estado = 'EN_ELECCION', eleccion_avisada_en = now()\n  WHERE eleccion_avisada_en IS NULL AND postulaciones > 0\n    AND (estado = 'EN_ELECCION' OR (estado = 'ABIERTO' AND vence_en <= now()))\n  RETURNING id, lead_id, origen_espacio_id, postulaciones, eleccion_token, 'invitar'::text AS tipo\n), sin_postulaciones AS (\n  UPDATE bolsa_pedidos\n  SET estado = 'VENCIDO', cerrado_en = now()\n  WHERE estado = 'ABIERTO' AND vence_en <= now() AND postulaciones = 0\n  RETURNING id, lead_id, origen_espacio_id, postulaciones, eleccion_token, 'sin_postulaciones'::text AS tipo\n), sin_eleccion AS (\n  -- El cliente recibió el enlace y no eligió en BOLSA_DIAS_ELECCION días.\n  UPDATE bolsa_pedidos\n  SET estado = 'VENCIDO', cerrado_en = now()\n  WHERE estado = 'EN_ELECCION' AND eleccion_avisada_en <= now() - make_interval(days => $1::int)\n  RETURNING id, lead_id, origen_espacio_id, postulaciones, eleccion_token, 'sin_eleccion'::text AS tipo\n), todos AS (\n  SELECT * FROM invitar\n  UNION ALL SELECT * FROM sin_postulaciones\n  UNION ALL SELECT * FROM sin_eleccion\n)\nSELECT t.tipo, t.lead_id, t.postulaciones, t.eleccion_token, t.origen_espacio_id AS espacio_id,\n       l.nombre, l.email, l.servicio\nFROM todos t JOIN leads l ON l.lead_id = t.lead_id;",
+        "options": {
+          "queryReplacement": "={{ [ parseInt($env.BOLSA_DIAS_ELECCION || '7', 10) || 7 ] }}"
+        }
+      },
+      "id": "75c5df5e-b1b0-476b-a7c9-bafb0360aa70",
+      "name": "Postgres - Revisar Bolsa",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        450,
+        21950
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Correos al cliente del cron de la bolsa. Salen de la plataforma (no de un\n// espacio: todavía no eligió a nadie). Si el cliente no eligió a tiempo no se\n// le escribe: ya tenía el enlace.\nconst esc = (s) => String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');\nconst SERVICIO = {\n  desarrollo_web: 'desarrollo web', ecommerce: 'tienda online', app_movil: 'app móvil',\n  automatizacion: 'automatización', marketing: 'marketing digital', seo: 'SEO',\n  diseno_ui: 'diseño UX/UI', consultoria: 'consultoría', soporte: 'soporte',\n};\nlet plataforma = 'FormularioLeads';\nlet frontend = '';\ntry {\n  plataforma = ($env && $env.PLATAFORMA_NOMBRE) || plataforma;\n  frontend = String(($env && $env.FRONTEND_URL) || '').replace(/\\/+$/, '');\n} catch (e) {}\nconst salida = [];\nfor (const item of $input.all()) {\n  const l = item.json;\n  if (!l.email || l.tipo === 'sin_eleccion') continue;\n  const servicio = SERVICIO[l.servicio] || String(l.servicio || '').replaceAll('_', ' ');\n  let asunto, cuerpo;\n  if (l.tipo === 'invitar') {\n    const n = Number(l.postulaciones) || 0;\n    const url = `${frontend}/elegir/${encodeURIComponent(l.eleccion_token)}`;\n    asunto = `Tenés ${n} ${n === 1 ? 'propuesta' : 'propuestas'} para tu proyecto de ${servicio}`;\n    cuerpo = `<p>Hola ${esc(l.nombre)},</p>\n<p>${n === 1 ? 'Un desarrollador quiere' : `${n} desarrolladores quieren`} hacer tu proyecto de <b>${esc(servicio)}</b>. Ninguno tiene tus datos todavía.</p>\n<p><a href=\"${esc(url)}\">Mirá las propuestas y elegí</a>: al que elijas le pasamos tus datos para que te mande la propuesta formal.</p>\n<p>Saludos,<br><b>${esc(plataforma)}</b></p>`;\n  } else {\n    asunto = `Sobre tu proyecto de ${servicio}`;\n    cuerpo = `<p>Hola ${esc(l.nombre)},</p>\n<p>Compartimos tu proyecto de <b>${esc(servicio)}</b> con otros desarrolladores, pero esta vez ninguno pudo tomarlo. Tus datos no se compartieron con nadie.</p>\n<p>Gracias por escribirnos, y mucha suerte con el proyecto.</p>\n<p>Saludos,<br><b>${esc(plataforma)}</b></p>`;\n  }\n  salida.push({ json: { ...l, espacio_nombre: '', espacio_email: '', asunto, cuerpo_html: cuerpo } });\n}\nreturn salida;"
+      },
+      "id": "0d8de66e-1b8f-454d-8463-fb2a830d2ef9",
+      "name": "Code - Emails Bolsa Cliente",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        21950
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "={{ $json.asunto }}",
+        "message": "={{ $json.cuerpo_html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "={{ ($json.espacio_nombre ? $json.espacio_nombre + ' vía ' : '') + ($env.PLATAFORMA_NOMBRE || 'FormularioLeads') }}",
+          "replyTo": "={{ $json.espacio_email || '' }}"
+        }
+      },
+      "id": "5b14a894-c1fa-45fb-9569-522f1f53c006",
+      "name": "Gmail - Bolsa Cliente",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        21950
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "KN5umVWzd1RZZuYM",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "bolsa_novedad",
+            "nivel": "info",
+            "mensaje": "={{ $json.tipo === 'invitar' ? '📬 <b>Tu pedido en la bolsa tiene ' + $json.postulaciones + (Number($json.postulaciones) === 1 ? ' postulación' : ' postulaciones') + '</b>' : '⌛ <b>' + ($json.tipo === 'sin_postulaciones' ? 'Tu pedido en la bolsa venció sin postulaciones' : 'El cliente no eligió a tiempo: el pedido de la bolsa venció') + '</b>' }}\nCliente: {{ String($json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}{{ $json.tipo === 'invitar' ? '\\nLe mandamos el enlace para que elija.' : '' }}",
+            "lead_id": "={{ $json.lead_id || '' }}",
+            "factura_id": "",
+            "espacio_id": "={{ $json.espacio_id || '' }}"
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "id": "ef85fd30-cc58-4f3c-a444-91203ad4ab32",
+      "name": "Aviso - Bolsa al Publicador",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        750,
+        22170
+      ],
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -9282,6 +9472,44 @@
         [
           {
             "node": "Gmail - Aviso Asignación Bolsa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "📬 Cron - Bolsa de Proyectos": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Revisar Bolsa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Revisar Bolsa": {
+      "main": [
+        [
+          {
+            "node": "Code - Emails Bolsa Cliente",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Aviso - Bolsa al Publicador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Emails Bolsa Cliente": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Bolsa Cliente",
             "type": "main",
             "index": 0
           }
