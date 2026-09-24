@@ -13,6 +13,8 @@ export interface Espacio {
   nombre: string;
   // A dónde le llegan las respuestas de los clientes (Reply-To).
   email_contacto: string | null;
+  // Telegram vinculado para los avisos (opcional).
+  telegram_chat_id: string | null;
   // NULL hasta que el dueño elige nombre y dirección (alta).
   configurado_en: string | null;
 }
@@ -41,7 +43,7 @@ export async function getPanelStatus(): Promise<EstadoPanel> {
 
   const {data: espacio} = await supabase
     .from("espacios")
-    .select("id, slug, nombre, email_contacto, configurado_en")
+    .select("id, slug, nombre, email_contacto, telegram_chat_id, configurado_en")
     .eq("dueno_id", user.id)
     .maybeSingle();
 

@@ -78,6 +78,12 @@ CREATE TABLE IF NOT EXISTS espacios (
   -- A dónde van las respuestas de los clientes (Reply-To de los correos, que
   -- salen de la casilla de la plataforma). Arranca con el correo de la cuenta.
   email_contacto TEXT CHECK (email_contacto IS NULL OR email_contacto ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$'),
+  -- Telegram, opcional: el chat al que le llegan los avisos. Se vincula desde
+  -- el panel con un código de un solo uso que el desarrollador le manda al
+  -- bot de la plataforma (workflow/telegram_vincular.json).
+  telegram_chat_id      TEXT,
+  telegram_codigo       TEXT UNIQUE,
+  telegram_codigo_vence TIMESTAMPTZ,
   -- NULL hasta que el dueño elige el nombre y la dirección por primera vez:
   -- mientras tanto, el panel lo manda a completar su alta. Lo fija el
   -- trigger trg_espacios_configurado, no quien edita.
@@ -256,6 +262,26 @@ CREATE TABLE IF NOT EXISTS tickets (
 -- Limit (...)» y docs/verificacion-y-seguridad.md §5.3.1).
 -- `ip_o_clave` es la IP de origen para los cuatro webhooks de token, y el
 -- email declarado en el propio formulario (si vino) para `lead/nuevo`.
+-- Avisos al desarrollador (23-sep-2026). Hasta entonces todo iba a un único
+-- chat de Telegram; con la plataforma compartida, cada aviso es del espacio
+-- del pedido que lo origina y se ve en su panel. El subflujo
+-- workflow/avisos.json lo registra acá y además lo manda por correo (los que
+-- piden una acción) y por Telegram (si el desarrollador lo vinculó).
+-- `espacio_id` NULL = aviso de la plataforma (no es de ningún desarrollador).
+CREATE TABLE IF NOT EXISTS avisos (
+  id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  espacio_id  UUID REFERENCES espacios(id),
+  tipo        TEXT NOT NULL CHECK (length(tipo) BETWEEN 1 AND 60),
+  -- 'atencion' pide una acción del desarrollador y además va por correo;
+  -- 'critico' también le llega a la plataforma.
+  nivel       TEXT NOT NULL DEFAULT 'info' CHECK (nivel IN ('info','atencion','critico')),
+  mensaje     TEXT NOT NULL CHECK (length(mensaje) <= 4000),
+  lead_id     TEXT,
+  factura_id  TEXT,
+  leido_en    TIMESTAMPTZ,
+  creado_en   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS rate_limit_log (
   id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   ip_o_clave  TEXT NOT NULL,
@@ -428,6 +454,12 @@ UPDATE logs g         SET espacio_id = l.espacio_id FROM leads l WHERE g.lead_id
 
 ALTER TABLE espacios ADD COLUMN IF NOT EXISTS configurado_en TIMESTAMPTZ;
 ALTER TABLE espacios ADD COLUMN IF NOT EXISTS email_contacto TEXT;
+ALTER TABLE espacios ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT;
+ALTER TABLE espacios ADD COLUMN IF NOT EXISTS telegram_codigo TEXT;
+ALTER TABLE espacios ADD COLUMN IF NOT EXISTS telegram_codigo_vence TIMESTAMPTZ;
+DO $$ BEGIN
+  ALTER TABLE espacios ADD CONSTRAINT espacios_telegram_codigo_key UNIQUE (telegram_codigo);
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null; END $$;
 DO $$ BEGIN
   ALTER TABLE espacios ADD CONSTRAINT espacios_email_contacto_check
     CHECK (email_contacto IS NULL OR email_contacto ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$');
@@ -492,6 +524,8 @@ CREATE INDEX IF NOT EXISTS idx_facturas_espacio     ON facturas(espacio_id);
 CREATE INDEX IF NOT EXISTS idx_seguimientos_espacio ON seguimientos(espacio_id);
 CREATE INDEX IF NOT EXISTS idx_tickets_espacio      ON tickets(espacio_id, estado);
 CREATE INDEX IF NOT EXISTS idx_logs_espacio         ON logs(espacio_id) WHERE espacio_id IS NOT NULL;
+-- El panel lee los avisos sin leer de su espacio, los más nuevos primero.
+CREATE INDEX IF NOT EXISTS idx_avisos_espacio       ON avisos(espacio_id, creado_en DESC);
 
 -- Nota de alcance: a la escala del MVP (decenas de filas) estos índices no
 -- cambian los tiempos de forma observable. Se agregan porque las consultas que
@@ -644,6 +678,7 @@ BEGIN
   UPDATE seguimientos SET espacio_id = NEW.espacio_id WHERE lead_id = NEW.lead_id;
   UPDATE tickets      SET espacio_id = NEW.espacio_id WHERE lead_id = NEW.lead_id;
   UPDATE logs         SET espacio_id = NEW.espacio_id WHERE lead_id = NEW.lead_id;
+  UPDATE avisos       SET espacio_id = NEW.espacio_id WHERE lead_id = NEW.lead_id;
   RETURN NULL;
 END;
 $$;
@@ -678,6 +713,44 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
 $$;
 REVOKE ALL ON FUNCTION public.espacio_publico(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.espacio_publico(text) TO anon, authenticated;
+
+-- Vinculación de Telegram. El panel pide un código (vale 30 minutos) y el
+-- desarrollador se lo manda al bot; n8n lo canjea por el chat. El código no
+-- sirve para nada más: sólo dice a qué espacio va ese chat.
+CREATE OR REPLACE FUNCTION public.generar_codigo_telegram() RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  codigo text := upper(substr(replace(gen_random_uuid()::text, '-', ''), 1, 8));
+BEGIN
+  UPDATE espacios SET telegram_codigo = codigo, telegram_codigo_vence = now() + interval '30 minutes'
+  WHERE dueno_id = auth.uid();
+  IF NOT FOUND THEN RAISE EXCEPTION 'La cuenta no tiene un espacio'; END IF;
+  RETURN codigo;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.desvincular_telegram() RETURNS void
+LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  UPDATE espacios SET telegram_chat_id = NULL, telegram_codigo = NULL, telegram_codigo_vence = NULL
+  WHERE dueno_id = auth.uid();
+$$;
+
+-- La usa n8n cuando el bot recibe "/start <código>". Devuelve el nombre del
+-- espacio vinculado, o nada si el código no existe o venció.
+CREATE OR REPLACE FUNCTION public.vincular_telegram(p_codigo text, p_chat_id text)
+RETURNS TABLE (nombre text)
+LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
+  UPDATE espacios SET telegram_chat_id = p_chat_id, telegram_codigo = NULL, telegram_codigo_vence = NULL
+  WHERE telegram_codigo = upper(btrim(p_codigo)) AND telegram_codigo_vence > now()
+  RETURNING espacios.nombre;
+$$;
+
+REVOKE ALL ON FUNCTION public.generar_codigo_telegram() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.desvincular_telegram() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.vincular_telegram(text, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.generar_codigo_telegram() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.desvincular_telegram() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.vincular_telegram(text, text) TO n8n_writer;
 
 DROP TRIGGER IF EXISTS trg_leads_propagar_espacio ON leads;
 CREATE TRIGGER trg_leads_propagar_espacio
@@ -806,6 +879,7 @@ CREATE OR REPLACE VIEW metrics_mensuales
   WITH (security_invoker = true) AS
 WITH lead_mes AS (
   SELECT
+    espacio_id,
     to_char(date_trunc('month', fecha_ingreso), 'YYYY-MM')              AS mes,
     count(*)                                                            AS total_leads,
     count(*) FILTER (WHERE tier = 'HOT')                               AS leads_hot,
@@ -816,10 +890,11 @@ WITH lead_mes AS (
                  / NULLIF(count(*), 0), 1)                             AS conversion_pct,
     round(avg(dias_ciclo_completo) FILTER (WHERE estado = 'CERRADO'), 1) AS tiempo_prom_dias
   FROM leads
-  GROUP BY 1
+  GROUP BY 1, 2
 ),
 fact_mes AS (
   SELECT
+    espacio_id,
     to_char(date_trunc('month', fecha_emision), 'YYYY-MM')             AS mes,
     -- Una factura ANULADA no es facturación: no suma al total, ni a lo
     -- pendiente, ni al denominador de la tasa de cobro. Hasta el 23-sep-2026
@@ -846,7 +921,7 @@ fact_mes AS (
     -- sin un pago registrado por el sistema.
     coalesce(sum(monto) FILTER (WHERE estado_pago = 'COBRADO' AND metodo_cobro = 'CIERRE_MANUAL'), 0) AS cobrado_cierre_manual
   FROM facturas
-  GROUP BY 1
+  GROUP BY 1, 2
 )
 SELECT
   coalesce(l.mes, f.mes)            AS mes,
@@ -863,9 +938,12 @@ SELECT
   coalesce(f.facturas_vencidas, 0)  AS facturas_vencidas,
   coalesce(f.tasa_cobro_pct, 0)     AS tasa_cobro_pct,
   coalesce(f.comision_cobrada, 0)   AS comision_cobrada,
-  coalesce(f.cobrado_cierre_manual, 0) AS cobrado_cierre_manual
+  coalesce(f.cobrado_cierre_manual, 0) AS cobrado_cierre_manual,
+  -- Por espacio (23-sep-2026): el panel ve sólo las filas de su espacio (RLS)
+  -- y n8n arma un reporte por desarrollador.
+  coalesce(l.espacio_id, f.espacio_id) AS espacio_id
 FROM lead_mes l
-FULL OUTER JOIN fact_mes f ON l.mes = f.mes
+FULL OUTER JOIN fact_mes f ON l.mes = f.mes AND l.espacio_id = f.espacio_id
 ORDER BY mes DESC;
 
 -- Sigue filtrando sólo PENDIENTE a propósito (01-sep-2026): es la que alimenta
@@ -921,6 +999,7 @@ ALTER TABLE rate_limit_log  ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_emails    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tickets         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE espacios        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE avisos          ENABLE ROW LEVEL SECURITY;
 
 -- 1.1) FORCE: sin esto, el OWNER de la tabla evade la RLS igual que si
 --      tuviera BYPASSRLS (una tarea de backup o una migración conectada con
@@ -936,6 +1015,7 @@ ALTER TABLE rate_limit_log  FORCE ROW LEVEL SECURITY;
 ALTER TABLE admin_emails    FORCE ROW LEVEL SECURITY;
 ALTER TABLE tickets         FORCE ROW LEVEL SECURITY;
 ALTER TABLE espacios        FORCE ROW LEVEL SECURITY;
+ALTER TABLE avisos          FORCE ROW LEVEL SECURITY;
 
 -- 2) Políticas de LECTURA sobre las tablas que alimentan el tablero.
 --    Cada desarrollador ve sólo lo de su espacio (23-sep-2026). Hasta
@@ -997,6 +1077,21 @@ CREATE POLICY profiles_select_own ON profiles
 GRANT SELECT ON leads, facturas, seguimientos, profiles, espacios TO authenticated;
 GRANT UPDATE (nombre, slug, email_contacto) ON espacios TO authenticated;
 
+-- Avisos: cada desarrollador lee los de su espacio y los marca como leídos
+-- (sólo esa columna). Los de la plataforma (espacio_id NULL) no los ve nadie
+-- desde el panel.
+DROP POLICY IF EXISTS avisos_select_espacio ON avisos;
+CREATE POLICY avisos_select_espacio ON avisos
+  FOR SELECT TO authenticated
+  USING (espacio_id IN (SELECT id FROM espacios WHERE dueno_id = (SELECT auth.uid())));
+DROP POLICY IF EXISTS avisos_update_espacio ON avisos;
+CREATE POLICY avisos_update_espacio ON avisos
+  FOR UPDATE TO authenticated
+  USING (espacio_id IN (SELECT id FROM espacios WHERE dueno_id = (SELECT auth.uid())))
+  WITH CHECK (espacio_id IN (SELECT id FROM espacios WHERE dueno_id = (SELECT auth.uid())));
+GRANT SELECT ON avisos TO authenticated;
+GRANT UPDATE (leido_en) ON avisos TO authenticated;
+
 -- 4.1) Tickets: a diferencia del resto, el tablero SÍ escribe (crear y mover
 --      tickets desde /api/tickets, con la sesión del desarrollador), siempre
 --      dentro de su espacio. Sin DELETE. El WITH CHECK es lo que impide
@@ -1030,7 +1125,7 @@ GRANT SELECT ON metrics_mensuales, facturas_pendientes TO authenticated;
 --    autoalojado del docker-compose) NO, y BYPASSRLS solo evade la RLS, no
 --    otorga el privilegio de tabla. Se conceden explícitamente para que
 --    funcione en ambos entornos.
-GRANT SELECT, INSERT, UPDATE, DELETE ON leads, facturas, seguimientos, logs, profiles, rate_limit_log, admin_emails, tickets, espacios TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON leads, facturas, seguimientos, logs, profiles, rate_limit_log, admin_emails, tickets, espacios, avisos TO service_role;
 GRANT SELECT ON tickets_tablero TO service_role;
 GRANT SELECT ON metrics_mensuales, facturas_pendientes TO service_role;
 
@@ -1064,10 +1159,18 @@ REVOKE ALL ON admin_emails FROM n8n_writer;
 -- (por la dirección, /f/<slug>) y con qué marca y Reply-To escribirle al
 -- cliente. Sólo esas columnas; el dueño no lo necesita.
 REVOKE ALL ON espacios FROM n8n_writer;
-GRANT SELECT (id, slug, nombre, email_contacto) ON espacios TO n8n_writer;
+GRANT SELECT (id, slug, nombre, email_contacto, telegram_chat_id) ON espacios TO n8n_writer;
 DROP POLICY IF EXISTS espacios_select_n8n_writer ON espacios;
 CREATE POLICY espacios_select_n8n_writer ON espacios
   FOR SELECT TO n8n_writer USING (true);
+
+-- Avisos: n8n los registra (subflujo workflow/avisos.json). Sin UPDATE: el
+-- único cambio posterior es "leído", y lo hace el desarrollador.
+GRANT SELECT, INSERT ON avisos TO n8n_writer;
+DROP POLICY IF EXISTS avisos_select_n8n_writer ON avisos;
+CREATE POLICY avisos_select_n8n_writer ON avisos FOR SELECT TO n8n_writer USING (true);
+DROP POLICY IF EXISTS avisos_insert_n8n_writer ON avisos;
+CREATE POLICY avisos_insert_n8n_writer ON avisos FOR INSERT TO n8n_writer WITH CHECK (true);
 
 -- Políticas de escritura de `n8n_writer`. No filtran filas (USING/WITH CHECK
 -- en true): a diferencia de las políticas de `authenticated`, el límite de
@@ -1156,7 +1259,7 @@ CREATE POLICY tickets_update_n8n_writer ON tickets FOR UPDATE TO n8n_writer USIN
 -- 6) El rol público (`anon`) no debe leer las tablas de negocio ni las
 --    vistas. Se revoca explícitamente por si el default privilege de la
 --    plataforma lo hubiera otorgado.
-REVOKE ALL ON leads, facturas, seguimientos, logs, profiles, rate_limit_log, admin_emails, tickets, espacios FROM anon;
+REVOKE ALL ON leads, facturas, seguimientos, logs, profiles, rate_limit_log, admin_emails, tickets, espacios, avisos FROM anon;
 REVOKE ALL ON metrics_mensuales, facturas_pendientes, tickets_tablero FROM anon;
 
 -- 7) Realtime: el tablero se suscribe a los cambios de `leads`
@@ -1172,7 +1275,7 @@ DECLARE
   t text;
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
-    FOREACH t IN ARRAY ARRAY['leads', 'facturas', 'tickets'] LOOP
+    FOREACH t IN ARRAY ARRAY['leads', 'facturas', 'tickets', 'avisos'] LOOP
       IF NOT EXISTS (
         SELECT 1 FROM pg_publication_tables
         WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = t

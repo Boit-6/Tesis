@@ -50,6 +50,24 @@ export type TicketPrioridadDb = "BAJA" | "MEDIA" | "ALTA" | "CRITICA";
 export interface Database {
   public: {
     Tables: {
+      // Avisos al desarrollador: los registra n8n (workflow/avisos.json); el
+      // dueño del espacio los lee y sólo puede marcarlos como leídos.
+      avisos: {
+        Row: {
+          id: number;
+          espacio_id: string | null;
+          tipo: string;
+          nivel: "info" | "atencion" | "critico";
+          mensaje: string;
+          lead_id: string | null;
+          factura_id: string | null;
+          leido_en: string | null;
+          creado_en: string;
+        };
+        Insert: never;
+        Update: {leido_en?: string | null};
+        Relationships: [];
+      };
       espacios: {
         Row: {
           id: string;
@@ -57,6 +75,9 @@ export interface Database {
           nombre: string;
           dueno_id: string | null;
           email_contacto: string | null;
+          telegram_chat_id: string | null;
+          telegram_codigo: string | null;
+          telegram_codigo_vence: string | null;
           configurado_en: string | null;
           creado_en: string;
         };
@@ -406,6 +427,7 @@ export interface Database {
           tasa_cobro_pct: number | null;
           comision_cobrada: number | null;
           cobrado_cierre_manual: number | null;
+          espacio_id: string | null;
         };
         Relationships: [];
       };
@@ -446,6 +468,9 @@ export interface Database {
         Args: {p_slug: string};
         Returns: {slug: string; nombre: string}[];
       };
+      // Vinculación de Telegram desde "Tu espacio".
+      generar_codigo_telegram: {Args: Record<string, never>; Returns: string};
+      desvincular_telegram: {Args: Record<string, never>; Returns: undefined};
     };
     Enums: {
       urgencia_tipo: UrgenciaTipo;

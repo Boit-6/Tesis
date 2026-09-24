@@ -21,6 +21,7 @@ const raiz = path.join(aqui, '..');
 const leerWf = (f) => JSON.parse(readFileSync(path.join(raiz, 'workflow', f), 'utf8'));
 const crm = leerWf('crm_postgres.json');
 const tickets = leerWf('tickets.json');
+const bot = leerWf('telegram_vincular.json');
 
 let ok = 0, fail = 0;
 const check = (nombre, condicion, detalle) => {
@@ -131,7 +132,7 @@ function textosHtml(wf) {
 
 const escapa = (expr) => expr.includes("replaceAll('<', '&lt;')") && expr.includes("replaceAll('&', '&amp;')");
 
-for (const [wfNombre, wf] of [['crm', crm], ['tickets', tickets]]) {
+for (const [wfNombre, wf] of [['crm', crm], ['tickets', tickets], ['bot', bot]]) {
   for (const [nodo, texto] of textosHtml(wf)) {
     if (YA_ESCAPADOS.has(nodo)) continue;
 
@@ -146,7 +147,9 @@ for (const [wfNombre, wf] of [['crm', crm], ['tickets', tickets]]) {
 {
   const [, expr] = crm.nodes
     .find((n) => n.name === 'Telegram - Lead Frio')
-    .parameters.text.match(/\{\{(.+?\.nombre.+?)\}\}/);
+    // Desde el 23-sep-2026 el aviso pasa por el subflujo workflow/avisos.json: el
+    // texto viaja como su entrada `mensaje`.
+    .parameters.workflowInputs.value.mensaje.match(/\{\{(.+?\.nombre.+?)\}\}/);
   const res = new Function('$json', 'return ' + expr)({nombre: 'A & B <b>c</b>'});
 
   check('la expresión de escape produce texto válido para Telegram', res === 'A &amp; B &lt;b&gt;c&lt;/b&gt;', res);

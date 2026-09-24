@@ -7,6 +7,15 @@
 > (no 11 como se mencionó al encargar este trabajo); se referencia aquí con el número real para
 > que quien lea ambos documentos no encuentre una discrepancia.
 
+> **Estado (23-sep-2026):** la migración se completó con la plataforma compartida. El subflujo
+> pasó a llamarse `workflow/avisos.json` y ahora es el único punto de aviso del flujo principal y
+> del de tickets: registra cada aviso en la tabla `avisos` (que el desarrollador ve en su panel),
+> lo manda por Telegram al chat que el desarrollador vinculó y, si pide una acción, por correo.
+> El destino ya no es un chat fijo sino el del espacio del pedido. La única excepción sigue siendo
+> `Telegram - Error Critico`, que va directo al chat de la plataforma por la razón de la
+> sección 3. Los flujos lo llaman por id (`AVISOS_WORKFLOW_ID`) y no por archivo, y sin esperarlo.
+> Lo que sigue describe el diseño y la prueba de concepto originales.
+
 ## 1. El problema, confirmado sobre el artefacto real
 
 La Discusión (§6) de la tesis señala: *"Gmail, Telegram, Notion y Gotenberg se invocan

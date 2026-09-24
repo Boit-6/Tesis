@@ -1,6 +1,7 @@
 import Link from "next/link";
 import {redirect} from "next/navigation";
 
+import AvisosPanel from "./avisos-panel";
 import DashboardClient from "./dashboard-client";
 
 import {getPanelUser} from "@/lib/auth";
@@ -61,6 +62,7 @@ export default async function DashboardPage() {
         </div>
       </div>
 
+      <AvisosPanel />
       <DashboardClient />
     </main>
   );

@@ -22,6 +22,7 @@ const ESPACIO = {
   slug: "mi-espacio",
   nombre: "Mi espacio",
   email_contacto: null,
+  telegram_chat_id: null,
   configurado_en: null,
 };
 

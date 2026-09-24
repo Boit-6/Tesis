@@ -342,28 +342,94 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=💳 <b>Pago recibido</b>\nFactura: {{ $json.factura_id }}\nCliente: {{ String($json.cliente || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nMonto: ${{ $json.monto }} {{ $json.moneda }}",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "pago_recibido",
+            "nivel": "atencion",
+            "mensaje": "=💳 <b>Pago recibido</b>\nFactura: {{ $json.factura_id }}\nCliente: {{ String($json.cliente || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nMonto: ${{ $json.monto }} {{ $json.moneda }}",
+            "lead_id": "",
+            "factura_id": "={{ $json.factura_id || '' }}",
+            "espacio_id": ""
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
         }
       },
       "id": "1633a5f6-6123-4074-b7c3-589832e389f4",
       "name": "Telegram - Pago Recibido",
-      "type": "n8n-nodes-base.telegram",
+      "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         1350,
         11600
       ],
-      "webhookId": "tg-pago-recibido",
-      "credentials": {
-        "telegramApi": {
-          "id": "Zv2UC716Fxh6BCDs",
-          "name": "Telegram account"
-        }
-      },
       "onError": "continueRegularOutput"
     },
     {
@@ -552,28 +618,94 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=❄️ <b>Lead COLD</b>\nNombre: {{ String($json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nScore: {{ $json.score }}/100\nPresupuesto: ${{ $json.presupuesto }}",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "lead_frio",
+            "nivel": "info",
+            "mensaje": "=❄️ <b>Lead COLD</b>\nNombre: {{ String($json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nScore: {{ $json.score }}/100\nPresupuesto: ${{ $json.presupuesto }}",
+            "lead_id": "={{ $json.lead_id || '' }}",
+            "factura_id": "",
+            "espacio_id": ""
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
         }
       },
       "id": "6ad923f8-5d58-4baf-be33-c7a36df13ef0",
       "name": "Telegram - Lead Frio",
-      "type": "n8n-nodes-base.telegram",
+      "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         1650,
         280
       ],
-      "webhookId": "tg-lead-frio",
-      "credentials": {
-        "telegramApi": {
-          "id": "Zv2UC716Fxh6BCDs",
-          "name": "Telegram account"
-        }
-      },
       "onError": "continueRegularOutput"
     },
     {
@@ -779,28 +911,94 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=📤 <b>Propuesta enviada</b>\n\nCliente: {{ String($('Code - Generar Propuesta').item.json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nServicio: {{ $('Code - Generar Propuesta').item.json.servicio }}\nMonto: ${{ $('Code - Generar Propuesta').item.json.precio_propuesto || $('Code - Generar Propuesta').item.json.presupuesto }}\nScore: {{ $('Code - Generar Propuesta').item.json.score }} ({{ $('Code - Generar Propuesta').item.json.tier }})",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "propuesta_enviada",
+            "nivel": "info",
+            "mensaje": "=📤 <b>Propuesta enviada</b>\n\nCliente: {{ String($('Code - Generar Propuesta').item.json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nServicio: {{ $('Code - Generar Propuesta').item.json.servicio }}\nMonto: ${{ $('Code - Generar Propuesta').item.json.precio_propuesto || $('Code - Generar Propuesta').item.json.presupuesto }}\nScore: {{ $('Code - Generar Propuesta').item.json.score }} ({{ $('Code - Generar Propuesta').item.json.tier }})",
+            "lead_id": "={{ $('Code - Generar Propuesta').item.json.lead_id || '' }}",
+            "factura_id": "",
+            "espacio_id": ""
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
         }
       },
       "id": "0a2b1f48-ea95-4f48-ae94-2aedda96e517",
       "name": "Telegram - Propuesta Enviada",
-      "type": "n8n-nodes-base.telegram",
+      "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         3450,
         100
       ],
-      "webhookId": "tg-propuesta",
-      "credentials": {
-        "telegramApi": {
-          "id": "Zv2UC716Fxh6BCDs",
-          "name": "Telegram account"
-        }
-      },
       "onError": "continueRegularOutput"
     },
     {
@@ -1295,28 +1493,94 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=🎉 <b>¡LEAD ACEPTADO!</b>\n\nCliente: {{ String($('Code - Generar Factura HTML').item.json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nServicio: {{ $('Code - Generar Factura HTML').item.json.servicio }}\nMonto: ${{ $('Code - Generar Factura HTML').item.json.monto }} USD",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "lead_acepto",
+            "nivel": "atencion",
+            "mensaje": "=🎉 <b>¡LEAD ACEPTADO!</b>\n\nCliente: {{ String($('Code - Generar Factura HTML').item.json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nServicio: {{ $('Code - Generar Factura HTML').item.json.servicio }}\nMonto: ${{ $('Code - Generar Factura HTML').item.json.monto }} USD",
+            "lead_id": "={{ $('Code - Generar Factura HTML').item.json.lead_id || '' }}",
+            "factura_id": "",
+            "espacio_id": ""
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
         }
       },
       "id": "c3122aec-14fc-4e1d-a4f1-deb44380eba0",
       "name": "Telegram - Lead Acepto",
-      "type": "n8n-nodes-base.telegram",
+      "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         2550,
         1250
       ],
-      "webhookId": "tg-acepto",
-      "credentials": {
-        "telegramApi": {
-          "id": "Zv2UC716Fxh6BCDs",
-          "name": "Telegram account"
-        }
-      },
       "onError": "continueRegularOutput"
     },
     {
@@ -1575,28 +1839,94 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=📉 <b>Lead PERDIDO</b>\nCliente: {{ String($('Code - Preparar Follow-up').item.json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nScore: {{ $('Code - Preparar Follow-up').item.json.score }}\n3 seguimientos sin respuesta",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "lead_perdido",
+            "nivel": "info",
+            "mensaje": "=📉 <b>Lead PERDIDO</b>\nCliente: {{ String($('Code - Preparar Follow-up').item.json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nScore: {{ $('Code - Preparar Follow-up').item.json.score }}\n3 seguimientos sin respuesta",
+            "lead_id": "={{ $('Code - Preparar Follow-up').item.json.lead_id || '' }}",
+            "factura_id": "",
+            "espacio_id": ""
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
         }
       },
       "id": "3612e251-0ad6-4994-88de-fd2ea76063bf",
       "name": "Telegram - Lead Perdido",
-      "type": "n8n-nodes-base.telegram",
+      "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         2550,
         12750
       ],
-      "webhookId": "tg-perdido",
-      "credentials": {
-        "telegramApi": {
-          "id": "Zv2UC716Fxh6BCDs",
-          "name": "Telegram account"
-        }
-      },
       "onError": "continueRegularOutput"
     },
     {
@@ -1736,28 +2066,94 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=🔴 <b>PAGO URGENTE</b>\nCliente: {{ String($('Code - Filtrar Vencimientos').item.json.cliente || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nFactura: {{ $('Code - Filtrar Vencimientos').item.json.factura_id }}\nMonto: ${{ $('Code - Filtrar Vencimientos').item.json.monto }} USD",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "pago_urgente",
+            "nivel": "atencion",
+            "mensaje": "=🔴 <b>PAGO URGENTE</b>\nCliente: {{ String($('Code - Filtrar Vencimientos').item.json.cliente || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nFactura: {{ $('Code - Filtrar Vencimientos').item.json.factura_id }}\nMonto: ${{ $('Code - Filtrar Vencimientos').item.json.monto }} USD",
+            "lead_id": "",
+            "factura_id": "={{ $('Code - Filtrar Vencimientos').item.json.factura_id || '' }}",
+            "espacio_id": ""
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
         }
       },
       "id": "3ab0f771-e716-443d-9135-62ec5a4b3dcf",
       "name": "Telegram - Pago Urgente",
-      "type": "n8n-nodes-base.telegram",
+      "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         1950,
         13900
       ],
-      "webhookId": "tg-pago-urgente",
-      "credentials": {
-        "telegramApi": {
-          "id": "Zv2UC716Fxh6BCDs",
-          "name": "Telegram account"
-        }
-      },
       "onError": "continueRegularOutput"
     },
     {
@@ -1857,28 +2253,94 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=🎊 <b>¡PROYECTO CERRADO!</b>\nCliente: {{ String($('Postgres - Lead Cerrado').item.json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nCobrado: ${{ $('Postgres - Lead Cerrado').item.json.precio_propuesto || $('Postgres - Lead Cerrado').item.json.presupuesto }} USD\nDias del ciclo: {{ $('Postgres - Lead Cerrado').item.json.dias_ciclo_completo }}",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "proyecto_cerrado",
+            "nivel": "info",
+            "mensaje": "=🎊 <b>¡PROYECTO CERRADO!</b>\nCliente: {{ String($('Postgres - Lead Cerrado').item.json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nCobrado: ${{ $('Postgres - Lead Cerrado').item.json.precio_propuesto || $('Postgres - Lead Cerrado').item.json.presupuesto }} USD\nDias del ciclo: {{ $('Postgres - Lead Cerrado').item.json.dias_ciclo_completo }}",
+            "lead_id": "={{ $('Postgres - Lead Cerrado').item.json.lead_id || '' }}",
+            "factura_id": "",
+            "espacio_id": ""
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
         }
       },
       "id": "266d452b-0b07-4fc0-b002-4620f1952823",
       "name": "Telegram - Proyecto Cerrado",
-      "type": "n8n-nodes-base.telegram",
+      "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         1350,
         10450
       ],
-      "webhookId": "tg-cerrado",
-      "credentials": {
-        "telegramApi": {
-          "id": "Zv2UC716Fxh6BCDs",
-          "name": "Telegram account"
-        }
-      },
       "onError": "continueRegularOutput"
     },
     {
@@ -1965,7 +2427,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT\n  base.mes                              AS mes,\n  coalesce(m.total_leads, 0)            AS total_leads,\n  coalesce(m.leads_hot, 0)              AS leads_hot,\n  coalesce(m.leads_warm, 0)             AS leads_warm,\n  coalesce(m.leads_cerrados, 0)         AS leads_cerrados,\n  coalesce(m.leads_perdidos, 0)         AS leads_perdidos,\n  coalesce(m.conversion_pct, 0)         AS conversion_pct,\n  m.tiempo_prom_dias                    AS tiempo_prom_dias,\n  coalesce(m.facturacion, 0)            AS facturacion,\n  coalesce(m.cobrado, 0)                AS cobrado,\n  coalesce(m.pendiente, 0)              AS pendiente,\n  coalesce(m.facturas_vencidas, 0)      AS facturas_vencidas,\n  coalesce(m.tasa_cobro_pct, 0)         AS tasa_cobro_pct,\n  coalesce(m.comision_cobrada, 0)       AS comision_cobrada,\n  (SELECT count(*) FROM leads WHERE estado = 'NUEVO' AND tier IN ('HOT','WARM')) AS propuestas_pendientes\nFROM (SELECT to_char(now(), 'YYYY-MM') AS mes) base\nLEFT JOIN metrics_mensuales m ON m.mes = base.mes;",
+        "query": "SELECT\n  e.id                                  AS espacio_id,\n  base.mes                              AS mes,\n  coalesce(m.total_leads, 0)            AS total_leads,\n  coalesce(m.leads_hot, 0)              AS leads_hot,\n  coalesce(m.leads_warm, 0)             AS leads_warm,\n  coalesce(m.leads_cerrados, 0)         AS leads_cerrados,\n  coalesce(m.leads_perdidos, 0)         AS leads_perdidos,\n  coalesce(m.conversion_pct, 0)         AS conversion_pct,\n  m.tiempo_prom_dias                    AS tiempo_prom_dias,\n  coalesce(m.facturacion, 0)            AS facturacion,\n  coalesce(m.cobrado, 0)                AS cobrado,\n  coalesce(m.pendiente, 0)              AS pendiente,\n  coalesce(m.facturas_vencidas, 0)      AS facturas_vencidas,\n  coalesce(m.tasa_cobro_pct, 0)         AS tasa_cobro_pct,\n  coalesce(m.comision_cobrada, 0)       AS comision_cobrada,\n  (SELECT count(*) FROM leads l WHERE l.espacio_id = e.id AND l.estado = 'NUEVO' AND l.tier IN ('HOT','WARM')) AS propuestas_pendientes\n-- Un reporte por espacio (plataforma compartida), sólo para los que tienen\n-- algún pedido: a una cuenta recién creada no se le manda un reporte en cero.\nFROM espacios e\nCROSS JOIN (SELECT to_char(now(), 'YYYY-MM') AS mes) base\nLEFT JOIN metrics_mensuales m ON m.mes = base.mes AND m.espacio_id = e.id\nWHERE EXISTS (SELECT 1 FROM leads l WHERE l.espacio_id = e.id);",
         "options": {}
       },
       "id": "4f571924-9518-4297-a047-8448c3c06435",
@@ -1985,28 +2447,94 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=📊 <b>Reporte {{ $json.mes }}</b>\n{{ $json.propuestas_pendientes > 0 ? \"📝 <b>\" + $json.propuestas_pendientes + \" propuesta(s) esperando que fijes los terminos</b>\" : \"\" }}\n\n👥 Leads: {{ $json.total_leads }} | 🔥 {{ $json.leads_hot }}\n✅ Cerrados: {{ $json.leads_cerrados }} | Perdidos: {{ $json.leads_perdidos }}\n📈 Conversion: {{ $json.conversion_pct }}%\n⏱ Prom. cierre: {{ $json.tiempo_prom_dias }} dias\n\n💰 Facturado: ${{ $json.facturacion }} USD\n✅ Cobrado: ${{ $json.cobrado }} USD\n⏳ Pendiente: ${{ $json.pendiente }} USD\n📊 Tasa cobro: {{ $json.tasa_cobro_pct }}%",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "reporte_diario",
+            "nivel": "info",
+            "mensaje": "=📊 <b>Reporte {{ $json.mes }}</b>\n{{ $json.propuestas_pendientes > 0 ? \"📝 <b>\" + $json.propuestas_pendientes + \" propuesta(s) esperando que fijes los terminos</b>\" : \"\" }}\n\n👥 Leads: {{ $json.total_leads }} | 🔥 {{ $json.leads_hot }}\n✅ Cerrados: {{ $json.leads_cerrados }} | Perdidos: {{ $json.leads_perdidos }}\n📈 Conversion: {{ $json.conversion_pct }}%\n⏱ Prom. cierre: {{ $json.tiempo_prom_dias }} dias\n\n💰 Facturado: ${{ $json.facturacion }} USD\n✅ Cobrado: ${{ $json.cobrado }} USD\n⏳ Pendiente: ${{ $json.pendiente }} USD\n📊 Tasa cobro: {{ $json.tasa_cobro_pct }}%",
+            "lead_id": "",
+            "factura_id": "",
+            "espacio_id": "={{ $json.espacio_id || '' }}"
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
         }
       },
       "id": "c36d16b3-4d0e-4b77-b288-d024aaa52105",
       "name": "Telegram - Reporte Diario",
-      "type": "n8n-nodes-base.telegram",
+      "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         750,
         15050
       ],
-      "webhookId": "tg-reporte",
-      "credentials": {
-        "telegramApi": {
-          "id": "Zv2UC716Fxh6BCDs",
-          "name": "Telegram account"
-        }
-      },
       "onError": "continueRegularOutput"
     },
     {
@@ -2274,22 +2802,35 @@
     },
     {
       "parameters": {
-        "source": "localFile",
-        "workflowPath": "workflow/notificaciones_telegram.json",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
+            "tipo": "lead_rechazado",
+            "nivel": "atencion",
             "mensaje": "=❌ <b>Propuesta RECHAZADA</b>\nCliente: {{ String($json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nLead: {{ $json.lead_id }}",
-            "nivel": "aviso"
+            "lead_id": "={{ $json.lead_id || '' }}",
+            "factura_id": "",
+            "espacio_id": ""
           },
           "matchingColumns": [
+            "tipo",
+            "nivel",
             "mensaje",
-            "nivel"
+            "lead_id",
+            "factura_id",
+            "espacio_id"
           ],
           "schema": [
             {
-              "id": "mensaje",
-              "displayName": "mensaje",
+              "id": "tipo",
+              "displayName": "tipo",
               "type": "string",
               "required": false,
               "defaultMatch": false,
@@ -2302,10 +2843,44 @@
               "required": false,
               "defaultMatch": false,
               "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
             }
           ]
         },
-        "options": {}
+        "options": {
+          "waitForSubWorkflow": false
+        }
       },
       "id": "f1a20005-0000-4005-8005-bb0000000005",
       "name": "Telegram - Lead Rechazado",
@@ -2475,22 +3050,35 @@
     },
     {
       "parameters": {
-        "source": "localFile",
-        "workflowPath": "workflow/notificaciones_telegram.json",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
+            "tipo": "pedido_cambios",
+            "nivel": "atencion",
             "mensaje": "=✏️ <b>Pedido de CAMBIOS</b>\nCliente: {{ String($json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nLead: {{ $json.lead_id }}\n\n\"{{ String($('Code - Leer Modifica').item.json.mensaje || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\"",
-            "nivel": "aviso"
+            "lead_id": "={{ $json.lead_id || '' }}",
+            "factura_id": "",
+            "espacio_id": ""
           },
           "matchingColumns": [
+            "tipo",
+            "nivel",
             "mensaje",
-            "nivel"
+            "lead_id",
+            "factura_id",
+            "espacio_id"
           ],
           "schema": [
             {
-              "id": "mensaje",
-              "displayName": "mensaje",
+              "id": "tipo",
+              "displayName": "tipo",
               "type": "string",
               "required": false,
               "defaultMatch": false,
@@ -2503,10 +3091,44 @@
               "required": false,
               "defaultMatch": false,
               "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
             }
           ]
         },
-        "options": {}
+        "options": {
+          "waitForSubWorkflow": false
+        }
       },
       "id": "f1a20016-0000-4016-8016-bb0000000016",
       "name": "Telegram - Pedido Cambios",
@@ -2728,22 +3350,35 @@
     },
     {
       "parameters": {
-        "source": "localFile",
-        "workflowPath": "workflow/notificaciones_telegram.json",
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
         "workflowInputs": {
           "mappingMode": "defineBelow",
           "value": {
+            "tipo": "pedido_cancelado",
+            "nivel": "info",
             "mensaje": "=🚫 <b>Pedido CANCELADO desde el panel</b>\nCliente: {{ String($json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nLead: {{ $json.lead_id }}",
-            "nivel": "aviso"
+            "lead_id": "={{ $json.lead_id || '' }}",
+            "factura_id": "",
+            "espacio_id": ""
           },
           "matchingColumns": [
+            "tipo",
+            "nivel",
             "mensaje",
-            "nivel"
+            "lead_id",
+            "factura_id",
+            "espacio_id"
           ],
           "schema": [
             {
-              "id": "mensaje",
-              "displayName": "mensaje",
+              "id": "tipo",
+              "displayName": "tipo",
               "type": "string",
               "required": false,
               "defaultMatch": false,
@@ -2756,10 +3391,44 @@
               "required": false,
               "defaultMatch": false,
               "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
             }
           ]
         },
-        "options": {}
+        "options": {
+          "waitForSubWorkflow": false
+        }
       },
       "id": "f1a20045-0000-4045-8045-ee0000000045",
       "name": "Telegram - Cancelado Panel",
@@ -2941,27 +3610,94 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=✅ <b>Cambio ACEPTADO</b>\nSe reenvió la propuesta a {{ String($json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }} ({{ $json.lead_id }})",
-        "additionalFields": {
-          "parse_mode": "HTML"
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "cambio_aceptado",
+            "nivel": "info",
+            "mensaje": "=✅ <b>Cambio ACEPTADO</b>\nSe reenvió la propuesta a {{ String($json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }} ({{ $json.lead_id }})",
+            "lead_id": "={{ $json.lead_id || '' }}",
+            "factura_id": "",
+            "espacio_id": ""
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
         }
       },
       "id": "f1a20057-0000-4057-8057-ff0000000057",
       "name": "Telegram - Cambio Aceptado",
-      "type": "n8n-nodes-base.telegram",
+      "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         1350,
         8510
       ],
-      "webhookId": "tg-camb-ok",
-      "credentials": {
-        "telegramApi": {
-          "id": "Zv2UC716Fxh6BCDs",
-          "name": "Telegram account"
-        }
-      },
       "onError": "continueRegularOutput"
     },
     {
@@ -3462,27 +4198,95 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=📝 <b>Propuesta por enviar</b>\nCliente: {{ String($json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nServicio: {{ $json.servicio }}\nNivel: {{ $json.tier }} ({{ $json.score }}/100)\nPresupuesto declarado: ${{ $json.presupuesto }}\n\nFijá precio, plazo y alcance desde el tablero para enviarla.",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "propuesta_por_enviar",
+            "nivel": "atencion",
+            "mensaje": "=📝 <b>Propuesta por enviar</b>\nCliente: {{ String($json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nServicio: {{ $json.servicio }}\nNivel: {{ $json.tier }} ({{ $json.score }}/100)\nPresupuesto declarado: ${{ $json.presupuesto }}\n\nFijá precio, plazo y alcance desde el tablero para enviarla.",
+            "lead_id": "={{ $json.lead_id || '' }}",
+            "factura_id": "",
+            "espacio_id": ""
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
         }
       },
       "id": "b1a90001-0000-4b01-8b01-000000000001",
       "name": "Telegram - Propuesta Por Enviar",
-      "type": "n8n-nodes-base.telegram",
-      "typeVersion": 1,
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
       "position": [
         1650,
         -80
       ],
-      "credentials": {
-        "telegramApi": {
-          "id": "Zv2UC716Fxh6BCDs",
-          "name": "Telegram account"
-        }
-      }
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -3852,28 +4656,95 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=♻️ <b>FACTURA RECONCILIADA</b>\n\nUn lead había quedado ACEPTADO sin factura y el proceso de reconciliación la emitió.\n\nCliente: {{ String($('Code - Resolver Link Reconciliado').item.json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nFactura: {{ $('Code - Resolver Link Reconciliado').item.json.factura_id }}\nMonto: {{ $('Code - Resolver Link Reconciliado').item.json.monto }} {{ $('Code - Resolver Link Reconciliado').item.json.moneda }}",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "factura_reconciliada",
+            "nivel": "info",
+            "mensaje": "=♻️ <b>FACTURA RECONCILIADA</b>\n\nUn lead había quedado ACEPTADO sin factura y el proceso de reconciliación la emitió.\n\nCliente: {{ String($('Code - Resolver Link Reconciliado').item.json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nFactura: {{ $('Code - Resolver Link Reconciliado').item.json.factura_id }}\nMonto: {{ $('Code - Resolver Link Reconciliado').item.json.monto }} {{ $('Code - Resolver Link Reconciliado').item.json.moneda }}",
+            "lead_id": "={{ $('Code - Resolver Link Reconciliado').item.json.lead_id || '' }}",
+            "factura_id": "",
+            "espacio_id": ""
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
         }
       },
       "id": "s5telegramfacturarecon00000001",
       "name": "Telegram - Factura Reconciliada",
-      "type": "n8n-nodes-base.telegram",
+      "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         2550,
         17350
       ],
-      "onError": "continueRegularOutput",
-      "credentials": {
-        "telegramApi": {
-          "id": "Zv2UC716Fxh6BCDs",
-          "name": "Telegram account"
-        }
-      }
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {},
@@ -3925,7 +4796,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=SELECT l.lead_id, l.nombre, l.servicio, l.tier, l.score, l.presupuesto, l.fecha_ingreso, EXTRACT(EPOCH FROM (now() - l.fecha_ingreso)) / 3600 AS horas_espera FROM leads l WHERE l.estado = 'NUEVO' AND l.tier IN ('HOT','WARM') AND l.precio_propuesto IS NULL AND l.fecha_ingreso < now() - make_interval(hours => {{ $env.PROPUESTA_PENDIENTE_HORAS_UMBRAL || 24 }}) ORDER BY l.fecha_ingreso;",
+        "query": "=SELECT l.lead_id, l.espacio_id, l.nombre, l.servicio, l.tier, l.score, l.presupuesto, l.fecha_ingreso, EXTRACT(EPOCH FROM (now() - l.fecha_ingreso)) / 3600 AS horas_espera FROM leads l WHERE l.estado = 'NUEVO' AND l.tier IN ('HOT','WARM') AND l.precio_propuesto IS NULL AND l.fecha_ingreso < now() - make_interval(hours => {{ $env.PROPUESTA_PENDIENTE_HORAS_UMBRAL || 24 }}) ORDER BY l.fecha_ingreso;",
         "options": {}
       },
       "id": "s10pgleerpropuestaspend0001",
@@ -3945,7 +4816,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Recordatorio (§4.3.1 / §4.9): un lead HOT/WARM quedó en NUEVO esperando\n// que el profesional le fije precio, plazo y alcance. Sin LIMIT en la\n// consulta: se avisa por cada lead que siga esperando, no solo el más\n// viejo, y cada aviso lleva el total para que el profesional dimensione la\n// cola sin entrar al tablero.\nconst items = $input.all();\nconst total = items.length;\nconst out = [];\nfor (const it of items) {\n  const l = it.json;\n  const horas = Math.floor(Number(l.horas_espera) || 0);\n  const dias = Math.floor(horas / 24);\n  const horaResto = horas % 24;\n  const espera = dias > 0 ? (dias + ' día(s) y ' + horaResto + ' hora(s)') : (horas + ' hora(s)');\n  out.push({ json: Object.assign({}, l, { espera_legible: espera, total_pendientes: total }) });\n}\nreturn out;"
+        "jsCode": "// Recordatorio (§4.3.1 / §4.9): un lead HOT/WARM quedó en NUEVO esperando\n// que el profesional le fije precio, plazo y alcance. Sin LIMIT en la\n// consulta: se avisa por cada lead que siga esperando, no solo el más\n// viejo, y cada aviso lleva el total para que el profesional dimensione la\n// cola sin entrar al tablero.\nconst items = $input.all();\n// El total es el de la cola de cada espacio: cada aviso le llega a un\n// desarrollador distinto.\nconst porEspacio = {};\nfor (const it of items) porEspacio[it.json.espacio_id] = (porEspacio[it.json.espacio_id] || 0) + 1;\nconst out = [];\nfor (const it of items) {\n  const l = it.json;\n  const horas = Math.floor(Number(l.horas_espera) || 0);\n  const dias = Math.floor(horas / 24);\n  const horaResto = horas % 24;\n  const espera = dias > 0 ? (dias + ' día(s) y ' + horaResto + ' hora(s)') : (horas + ' hora(s)');\n  out.push({ json: Object.assign({}, l, { espera_legible: espera, total_pendientes: porEspacio[l.espacio_id] }) });\n}\nreturn out;"
       },
       "id": "s10codeprepararpropuestapend0001",
       "name": "Code - Preparar Aviso Propuestas Pendientes",
@@ -3958,33 +4829,100 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=🔔 <b>Propuesta pendiente de enviar</b>\nCliente: {{ String($json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nServicio: {{ $json.servicio }}\nNivel: {{ $json.tier }} ({{ $json.score }}/100)\nEsperando hace: {{ $json.espera_legible }}\n\nHay {{ $json.total_pendientes }} propuesta(s) pendiente(s) de enviar en total. Fijá precio, plazo y alcance desde el tablero para enviarla.",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "propuestas_pendientes",
+            "nivel": "atencion",
+            "mensaje": "=🔔 <b>Propuesta pendiente de enviar</b>\nCliente: {{ String($json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nServicio: {{ $json.servicio }}\nNivel: {{ $json.tier }} ({{ $json.score }}/100)\nEsperando hace: {{ $json.espera_legible }}\n\nHay {{ $json.total_pendientes }} propuesta(s) pendiente(s) de enviar en total. Fijá precio, plazo y alcance desde el tablero para enviarla.",
+            "lead_id": "={{ $json.lead_id || '' }}",
+            "factura_id": "",
+            "espacio_id": ""
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
         }
       },
       "id": "s10telegrampropuestaspend0001",
       "name": "Telegram - Propuestas Pendientes",
-      "type": "n8n-nodes-base.telegram",
+      "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         1050,
         17875
       ],
-      "onError": "continueRegularOutput",
-      "credentials": {
-        "telegramApi": {
-          "id": "Zv2UC716Fxh6BCDs",
-          "name": "Telegram account"
-        }
-      }
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=UPDATE facturas SET estado_pago = 'VENCIDA' WHERE estado_pago = 'PENDIENTE' AND fecha_vencimiento < now() - make_interval(days => {{ $env.FACTURA_VENCIDA_DIAS_GRACIA || 7 }}) RETURNING factura_id, cliente, monto, moneda;",
+        "query": "=UPDATE facturas SET estado_pago = 'VENCIDA' WHERE estado_pago = 'PENDIENTE' AND fecha_vencimiento < now() - make_interval(days => {{ $env.FACTURA_VENCIDA_DIAS_GRACIA || 7 }}) RETURNING factura_id, espacio_id, cliente, monto, moneda;",
         "options": {}
       },
       "id": "s4pgmarcarfacturasvencidas0001",
@@ -4005,7 +4943,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Todo dato que se interpola en el HTML pasa por esc(): nombre, email, etc. los\n// escribe quien completa el formulario público, y sin escapar alcanzaba para\n// inyectar HTML en el correo o en el PDF que renderiza Gotenberg.\nconst esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;');\n// Resume el UPDATE condicional de arriba en un solo aviso: con 0 filas no\n// devuelve nada y el Telegram de abajo no llega a ejecutarse (sin esto,\n// correr el cron sin facturas vencidas mandaría un mensaje vacío todos los\n// días).\nconst items = $input.all();\nif (!items.length) return [];\nconst detalle = items.map((it) => esc(it.json.cliente) + ' — ' + esc(it.json.factura_id) + ' (' + esc(it.json.monto) + ' ' + esc(it.json.moneda) + ')').join('\\n');\nreturn [{ json: { cantidad: items.length, detalle: detalle } }];"
+        "jsCode": "// Todo dato que se interpola en el HTML pasa por esc(): nombre, email, etc. los\n// escribe quien completa el formulario público, y sin escapar alcanzaba para\n// inyectar HTML en el correo o en el PDF que renderiza Gotenberg.\nconst esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;');\n// Resume el UPDATE condicional de arriba en un solo aviso: con 0 filas no\n// devuelve nada y el Telegram de abajo no llega a ejecutarse (sin esto,\n// correr el cron sin facturas vencidas mandaría un mensaje vacío todos los\n// días).\nconst items = $input.all();\nif (!items.length) return [];\n// Un resumen por espacio: cada desarrollador recibe sólo sus facturas.\nconst grupos = {};\nfor (const it of items) (grupos[it.json.espacio_id] = grupos[it.json.espacio_id] || []).push(it.json);\nreturn Object.entries(grupos).map(([espacioId, fs]) => ({ json: {\n  espacio_id: espacioId,\n  cantidad: fs.length,\n  detalle: fs.map((f) => esc(f.cliente) + ' — ' + esc(f.factura_id) + ' (' + esc(f.monto) + ' ' + esc(f.moneda) + ')').join('\\n'),\n} }));"
       },
       "id": "s4coderesumenfacturasvencidas0001",
       "name": "Code - Resumen Facturas Vencidas",
@@ -4018,28 +4956,95 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=🟠 <b>Facturas marcadas VENCIDA</b>\nSe marcaron {{ $json.cantidad }} factura(s) como VENCIDA por superar {{ $env.FACTURA_VENCIDA_DIAS_GRACIA || 7 }} día(s) de gracia desde el vencimiento.\n\n{{ $json.detalle }}",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "facturas_vencidas",
+            "nivel": "atencion",
+            "mensaje": "=🟠 <b>Facturas marcadas VENCIDA</b>\nSe marcaron {{ $json.cantidad }} factura(s) como VENCIDA por superar {{ $env.FACTURA_VENCIDA_DIAS_GRACIA || 7 }} día(s) de gracia desde el vencimiento.\n\n{{ $json.detalle }}",
+            "lead_id": "",
+            "factura_id": "",
+            "espacio_id": "={{ $json.espacio_id || '' }}"
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
         }
       },
       "id": "s4telegramfacturasvencidas0001",
       "name": "Telegram - Facturas Vencidas",
-      "type": "n8n-nodes-base.telegram",
+      "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         1050,
         14300
       ],
-      "onError": "continueRegularOutput",
-      "credentials": {
-        "telegramApi": {
-          "id": "Zv2UC716Fxh6BCDs",
-          "name": "Telegram account"
-        }
-      }
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -4156,28 +5161,95 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=🧾 <b>Factura ANULADA desde el panel</b>\nFactura: {{ $json.factura_id }}\nCliente: {{ String($json.cliente || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nMonto: {{ $json.monto }} {{ $json.moneda }}",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "factura_anulada",
+            "nivel": "info",
+            "mensaje": "=🧾 <b>Factura ANULADA desde el panel</b>\nFactura: {{ $json.factura_id }}\nCliente: {{ String($json.cliente || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nMonto: {{ $json.monto }} {{ $json.moneda }}",
+            "lead_id": "",
+            "factura_id": "={{ $json.factura_id || '' }}",
+            "espacio_id": ""
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
         }
       },
       "id": "s12telegramanulada0001",
       "name": "Telegram - Factura Anulada",
-      "type": "n8n-nodes-base.telegram",
+      "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         1350,
         18640
       ],
-      "onError": "continueRegularOutput",
-      "credentials": {
-        "telegramApi": {
-          "id": "Zv2UC716Fxh6BCDs",
-          "name": "Telegram account"
-        }
-      }
+      "onError": "continueRegularOutput"
     },
     {
       "parameters": {
@@ -4775,28 +5847,94 @@
     },
     {
       "parameters": {
-        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
-        "text": "=⚠️ <b>Pago recibido que no se pudo registrar</b>\nFactura: {{ $json.factura_id }}\nCliente: {{ String($json.cliente || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nPago MercadoPago: {{ $json.mp_payment_id }}\nMotivo: {{ String($json.motivo || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\n\nLa plata entró a MercadoPago pero la factura no cambió de estado. Revisalo: puede corresponder un reembolso.",
-        "additionalFields": {
-          "appendAttribution": false,
-          "parse_mode": "HTML"
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "pago_no_aplicado",
+            "nivel": "critico",
+            "mensaje": "=⚠️ <b>Pago recibido que no se pudo registrar</b>\nFactura: {{ $json.factura_id }}\nCliente: {{ String($json.cliente || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nPago MercadoPago: {{ $json.mp_payment_id }}\nMotivo: {{ String($json.motivo || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\n\nLa plata entró a MercadoPago pero la factura no cambió de estado. Revisalo: puede corresponder un reembolso.",
+            "lead_id": "",
+            "factura_id": "={{ $json.factura_id || '' }}",
+            "espacio_id": ""
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
         }
       },
       "id": "mp-15-0000-4000-8000-aaaaaaaaaaaa",
       "name": "Telegram - Pago No Aplicado",
-      "type": "n8n-nodes-base.telegram",
+      "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
         4400,
         12040
       ],
-      "webhookId": "tg-pago-no-aplicado",
-      "credentials": {
-        "telegramApi": {
-          "id": "Zv2UC716Fxh6BCDs",
-          "name": "Telegram account"
-        }
-      },
       "onError": "continueRegularOutput"
     },
     {

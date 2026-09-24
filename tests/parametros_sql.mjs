@@ -35,7 +35,7 @@ const aqui = path.dirname(fileURLToPath(import.meta.url));
 const wfDir = path.join(aqui, '..', 'workflow');
 // Mismo criterio que en smoke_code_nodes.mjs y verificar_sql.mjs: los dos flujos
 // del artefacto nombrados uno por uno, para no barrer las copias de respaldo.
-const wfFiles = ['crm_postgres.json', 'tickets.json'];
+const wfFiles = ['crm_postgres.json', 'tickets.json', 'avisos.json', 'telegram_vincular.json'];
 
 // Parte por las comas de primer nivel, respetando corchetes, paréntesis, llaves
 // y comillas: `[a, f(x, y), 'p,q']` son tres elementos, no cinco.

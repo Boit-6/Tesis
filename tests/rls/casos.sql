@@ -178,15 +178,15 @@ SELECT probar('anon NO puede borrar un lead',
   'WITH x AS (DELETE FROM leads WHERE lead_id = ''LD-TEST-0001'' RETURNING 1) SELECT count(*) FROM x',
   'permiso denegado');
 
--- ── 13. La RLS está habilitada Y forzada en las 9 tablas de negocio ────────
+-- ── 13. La RLS está habilitada Y forzada en las 10 tablas de negocio ───────
 -- No alcanza con que cada caso de arriba dé el resultado esperado: si a una
 -- tabla nueva se le olvida `ENABLE`/`FORCE ROW LEVEL SECURITY`, este es el
 -- único caso que lo detecta directo contra el catálogo, sin depender de que
 -- alguien se acuerde de sumarle sus propios casos de permisos.
-SELECT probar('las 9 tablas de negocio tienen RLS habilitada y forzada',
+SELECT probar('las 10 tablas de negocio tienen RLS habilitada y forzada',
   'service_role', NULL,
-  'SELECT count(*) FROM pg_class WHERE relname IN (''leads'',''facturas'',''seguimientos'',''logs'',''profiles'',''rate_limit_log'',''admin_emails'',''tickets'',''espacios'') AND relrowsecurity AND relforcerowsecurity',
-  '9 filas');
+  'SELECT count(*) FROM pg_class WHERE relname IN (''leads'',''facturas'',''seguimientos'',''logs'',''profiles'',''rate_limit_log'',''admin_emails'',''tickets'',''espacios'',''avisos'') AND relrowsecurity AND relforcerowsecurity',
+  '10 filas');
 
 -- ── 14. seguimientos: mismo patrón de acceso que facturas ──────────────────
 SELECT probar('n8n_writer inserta un seguimiento',
@@ -411,6 +411,67 @@ SELECT probar('al mover un lead de espacio, sus seguimientos lo siguen',
 SELECT probar('y el dueño anterior deja de verlo',
   'authenticated', '11111111-1111-4111-8111-111111111111',
   'SELECT count(*) FROM facturas WHERE lead_id = ''LD-TEST-0001''', '0 filas');
+
+-- ── 20. Avisos: cada uno ve y marca los de su espacio ──────────────────────
+-- Uno de cada espacio y uno de la plataforma (sin espacio), como los registra n8n.
+SELECT probar('n8n_writer registra avisos',
+  'n8n_writer', NULL,
+  format('WITH x AS (INSERT INTO avisos (espacio_id, tipo, nivel, mensaje) VALUES (%L, ''pago_recibido'', ''atencion'', ''Pago de A''), (%L, ''lead_frio'', ''info'', ''Lead de Pepe''), (NULL, ''error_critico'', ''critico'', ''De la plataforma'') RETURNING 1) SELECT count(*) FROM x',
+         (SELECT id FROM espacios WHERE dueno_id = '11111111-1111-4111-8111-111111111111'),
+         (SELECT id FROM espacios WHERE dueno_id = '22222222-2222-4222-8222-222222222222')),
+  '3 filas');
+SELECT probar('Pepe ve sólo el aviso de su espacio',
+  'authenticated', '22222222-2222-4222-8222-222222222222', 'SELECT count(*) FROM avisos', '1 filas');
+SELECT probar('los avisos de la plataforma no los ve ningún desarrollador',
+  'authenticated', '11111111-1111-4111-8111-111111111111', 'SELECT count(*) FROM avisos WHERE espacio_id IS NULL', '0 filas');
+SELECT probar('Pepe marca su aviso como leído',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (UPDATE avisos SET leido_en = now() RETURNING 1) SELECT count(*) FROM x', '1 filas');
+SELECT probar('Pepe NO puede cambiar el texto de un aviso',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (UPDATE avisos SET mensaje = ''otro'' RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
+SELECT probar('nadie crea avisos desde el panel',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (INSERT INTO avisos (tipo, mensaje) VALUES (''x'', ''x'') RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
+SELECT probar('anon NO puede leer avisos', 'anon', NULL, 'SELECT count(*) FROM avisos', 'permiso denegado');
+
+-- ── 21. Telegram: vincular con un código de un solo uso ───────────────────
+SELECT probar('el dueño pide un código para vincular Telegram',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'SELECT count(*) FROM generar_codigo_telegram() c WHERE length(c) = 8', '1 filas');
+SELECT probar('el dueño NO puede escribirse el chat de Telegram a mano',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (UPDATE espacios SET telegram_chat_id = ''123'' RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
+SELECT probar('anon NO puede pedir códigos', 'anon', NULL, 'SELECT count(*) FROM generar_codigo_telegram()', 'permiso denegado');
+SELECT probar('un código inventado no vincula nada',
+  'n8n_writer', NULL, 'SELECT count(*) FROM vincular_telegram(''ZZZZZZZZ'', ''999'')', '0 filas');
+SELECT probar('n8n canjea el código por el chat y devuelve el nombre del espacio',
+  'n8n_writer', NULL,
+  format('SELECT count(*) FROM vincular_telegram(%L, ''555'') WHERE nombre = ''Estudio Pepe''',
+         (SELECT telegram_codigo FROM espacios WHERE dueno_id = '22222222-2222-4222-8222-222222222222')),
+  '1 filas');
+SELECT probar('el código no sirve dos veces',
+  'service_role', NULL,
+  'SELECT count(*) FROM espacios WHERE telegram_chat_id = ''555'' AND telegram_codigo IS NULL', '1 filas');
+SELECT probar('n8n_writer lee el chat vinculado para mandar los avisos',
+  'n8n_writer', NULL, 'SELECT count(telegram_chat_id) FROM espacios', '1 filas');
+UPDATE espacios SET telegram_codigo = 'VENCIDO1', telegram_codigo_vence = now() - interval '1 minute'
+WHERE dueno_id = '11111111-1111-4111-8111-111111111111';
+SELECT probar('un código vencido no vincula',
+  'n8n_writer', NULL,
+  'SELECT count(*) FROM vincular_telegram(''VENCIDO1'', ''777'')', '0 filas');
+SELECT probar('el panel NO puede canjear códigos (sólo n8n)',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'SELECT count(*) FROM vincular_telegram(''X'', ''1'')', 'permiso denegado');
+SELECT probar('el dueño desvincula su Telegram',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'SELECT count(*) FROM (SELECT desvincular_telegram()) x', '1 filas');
+SELECT probar('y deja de recibir avisos por ahí',
+  'service_role', NULL, 'SELECT count(*) FROM espacios WHERE telegram_chat_id IS NOT NULL', '0 filas');
+
+-- ── 22. Métricas: una fila por espacio y mes ───────────────────────────────
+SELECT probar('n8n ve las métricas separadas por espacio',
+  'n8n_writer', NULL, 'SELECT count(DISTINCT espacio_id) FROM metrics_mensuales', '2 filas');
 
 -- ── Reporte ────────────────────────────────────────────────────────────────
 \o

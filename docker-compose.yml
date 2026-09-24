@@ -34,6 +34,8 @@ services:
       # re-imports del workflow.
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
       - PLATAFORMA_NOMBRE=${PLATAFORMA_NOMBRE:-FormularioLeads}
+      - AVISOS_WORKFLOW_ID=${AVISOS_WORKFLOW_ID:-}
+      - TELEGRAM_WEBHOOK_SECRET=${TELEGRAM_WEBHOOK_SECRET:-}
       # Permite leer $env dentro de los nodos Code (configuración del workflow)
       - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
       # ── URLs del CRM ──────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import EspacioForm from "./espacio-form";
+import TelegramVinculo from "./telegram-vinculo";
 
 import {getPanelUser} from "@/lib/auth";
 
@@ -28,6 +29,8 @@ export default async function EspacioPage() {
       </div>
 
       <EspacioForm bienvenida={bienvenida} espacio={espacio} />
+
+      {!bienvenida && <TelegramVinculo vinculado={Boolean(espacio.telegram_chat_id)} />}
 
       {!bienvenida && (
         <Link

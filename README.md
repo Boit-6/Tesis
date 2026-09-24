@@ -126,6 +126,11 @@ Esa cuenta pasa a `admin` recién cuando confirma el email. El rol no da acceso 
 Al entrar por primera vez, cada desarrollador elige el nombre de su espacio y la dirección de su formulario, que queda en `/f/<dirección>`: los pedidos que llegan por ahí van a su espacio. El formulario de la raíz (`/`) no es de nadie y por ahora manda los pedidos al espacio del admin.
 
 **3. Orquestación (n8n + Gotenberg):**
+
+Además del flujo principal y el de tickets, hay que importar:
+- `workflow/avisos.json`: los avisos a cada desarrollador (panel, correo y Telegram). Su id va en `AVISOS_WORKFLOW_ID`.
+- `workflow/telegram_vincular.json` (opcional): el bot con el que cada desarrollador vincula su Telegram. Hay que registrar el webhook una vez con `setWebhook` y el `secret_token` de `TELEGRAM_WEBHOOK_SECRET` (el comando está en la nota del workflow), y poner el usuario del bot en `NEXT_PUBLIC_TELEGRAM_BOT`.
+
 ```bash
 cp .env.example .env        # completá TELEGRAM_CHAT_ID, N8N_PUBLIC_URL…
 docker compose up -d        # n8n en http://localhost:5678 + Gotenberg en la misma red
@@ -180,7 +185,7 @@ npm run test:docker
 | Prueba | Qué verifica |
 |---|---|
 | `test:sql` | Compila con `PREPARE` las **28 consultas SQL** de los workflows contra el esquema real. Una columna mal escrita en un nodo Postgres se detecta acá y no en producción |
-| `test:rls` | Aplica `db/schema.sql` **tal cual está en el repositorio** y ejecuta **102 casos** de RLS rol por rol: que `anon` no acceda a nada, que cada desarrollador vea sólo lo de su espacio y no pueda tocar lo de otro, que lo que cuelga de un lead siga siempre a su espacio, que la auditoría esté cerrada, que nadie pueda escribir desde el navegador ni auto-ascenderse a admin, y que la whitelist de admins exija un email confirmado |
+| `test:rls` | Aplica `db/schema.sql` **tal cual está en el repositorio** y ejecuta **121 casos** de RLS rol por rol: que `anon` no acceda a nada, que cada desarrollador vea sólo lo de su espacio y no pueda tocar lo de otro, que lo que cuelga de un lead siga siempre a su espacio, que la auditoría esté cerrada, que nadie pueda escribir desde el navegador ni auto-ascenderse a admin, y que la whitelist de admins exija un email confirmado |
 | `test:idempotencia` | Ejecuta de verdad las consultas de deduplicación (S6) y de reconciliación de facturas (S5) sobre el esquema real, leyendo el SQL del propio workflow: si un nodo deja de ser idempotente, se pone en rojo |
 
 Ambas levantan un PostgreSQL desechable: no tocan ninguna instancia real.

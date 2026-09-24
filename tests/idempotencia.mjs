@@ -506,14 +506,25 @@ try {
       ('Reciente', 'ALTA', 'EN_CURSO', now() - interval '2 days', now() - interval '2 days'),
       ('Cerrado viejo', 'BAJA', 'HECHO', now() - interval '40 days', now() - interval '40 days'),
       ('Incendio', 'CRITICA', 'BACKLOG', now() - interval '9 days', now() - interval '9 days');
+    -- Uno del tablero de otra desarrolladora: su resumen es aparte.
+    INSERT INTO tickets (titulo, prioridad, estado, creado_en, ultimo_movimiento, espacio_id)
+    SELECT 'De Ana', 'BAJA', 'BACKLOG', now() - interval '12 days', now() - interval '12 days', id
+    FROM espacios WHERE slug = 'estudio-ana';
   `);
   const ticket = (titulo) => valor(`SELECT prioridad || '/' || escaladas || '/' || dias_quieto || '/' || score FROM tickets_tablero WHERE titulo = '${titulo}';`);
 
   comprobar('el score crece con los días abierto (BAJA 10 + 2×11 = 32)', ticket('Olvidado').endsWith('/32'), ticket('Olvidado'));
   comprobar('un ticket cerrado vale 0', ticket('Cerrado viejo').endsWith('/0'), ticket('Cerrado viejo'));
 
-  const [resumen] = ejecutar(SQL_ESCALAR);
-  const [abiertos, escaladas, criticos] = resumen.split('|');
+  // Una fila por espacio con tickets abiertos: espacio_id|abiertos|escaladas|criticos.
+  const idAna = valor("SELECT id FROM espacios WHERE slug = 'estudio-ana';");
+  const resumenes = ejecutar(SQL_ESCALAR).map((f) => f.split('|'));
+  const [, abiertos, escaladas, criticos] = resumenes.find((f) => f[0] !== idAna);
+  const deAna = resumenes.find((f) => f[0] === idAna);
+
+  comprobar('el cron arma un resumen por espacio', resumenes.length === 2, JSON.stringify(resumenes));
+  comprobar('el resumen de Ana tiene sólo su ticket, y lo escaló',
+    deAna && deAna[1] === '1' && JSON.parse(deAna[2]).map((t) => t.titulo).join() === 'De Ana', JSON.stringify(deAna));
 
   comprobar('el cron escala sólo al que superó lo que tolera su prioridad',
     JSON.parse(escaladas).map((t) => t.titulo).join() === 'Olvidado', escaladas);
@@ -524,7 +535,7 @@ try {
     ticket('Incendio').startsWith('CRITICA/0/') && JSON.parse(criticos).some((t) => t.titulo === 'Incendio'), criticos);
   comprobar('el resumen cuenta los abiertos', Number(abiertos) >= 4, abiertos);
   comprobar('correrlo de nuevo el mismo día no vuelve a escalar',
-    JSON.parse(ejecutar(SQL_ESCALAR)[0].split('|')[1]).length === 0);
+    ejecutar(SQL_ESCALAR).every((f) => JSON.parse(f.split('|')[2]).length === 0));
 
   psql("UPDATE tickets SET estado = 'HECHO' WHERE titulo = 'Reciente';");
   comprobar('pasar a HECHO lo cierra (cerrado_en)',
