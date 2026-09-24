@@ -94,5 +94,26 @@ check('una dirección con espacios o símbolos se rechaza, no cae al espacio del
   conEspacio("ana'; DROP TABLE leads;--").error?.includes('espacio invalido') ?? false);
 check('una dirección demasiado corta se rechaza', conEspacio('ab').error?.includes('espacio invalido') ?? false);
 
+// ── Presupuesto en rangos (formulario desde el 24-sep-2026) ────────────────
+// El scoring sigue leyendo `presupuesto`: tiene que quedar el piso del rango,
+// que coincide con los cortes de SCORING_PRESUPUESTO.
+const conRango = (rango, extra = {}) =>
+  normalizar({...base, email: 'a@b.co', presupuesto_rango: rango, ...extra});
+
+for (const [rango, piso] of [['hasta_300', 100], ['300_1000', 300], ['1000_2000', 1000], ['2000_5000', 2000], ['mas_5000', 5000]]) {
+  const r = conRango(rango);
+
+  check(`el rango ${rango} guarda el piso ${piso}`, r.lead?.presupuesto === piso && r.lead?.presupuesto_rango === rango, JSON.stringify(r));
+}
+check('con rango, un importe suelto que mande el cliente no manda',
+  conRango('300_1000', {presupuesto: 999999}).lead?.presupuesto === 300);
+check('un rango inventado se rechaza', conRango('mil_millones').error?.includes('rango invalido') ?? false);
+check('sin rango se sigue aceptando el importe suelto', normalizar({...base, email: 'a@b.co', presupuesto: 6000}).lead?.presupuesto_rango === '');
+
+// ── Honeypot ────────────────────────────────────────────────────────────────
+check('con el campo trampa completo se rechaza',
+  conRango('mas_5000', {sitio_web: 'http://spam.test'}).error?.includes('honeypot') ?? false);
+check('con el campo trampa vacío pasa', conRango('mas_5000', {sitio_web: ''}).ok);
+
 console.log('\nResultado: ' + ok + ' OK, ' + fail + ' FAIL');
 process.exit(fail ? 1 : 0);

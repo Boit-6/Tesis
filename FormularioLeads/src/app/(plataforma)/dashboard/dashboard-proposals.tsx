@@ -4,7 +4,9 @@ import type {PorEnviar} from "./dashboard-types";
 
 import {useState} from "react";
 
-import {SectionHeader, Tag, formatMoney} from "./dashboard-shared";
+import {SectionHeader, Tag} from "./dashboard-shared";
+
+import {presupuestoDeclarado} from "@/lib/presupuesto";
 
 // Formulario de términos de una propuesta pendiente. El precio arranca vacío a
 // propósito: el presupuesto que declaró el interesado se muestra al lado como
@@ -37,7 +39,7 @@ function TerminosPropuesta({
         </Tag>
         <span className="text-muted text-[13px]">{lead.servicio?.replace(/_/g, " ")}</span>
         <span className="text-mist text-[12.5px]">
-          declaró {formatMoney(lead.presupuesto)} · {lead.email}
+          declaró {presupuestoDeclarado(lead.presupuesto_rango, lead.presupuesto)} · {lead.email}
         </span>
       </div>
 

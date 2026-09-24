@@ -4,22 +4,26 @@ import {useEffect, useRef, useState} from "react";
 import {useForm} from "react-hook-form";
 import Link from "next/link";
 
+import {RANGOS_PRESUPUESTO} from "@/lib/presupuesto";
+
 const N8N_BASE = process.env.NEXT_PUBLIC_N8N_BASE;
 const WEBHOOK_URL = `${N8N_BASE}/webhook/lead-nuevo`;
 
+// El valor es el texto que n8n traduce a servicio_tipo (svcMap en Code -
+// Normalizar Lead): no cambiarlo sin cambiar el mapa.
 const SERVICIOS = [
-  "Desarrollo Web",
-  "Diseño UX/UI",
-  "Marketing Digital",
-  "SEO / Posicionamiento",
-  "Consultoría",
-  "Otro",
+  {value: "Desarrollo Web", detalle: "Sitios, sistemas y tiendas"},
+  {value: "Diseño UX/UI", detalle: "Interfaces y prototipos"},
+  {value: "Marketing Digital", detalle: "Campañas y redes"},
+  {value: "SEO / Posicionamiento", detalle: "Aparecer en buscadores"},
+  {value: "Consultoría", detalle: "Asesoramiento técnico"},
+  {value: "Otro", detalle: "Contanos en la descripción"},
 ];
 
 const URGENCIAS = [
-  {value: "baja", label: "Baja", detalle: "puedo esperar"},
-  {value: "media", label: "Media", detalle: "próximas semanas"},
-  {value: "alta", label: "Alta", detalle: "lo antes posible"},
+  {value: "baja", label: "Sin apuro"},
+  {value: "media", label: "Próximas semanas"},
+  {value: "alta", label: "Lo antes posible"},
 ];
 
 interface FormData {
@@ -27,10 +31,12 @@ interface FormData {
   email: string;
   telefono: string;
   servicio: string;
-  presupuesto: number;
+  presupuesto_rango: string;
   descripcion: string;
   urgencia: string;
   consentimiento: boolean;
+  // Honeypot: el campo está escondido, así que una persona lo deja vacío.
+  sitio_web: string;
 }
 
 const INITIAL_FORM: FormData = {
@@ -38,21 +44,12 @@ const INITIAL_FORM: FormData = {
   email: "",
   telefono: "",
   servicio: "",
-  presupuesto: 1000,
+  presupuesto_rango: "",
   descripcion: "",
-  urgencia: "",
+  urgencia: "media",
   consentimiento: false,
+  sitio_web: "",
 };
-
-const PRESUPUESTO_MIN = 100;
-// El tope era 5000, que es exactamente donde empieza el tramo más alto del
-// scoring: un proyecto de 20.000 tenía que declararse como uno de 5.000 y los
-// dos quedaban indistinguibles en la base, en el tablero y en la propuesta. El
-// sistema existe para priorizar y perdía la información justo en la franja que
-// más le importa. Subir el tope no toca la tabla de puntajes —de 5000 para
-// arriba se siguen sumando los mismos 40 puntos— pero deja de descartar el dato.
-const PRESUPUESTO_MAX = 20000;
-const PRESUPUESTO_STEP = 100;
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -63,7 +60,13 @@ const labelClass = "mb-2 block text-[10px] tracking-[0.16em] text-faint uppercas
 
 const errorTextClass = "mt-1.5 text-[12px] text-brick";
 
-const dotClass = "size-3.5 shrink-0 rounded-full bg-card transition duration-200";
+// Opción elegible con aspecto de tarjeta o de botón: el radio real queda
+// escondido (sr-only, sigue siendo el que recibe el foco y el teclado) y la
+// etiqueta se pinta según esté marcado.
+const opcionClass =
+  "flex cursor-pointer border px-4 py-3 transition duration-200 has-[:focus-visible]:outline has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ochre";
+const opcionActiva = "border-ochre bg-ochre/5 text-ink";
+const opcionInactiva = "border-rule text-ink-soft hover:border-mist";
 
 function SectionHeader({num, title}: {num: string; title: string}) {
   return (
@@ -76,9 +79,7 @@ function SectionHeader({num, title}: {num: string; title: string}) {
 }
 
 // `espacio`: la dirección del desarrollador al que va el pedido (/f/<slug>).
-// Sin él, el pedido es del formulario de la raíz y n8n lo manda al espacio del
-// admin.
-export default function LeadForm({espacio}: {espacio?: string} = {}) {
+export default function LeadForm({espacio}: {espacio: string}) {
   const {
     register,
     handleSubmit,
@@ -88,7 +89,7 @@ export default function LeadForm({espacio}: {espacio?: string} = {}) {
 
   const servicio = watch("servicio");
   const urgencia = watch("urgencia");
-  const presupuesto = watch("presupuesto");
+  const presupuestoRango = watch("presupuesto_rango");
   const descripcion = watch("descripcion");
 
   // Resultado del envío (red/servidor), separado de los errores de validación
@@ -108,14 +109,21 @@ export default function LeadForm({espacio}: {espacio?: string} = {}) {
   // webhook es público y `fetch` se puede repetir a mano).
   const enviando = useRef(false);
 
-  const sliderPercent =
-    ((presupuesto - PRESUPUESTO_MIN) / (PRESUPUESTO_MAX - PRESUPUESTO_MIN)) * 100;
   const descripcionLength = descripcion.trim().length;
 
   const onSubmit = handleSubmit(async (data) => {
     if (enviando.current) return;
 
     setSubmitError(null);
+
+    // Si el campo trampa vino completo, se simula el éxito sin mandar nada:
+    // al bot no le sirve saber que lo descubrieron. n8n lo rechaza igual si
+    // alguien le pega directo al webhook.
+    if (data.sitio_web.trim()) {
+      setSuccess(true);
+
+      return;
+    }
 
     if (!N8N_BASE) {
       setSubmitError("Falta la variable NEXT_PUBLIC_N8N_BASE.");
@@ -134,7 +142,7 @@ export default function LeadForm({espacio}: {espacio?: string} = {}) {
         body: JSON.stringify({
           ...data,
           fuente: "formulario_web",
-          ...(espacio ? {espacio} : {}),
+          espacio,
           timestamp: new Date().toISOString(),
         }),
       });
@@ -164,11 +172,13 @@ export default function LeadForm({espacio}: {espacio?: string} = {}) {
 
   if (success) {
     return (
-      <div className="border-rule-soft bg-card flex flex-col items-start gap-5 border px-8 py-16 shadow-[0_1px_2px_rgba(25,23,19,0.04),0_12px_32px_-18px_rgba(25,23,19,0.18)] sm:px-11">
+      <div className="border-rule-soft bg-card flex flex-col items-start gap-5 border px-8 py-14 shadow-[0_1px_2px_rgba(25,23,19,0.04),0_12px_32px_-18px_rgba(25,23,19,0.18)] sm:px-11">
         <svg
+          aria-hidden="true"
+          className="text-ochre"
           fill="none"
           height={38}
-          stroke="#8f5f22"
+          stroke="currentColor"
           strokeLinecap="round"
           strokeLinejoin="round"
           strokeWidth={1.3}
@@ -185,9 +195,24 @@ export default function LeadForm({espacio}: {espacio?: string} = {}) {
         >
           ¡Gracias!
         </h2>
-        <p className="text-muted max-w-xs text-[14.5px] leading-relaxed">
-          Hemos recibido tus datos correctamente. Nos contactaremos muy pronto.
+        <p className="text-muted max-w-sm text-[14.5px] leading-relaxed">
+          Recibimos tu consulta. Esto es lo que sigue:
         </p>
+        <ol className="border-rule-soft w-full max-w-md border-t">
+          {[
+            "Te llega un correo confirmando que recibimos tu consulta.",
+            "La revisamos y te respondemos en menos de 24 horas.",
+            "Si el proyecto encaja, te mandamos una propuesta con precio y plazo para que la aceptes en línea.",
+          ].map((paso, i) => (
+            <li
+              key={paso}
+              className="border-rule-soft text-ink-soft flex gap-4 border-b py-3.5 text-[14px] leading-relaxed"
+            >
+              <span className="text-ochre font-serif text-[17px] leading-none">{i + 1}</span>
+              <span>{paso}</span>
+            </li>
+          ))}
+        </ol>
       </div>
     );
   }
@@ -294,39 +319,31 @@ export default function LeadForm({espacio}: {espacio?: string} = {}) {
       <section className="border-rule-soft border-b px-8 py-8 sm:px-10">
         <SectionHeader num="II" title="Proyecto" />
 
-        <fieldset className="mb-7">
+        <fieldset className="mb-8">
           <legend className={labelClass}>
             Servicio <span className="text-ochre">*</span>
           </legend>
-          <div className="grid gap-x-6 sm:grid-cols-2">
-            {SERVICIOS.map((s) => {
-              const activo = servicio === s;
-
-              return (
-                <label
-                  key={s}
-                  className={`hover:text-ochre flex cursor-pointer items-center gap-2.5 py-2.5 text-[14px] transition duration-200 ${
-                    activo ? "text-ink" : "text-ink-soft"
-                  }`}
-                >
-                  <input
-                    required
-                    className="peer sr-only"
-                    type="radio"
-                    value={s}
-                    {...register("servicio", {
-                      required: "Debés seleccionar un servicio.",
-                    })}
-                  />
-                  <span
-                    className={`${dotClass} peer-focus-visible:outline-ochre peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 ${
-                      activo ? "border-ochre border-4" : "border-rule border"
-                    }`}
-                  />
-                  <span>{s}</span>
-                </label>
-              );
-            })}
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            {SERVICIOS.map((s) => (
+              <label
+                key={s.value}
+                className={`${opcionClass} flex-col gap-1 ${
+                  servicio === s.value ? opcionActiva : opcionInactiva
+                }`}
+              >
+                <input
+                  required
+                  className="sr-only"
+                  type="radio"
+                  value={s.value}
+                  {...register("servicio", {
+                    required: "Debés seleccionar un servicio.",
+                  })}
+                />
+                <span className="text-[14px] leading-snug">{s.value}</span>
+                <span className="text-mist text-[12px] leading-snug">{s.detalle}</span>
+              </label>
+            ))}
           </div>
           {errors.servicio && (
             <p className={errorTextClass} role="alert">
@@ -336,35 +353,19 @@ export default function LeadForm({espacio}: {espacio?: string} = {}) {
         </fieldset>
 
         <fieldset>
-          <legend className={labelClass}>Urgencia</legend>
-          <div className="grid gap-x-6 sm:grid-cols-2">
-            {URGENCIAS.map((u) => {
-              const activo = urgencia === u.value;
-
-              return (
-                <label
-                  key={u.value}
-                  className={`hover:text-ochre flex cursor-pointer items-center gap-2.5 py-2.5 text-[14px] transition duration-200 ${
-                    activo ? "text-ink" : "text-ink-soft"
-                  }`}
-                >
-                  <input
-                    className="peer sr-only"
-                    type="radio"
-                    value={u.value}
-                    {...register("urgencia")}
-                  />
-                  <span
-                    className={`${dotClass} peer-focus-visible:outline-ochre peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 ${
-                      activo ? "border-ochre border-4" : "border-rule border"
-                    }`}
-                  />
-                  <span>
-                    {u.label} <span className="text-mist text-[12.5px]">— {u.detalle}</span>
-                  </span>
-                </label>
-              );
-            })}
+          <legend className={labelClass}>¿Para cuándo lo necesitás?</legend>
+          <div className="grid grid-cols-3">
+            {URGENCIAS.map((u, i) => (
+              <label
+                key={u.value}
+                className={`${opcionClass} items-center justify-center text-center text-[13px] leading-snug ${
+                  i > 0 ? "-ml-px" : ""
+                } ${urgencia === u.value ? `${opcionActiva} relative z-10` : opcionInactiva}`}
+              >
+                <input className="sr-only" type="radio" value={u.value} {...register("urgencia")} />
+                {u.label}
+              </label>
+            ))}
           </div>
         </fieldset>
       </section>
@@ -372,30 +373,43 @@ export default function LeadForm({espacio}: {espacio?: string} = {}) {
       {/* III — Presupuesto */}
       <section className="border-rule-soft border-b px-8 py-8 sm:px-10">
         <SectionHeader num="III" title="Presupuesto" />
-        <div className="flex items-baseline justify-between">
-          <label className={labelClass} htmlFor="presupuesto">
-            Estimado en USD
-          </label>
-          <span className="text-ink font-serif text-[40px] leading-none tracking-tight">
-            ${presupuesto.toLocaleString("es-AR")}
-          </span>
-        </div>
-        <input
-          className="[&::-moz-range-thumb]:bg-ochre [&::-webkit-slider-thumb]:bg-ochre mt-3 h-px w-full cursor-pointer appearance-none rounded-none border-0 outline-none [&::-moz-range-thumb]:size-3 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-none [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:transition [&::-moz-range-thumb]:duration-200 [&::-moz-range-track]:appearance-none [&::-moz-range-track]:rounded-none [&::-moz-range-track]:border-0 [&::-moz-range-track]:bg-transparent [&::-webkit-slider-thumb]:size-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:border-0 [&::-webkit-slider-thumb]:transition [&::-webkit-slider-thumb]:duration-200 [&::-webkit-slider-thumb]:ease-[cubic-bezier(.25,.46,.45,.94)]"
-          id="presupuesto"
-          max={PRESUPUESTO_MAX}
-          min={PRESUPUESTO_MIN}
-          step={PRESUPUESTO_STEP}
-          style={{
-            background: `linear-gradient(to right, #8f5f22 ${sliderPercent}%, #dcd5c7 ${sliderPercent}%)`,
-          }}
-          type="range"
-          {...register("presupuesto", {valueAsNumber: true})}
-        />
-        <div className="text-mist mt-4 flex justify-between text-[11px]">
-          <span>${PRESUPUESTO_MIN.toLocaleString("es-AR")}</span>
-          <span>${PRESUPUESTO_MAX.toLocaleString("es-AR")}</span>
-        </div>
+        <fieldset>
+          <legend className={labelClass}>
+            ¿Cuánto pensás invertir? <span className="text-ochre">*</span>
+          </legend>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {RANGOS_PRESUPUESTO.map((r) => (
+              <label
+                key={r.clave}
+                className={`${opcionClass} items-center gap-3 text-[14px] ${
+                  presupuestoRango === r.clave ? opcionActiva : opcionInactiva
+                }`}
+              >
+                <input
+                  required
+                  className="sr-only"
+                  type="radio"
+                  value={r.clave}
+                  {...register("presupuesto_rango", {
+                    required: "Elegí un rango de presupuesto.",
+                  })}
+                />
+                <span
+                  aria-hidden="true"
+                  className={`size-3.5 shrink-0 rounded-full transition duration-200 ${
+                    presupuestoRango === r.clave ? "border-ochre border-4" : "border-rule border"
+                  }`}
+                />
+                {r.etiqueta}
+              </label>
+            ))}
+          </div>
+          {errors.presupuesto_rango && (
+            <p className={errorTextClass} role="alert">
+              {errors.presupuesto_rango.message}
+            </p>
+          )}
+        </fieldset>
       </section>
 
       {/* IV — Descripción */}
@@ -467,6 +481,19 @@ export default function LeadForm({espacio}: {espacio?: string} = {}) {
           </p>
         )}
       </section>
+
+      {/* Honeypot: fuera de la vista y del orden de tabulación. Los bots que
+          completan todos los campos lo llenan; una persona no lo ve. */}
+      <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden">
+        <label htmlFor="sitio_web">Sitio web</label>
+        <input
+          autoComplete="off"
+          id="sitio_web"
+          tabIndex={-1}
+          type="text"
+          {...register("sitio_web")}
+        />
+      </div>
 
       <div className="px-8 pb-9 sm:px-10">
         <button

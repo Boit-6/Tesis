@@ -2,7 +2,7 @@ import type {Metadata} from "next";
 
 import Link from "next/link";
 
-import AvisoPrivacidad from "../components/AvisoPrivacidad";
+import AvisoPrivacidad from "@/app/components/AvisoPrivacidad";
 
 export const metadata: Metadata = {
   title: "Política de Privacidad — FormularioLeads",

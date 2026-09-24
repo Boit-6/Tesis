@@ -1,6 +1,6 @@
 import type {Metadata} from "next";
 
-import PagoResultado from "../components/pago-resultado";
+import PagoResultado from "@/app/components/pago-resultado";
 
 export const metadata: Metadata = {
   robots: {index: false, follow: false},

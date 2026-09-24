@@ -110,6 +110,7 @@ export interface Database {
           email: string;
           telefono: string | null;
           presupuesto: number;
+          presupuesto_rango: string | null;
           urgencia: UrgenciaTipo;
           servicio: ServicioTipo;
           descripcion: string | null;
@@ -144,6 +145,7 @@ export interface Database {
           email: string;
           telefono?: string | null;
           presupuesto?: number;
+          presupuesto_rango?: string | null;
           urgencia?: UrgenciaTipo;
           servicio?: ServicioTipo;
           descripcion?: string | null;

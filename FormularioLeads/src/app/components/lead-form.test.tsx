@@ -15,7 +15,7 @@ describe("LeadForm", () => {
     process.env = {...envOriginal};
   });
 
-  async function renderForm(espacio?: string) {
+  async function renderForm(espacio = "estudio-ana") {
     const {default: LeadForm} = await import("./lead-form");
 
     return render(<LeadForm espacio={espacio} />);
@@ -24,7 +24,8 @@ describe("LeadForm", () => {
   async function llenarValido(user: ReturnType<typeof userEvent.setup>) {
     await user.type(screen.getByLabelText(/^Nombre/), "Juan Pérez");
     await user.type(screen.getByLabelText(/^Email/), "juan@test.com");
-    await user.click(screen.getByLabelText("Desarrollo Web"));
+    await user.click(screen.getByLabelText(/^Desarrollo Web/));
+    await user.click(screen.getByLabelText("US$ 1.000 – 2.000"));
     await user.type(screen.getByLabelText(/Contanos tu proyecto/), "x".repeat(25));
     await user.click(screen.getByLabelText(/He leído y acepto/));
   }
@@ -42,6 +43,7 @@ describe("LeadForm", () => {
     expect(await screen.findByText(/al menos 2 caracteres/)).toBeInTheDocument();
     expect(screen.getByText(/formato válido/)).toBeInTheDocument();
     expect(screen.getByText(/Debés seleccionar un servicio/)).toBeInTheDocument();
+    expect(screen.getByText(/Elegí un rango de presupuesto/)).toBeInTheDocument();
     expect(screen.getByText(/al menos 20 caracteres/)).toBeInTheDocument();
     expect(screen.getByText(/Debés aceptar la Política/)).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
@@ -100,26 +102,29 @@ describe("LeadForm", () => {
     expect(body.email).toBe("juan@test.com");
     expect(body.servicio).toBe("Desarrollo Web");
     expect(body.fuente).toBe("formulario_web");
-    // El de la raíz no es de ningún desarrollador: no manda espacio.
-    expect(body).not.toHaveProperty("espacio");
+    expect(body.espacio).toBe("estudio-ana");
+    // El rango, no un importe: n8n guarda el piso para el scoring.
+    expect(body.presupuesto_rango).toBe("1000_2000");
+    expect(body).not.toHaveProperty("presupuesto");
+    expect(body.urgencia).toBe("media");
   });
 
-  it("el formulario de un espacio (/f/<slug>) manda su dirección", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(new Response(null, {status: 200}));
+  it("si el campo trampa viene completo, muestra el éxito sin mandar nada", async () => {
+    const fetchMock = vi.fn();
 
     vi.stubGlobal("fetch", fetchMock);
 
     const user = userEvent.setup();
 
-    await renderForm("estudio-ana");
+    const {container} = await renderForm();
+
     await llenarValido(user);
+    // Una persona no lo ve ni llega con el tabulador; un bot lo completa.
+    await user.type(container.querySelector<HTMLInputElement>("#sitio_web")!, "http://spam.test");
     await user.click(screen.getByRole("button", {name: /Enviar consulta/i}));
 
     expect(await screen.findByText("¡Gracias!")).toBeInTheDocument();
-
-    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-
-    expect(JSON.parse(init.body as string).espacio).toBe("estudio-ana");
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("un doble click no manda dos peticiones (deuda S6 de la Tabla 11)", async () => {

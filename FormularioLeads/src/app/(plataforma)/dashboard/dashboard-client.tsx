@@ -159,7 +159,9 @@ export default function DashboardClient() {
         supabase.from("leads").select("estado"),
         supabase
           .from("leads")
-          .select("lead_id,nombre,email,servicio,estado,tier,presupuesto,fecha_ingreso")
+          .select(
+            "lead_id,nombre,email,servicio,estado,tier,presupuesto,presupuesto_rango,fecha_ingreso",
+          )
           .order("fecha_ingreso", {ascending: false})
           .limit(LEADS_LIMITE),
         supabase
@@ -196,7 +198,9 @@ export default function DashboardClient() {
           .order("fecha_ingreso", {ascending: false}),
         supabase
           .from("leads")
-          .select("lead_id,nombre,email,servicio,tier,score,presupuesto,fecha_ingreso")
+          .select(
+            "lead_id,nombre,email,servicio,tier,score,presupuesto,presupuesto_rango,fecha_ingreso",
+          )
           .eq("estado", "NUEVO")
           .in("tier", ["HOT", "WARM"])
           .order("score", {ascending: false}),

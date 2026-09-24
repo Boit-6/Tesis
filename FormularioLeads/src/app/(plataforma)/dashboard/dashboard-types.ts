@@ -29,6 +29,7 @@ export interface Lead {
   estado: LeadEstado;
   tier: Tier;
   presupuesto: number;
+  presupuesto_rango: string | null;
   fecha_ingreso: string;
 }
 
@@ -70,6 +71,7 @@ export interface PorEnviar {
   tier: Tier;
   score: number;
   presupuesto: number;
+  presupuesto_rango: string | null;
   fecha_ingreso: string;
 }
 

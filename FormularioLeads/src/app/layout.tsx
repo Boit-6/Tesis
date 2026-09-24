@@ -2,7 +2,6 @@ import type {Metadata} from "next";
 import type {ReactNode} from "react";
 
 import {Instrument_Sans, Instrument_Serif} from "next/font/google";
-import Link from "next/link";
 
 import "./globals.css";
 
@@ -44,25 +43,16 @@ export const metadata: Metadata = {
 export default async function RootLayout({children}: {children: ReactNode}) {
   return (
     <html className={`${instrumentSans.variable} ${instrumentSerif.variable}`} lang="es">
-      <body className="bg-paper text-ink grid min-h-screen grid-rows-[auto_1fr_auto] font-sans antialiased">
+      <body className="bg-paper text-ink grid min-h-screen grid-rows-[1fr_auto] font-sans antialiased">
         <a
           className="focus:bg-ink focus:text-paper sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2 focus:text-[12px] focus:tracking-[0.1em] focus:uppercase"
           href="#contenido"
         >
           Saltar al contenido
         </a>
-        <header className="flex items-center justify-between gap-4 px-6 py-7 sm:px-10">
-          <Link
-            className="text-ink hover:text-ochre font-serif text-[19px] tracking-tight transition duration-200"
-            href="/"
-          >
-            FormularioLeads
-          </Link>
-          <span className="text-faint text-[10px] tracking-[0.2em] uppercase">
-            Consultas · 2026
-          </span>
-        </header>
-        <div id="contenido">{children}</div>
+        {/* El encabezado lo pone cada grupo: el de la plataforma en
+            (plataforma)/layout.tsx y el del desarrollador en /f/<slug>. */}
+        {children}
         <footer className="px-6 py-10 text-center sm:px-10">
           <p className="text-mist text-[10px] tracking-[0.2em] uppercase">© 2026</p>
         </footer>

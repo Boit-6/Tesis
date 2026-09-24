@@ -395,6 +395,17 @@ DO $$ BEGIN
     CHECK (precio_propuesto IS NULL OR precio_propuesto > 0) NOT VALID;
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
+-- Rango de presupuesto que eligió el cliente (formulario desde el 24-sep-2026,
+-- que dejó el slider por rangos). `presupuesto` sigue siendo la entrada del
+-- scoring y guarda el piso del rango (100 para «menos de 300»), que coincide
+-- con los cortes de SCORING_PRESUPUESTO; este campo guarda lo que el cliente
+-- dijo de verdad. NULL = lead anterior a los rangos o llegado por otra vía.
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS presupuesto_rango TEXT;
+DO $$ BEGIN
+  ALTER TABLE leads ADD CONSTRAINT chk_leads_presupuesto_rango
+    CHECK (presupuesto_rango IS NULL OR presupuesto_rango IN ('hasta_300','300_1000','1000_2000','2000_5000','mas_5000'));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
 -- profiles.email pasa a nullable (para bases ya creadas): Supabase Auth
 -- admite registros solo-teléfono y el trigger handle_new_user() los rechazaba.
 ALTER TABLE profiles ALTER COLUMN email DROP NOT NULL;

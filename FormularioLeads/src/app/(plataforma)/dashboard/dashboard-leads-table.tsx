@@ -4,10 +4,11 @@ import type {Lead} from "./dashboard-types";
 
 import {useState} from "react";
 
-import {SectionHeader, Tag, formatDate, formatMoney} from "./dashboard-shared";
+import {SectionHeader, Tag, formatDate} from "./dashboard-shared";
 import {ESTADO_COLOR, LEADS_LIMITE, TIER_COLOR} from "./dashboard-types";
 
 import {tdClass, thClass} from "@/lib/constants";
+import {presupuestoDeclarado} from "@/lib/presupuesto";
 
 const POR_PAGINA = 15;
 
@@ -110,7 +111,7 @@ export default function DashboardLeadsTable({leads}: {leads: Lead[]}) {
                       </Tag>
                     </td>
                     <td className={`${tdClass} text-ink text-right`}>
-                      {formatMoney(lead.presupuesto)}
+                      {presupuestoDeclarado(lead.presupuesto_rango, lead.presupuesto)}
                     </td>
                     <td className={`${tdClass} text-mist pr-0 text-right`}>
                       {formatDate(lead.fecha_ingreso)}
