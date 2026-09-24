@@ -90,6 +90,8 @@ const NODOS_HTML = [
   'Code - Emails Asignación Bolsa',
   // Cron de la bolsa: invitación a elegir y aviso de vencimiento.
   'Code - Emails Bolsa Cliente',
+  // Aviso de mensajes sin leer (etapa 9).
+  'Code - Emails Mensajes',
 ];
 
 for (const nombre of NODOS_HTML) {

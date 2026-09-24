@@ -7367,6 +7367,104 @@
         750,
         22170
       ]
+    },
+    {
+      "parameters": {
+        "content": "## 💬 RAMA 12 · Mensajes sin leer (cron cada 5 min)\nJunta los mensajes con más de `MENSAJES_AVISO_MINUTOS` (10) sin leer, los marca como avisados en la misma consulta y manda **un correo por persona** con cada proyecto y su enlace: el desarrollador a su Bolsa, el cliente con cuenta a «Mis proyectos», el que no tiene cuenta a /elegir/<token>.",
+        "height": 450,
+        "width": 1230,
+        "color": 4
+      },
+      "id": "20645492-1d39-4cc7-9dc1-a1b2fada5c99",
+      "name": "Nota — 💬 RAMA 12 · Mensajes sin leer",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        22975
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/5 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "5719397b-13ef-48a1-84e6-d5fbdc0616e7",
+      "name": "💬 Cron - Mensajes sin Leer",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        150,
+        23100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH pendientes AS (\n  -- Se marcan en la misma consulta: si el correo falla, no se reintenta en\n  -- cada vuelta (el mensaje igual queda en el panel con su contador).\n  UPDATE mensajes m SET avisado_en = now()\n  WHERE m.leido_en IS NULL AND m.avisado_en IS NULL\n    AND m.creado_en <= now() - make_interval(mins => $1::int)\n  RETURNING m.postulacion_id, m.autor\n)\nSELECT CASE WHEN pe.autor = 'cliente' THEN 'desarrollador' ELSE 'cliente' END AS para,\n       CASE WHEN pe.autor = 'cliente' THEN e.email_contacto ELSE COALESCE(b.contacto_email, l.email) END AS email,\n       CASE WHEN pe.autor = 'cliente' THEN e.nombre ELSE COALESCE(b.contacto_nombre, l.nombre) END AS nombre,\n       COALESCE(b.titulo, replace(b.servicio::text, '_', ' ')) AS proyecto,\n       CASE WHEN pe.autor = 'cliente' THEN 'el cliente' ELSE e.nombre END AS de,\n       b.cliente_id IS NOT NULL AS con_cuenta, b.eleccion_token, count(*)::int AS cantidad\nFROM pendientes pe\nJOIN postulaciones po ON po.id = pe.postulacion_id\nJOIN bolsa_pedidos b ON b.id = po.pedido_id\nJOIN espacios e ON e.id = po.espacio_id\nLEFT JOIN leads l ON l.lead_id = b.lead_id\nGROUP BY 1, 2, 3, 4, 5, 6, 7;",
+        "options": {
+          "queryReplacement": "={{ [ parseInt($env.MENSAJES_AVISO_MINUTOS || '10', 10) || 10 ] }}"
+        }
+      },
+      "id": "04c78385-2b1b-435e-9277-934e8845b78e",
+      "name": "Postgres - Mensajes sin Leer",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        450,
+        23100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Un correo por persona con los mensajes que no leyó, agrupados por\n// proyecto. El enlace depende de quién es: el desarrollador va a su Bolsa;\n// el cliente con cuenta, a «Mis proyectos»; el que no tiene cuenta, a su\n// enlace de /elegir (con ese token entra a la conversación).\nconst esc = (s) => String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');\nlet plataforma = 'FormularioLeads';\nlet frontend = '';\ntry {\n  plataforma = ($env && $env.PLATAFORMA_NOMBRE) || plataforma;\n  frontend = String(($env && $env.FRONTEND_URL) || '').replace(/\\/+$/, '');\n} catch (e) {}\nconst porPersona = new Map();\nfor (const item of $input.all()) {\n  const f = item.json;\n  if (!f.email) continue;\n  const url = f.para === 'desarrollador'\n    ? `${frontend}/dashboard/bolsa`\n    : f.con_cuenta ? `${frontend}/cliente` : `${frontend}/elegir/${encodeURIComponent(f.eleccion_token)}`;\n  const actual = porPersona.get(f.email) || { email: f.email, nombre: f.nombre, total: 0, filas: [] };\n  actual.total += Number(f.cantidad) || 0;\n  actual.filas.push(`<li><b>${esc(f.proyecto)}</b>: ${Number(f.cantidad)} de ${esc(f.de)} · <a href=\"${esc(url)}\">Leer y responder</a></li>`);\n  porPersona.set(f.email, actual);\n}\nreturn [...porPersona.values()].map((p) => ({ json: {\n  email: p.email,\n  espacio_nombre: '',\n  espacio_email: '',\n  asunto: `Tenés ${p.total} ${p.total === 1 ? 'mensaje sin leer' : 'mensajes sin leer'} en ${plataforma}`,\n  cuerpo_html: `<p>Hola ${esc(String(p.nombre || '').split(' ')[0])},</p>\n<p>Te escribieron y todavía no lo leíste:</p>\n<ul>${p.filas.join('')}</ul>\n<p>Saludos,<br><b>${esc(plataforma)}</b></p>`,\n} }));"
+      },
+      "id": "350b5a32-a028-4ba6-9648-5dbacc59c5ef",
+      "name": "Code - Emails Mensajes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        750,
+        23100
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "={{ $json.asunto }}",
+        "message": "={{ $json.cuerpo_html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "={{ ($json.espacio_nombre ? $json.espacio_nombre + ' vía ' : '') + ($env.PLATAFORMA_NOMBRE || 'FormularioLeads') }}",
+          "replyTo": "={{ $json.espacio_email || '' }}"
+        }
+      },
+      "id": "02dcad6e-bcbe-490d-ba58-21df9984dc84",
+      "name": "Gmail - Mensajes sin Leer",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        23100
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "KN5umVWzd1RZZuYM",
+          "name": "Gmail account"
+        }
+      }
     }
   ],
   "connections": {
@@ -9652,6 +9750,39 @@
           }
         ],
         []
+      ]
+    },
+    "💬 Cron - Mensajes sin Leer": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Mensajes sin Leer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Mensajes sin Leer": {
+      "main": [
+        [
+          {
+            "node": "Code - Emails Mensajes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Emails Mensajes": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Mensajes sin Leer",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     }
   },
