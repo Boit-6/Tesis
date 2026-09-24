@@ -86,6 +86,8 @@ const NODOS_HTML = [
   'Code - Resumen Facturas Vencidas',
   // Correo al cliente cuando el desarrollador no puede tomar su pedido.
   'Code - Email Rechazo Pedido',
+  // Correos al asignar un pedido de la bolsa (cliente y desarrollador elegido).
+  'Code - Emails Asignación Bolsa',
 ];
 
 for (const nombre of NODOS_HTML) {

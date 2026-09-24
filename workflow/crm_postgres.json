@@ -6738,6 +6738,347 @@
         1350,
         19810
       ]
+    },
+    {
+      "parameters": {
+        "content": "## 🎯 Elección del cliente (bolsa)\nEl cliente abre **/elegir/<token>** y ve las postulaciones (`bolsa-postulaciones`, GET). Al elegir (`bolsa-elegir`, POST) el pedido pasa a **ASIGNADO**, el lead se muda al espacio elegido y vuelve a **NUEVO** sin los términos anteriores y con token de aceptación nuevo. Correo al cliente y al elegido, y aviso en su panel. El token es un UUID aleatorio (como el de pago).",
+        "height": 1450,
+        "width": 1830,
+        "color": 5
+      },
+      "id": "adb7fbbc-3391-4e96-adc5-1bde5d6abd28",
+      "name": "Nota — 🎯 Elección del cliente (bolsa)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        95,
+        20325
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "bolsa-postulaciones",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
+        }
+      },
+      "id": "21c4a854-efae-49b6-b6e8-ae8f3b04d100",
+      "name": "🎯 Webhook - Ver Postulaciones (cliente)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        150,
+        20450
+      ],
+      "webhookId": "ccf36504-2727-48c1-9cfa-5865278f9d25"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Página donde el cliente elige entre las postulaciones de la bolsa\n// (/elegir/<token>). El token es lo único que lo identifica: si no tiene\n// forma de UUID, ni se consulta la base.\nconst q = $input.first().json.query || {};\nconst t = String(q.t || '').trim();\nreturn [{ json: { token: /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(t) ? t : '' } }];"
+      },
+      "id": "5a82f5fa-a750-4562-88b8-05db7014ec3e",
+      "name": "Code - Leer Token Bolsa",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        450,
+        20450
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT b.id AS pedido_id, b.estado, b.servicio, b.presupuesto_rango, b.presupuesto, b.resumen, b.vence_en,\n       l.nombre AS cliente_nombre,\n       (SELECT e.nombre FROM espacios e WHERE e.id = b.asignado_espacio_id) AS elegido_nombre,\n       COALESCE((\n         SELECT json_agg(json_build_object(\n                  'id', p.id, 'espacio', e.nombre, 'mensaje', p.mensaje,\n                  'precio', p.precio_estimado, 'plazo', p.plazo) ORDER BY p.creado_en)\n         FROM postulaciones p JOIN espacios e ON e.id = p.espacio_id\n         WHERE p.pedido_id = b.id\n       ), '[]'::json) AS postulaciones\nFROM bolsa_pedidos b\nJOIN leads l ON l.lead_id = b.lead_id\nWHERE b.eleccion_token = NULLIF($1::text, '')::uuid;",
+        "options": {
+          "queryReplacement": "={{ [$json.token] }}"
+        }
+      },
+      "id": "8f4f2d52-4560-4bfa-a729-0c6b9954ea0f",
+      "name": "Postgres - Leer Postulaciones Bolsa",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        750,
+        20450
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json.pedido_id ? { status: 'ok', estado: $json.estado, servicio: $json.servicio, presupuesto_rango: $json.presupuesto_rango, presupuesto: $json.presupuesto, resumen: $json.resumen, vence_en: $json.vence_en, cliente_nombre: $json.cliente_nombre, elegido_nombre: $json.elegido_nombre, postulaciones: $json.postulaciones } : { status: 'invalido' }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "253b45e3-022c-4022-8167-cef23d2aa37f",
+      "name": "Respond - Postulaciones Bolsa",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1050,
+        20450
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "bolsa-elegir",
+        "responseMode": "responseNode",
+        "options": {
+          "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
+        }
+      },
+      "id": "704838d4-2110-48cb-9b83-9bff8e800fe3",
+      "name": "🎯 Webhook - Elegir Postulación (cliente)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        150,
+        20950
+      ],
+      "webhookId": "9cd68583-1bba-4d85-b803-1592b45124e4"
+    },
+    {
+      "parameters": {
+        "jsCode": "// El cliente elige una postulación. Token y postulación tienen que tener\n// forma de UUID; el resto (que el pedido siga sin asignar y que la\n// postulación sea de ese pedido) lo decide la consulta, con el pedido\n// bloqueado para que dos clics no asignen dos veces.\nconst b = $input.first().json.body || {};\nconst UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;\nconst token = String(b.t || '').trim();\nconst postulacion = String(b.postulacion_id || '').trim();\nreturn [{ json: {\n  token: UUID.test(token) ? token : '',\n  postulacion_id: UUID.test(postulacion) ? postulacion : '',\n} }];"
+      },
+      "id": "5f1b5900-f520-4169-b9c4-d94d905708a8",
+      "name": "Code - Leer Elección Bolsa",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        450,
+        20950
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH b AS (\n  SELECT bp.id, bp.lead_id FROM bolsa_pedidos bp\n  WHERE bp.eleccion_token = NULLIF($1::text, '')::uuid\n    AND bp.estado IN ('ABIERTO','EN_ELECCION')\n  FOR UPDATE\n), p AS (\n  SELECT po.id, po.pedido_id, po.espacio_id, po.precio_estimado, po.plazo\n  FROM postulaciones po JOIN b ON b.id = po.pedido_id\n  WHERE po.id = NULLIF($2::text, '')::uuid\n), asignado AS (\n  UPDATE bolsa_pedidos bp\n  SET estado = 'ASIGNADO', asignado_espacio_id = p.espacio_id, cerrado_en = now()\n  FROM p WHERE bp.id = p.pedido_id\n  RETURNING bp.lead_id, bp.asignado_espacio_id\n), l AS (\n  -- El pedido arranca de cero en el espacio elegido: sin los términos del\n  -- desarrollador anterior y con un token de aceptación nuevo, para que una\n  -- propuesta vieja que le haya mandado no se pueda aceptar.\n  UPDATE leads\n  SET espacio_id = a.asignado_espacio_id, estado = 'NUEVO',\n      precio_propuesto = NULL, plazo_propuesto = NULL, alcance_propuesto = NULL,\n      fecha_propuesta = NULL, notas = NULL, seguimientos = 0, fecha_ultimo_seguimiento = NULL,\n      accept_token = gen_random_uuid(), token_expira_en = NULL\n  FROM asignado a WHERE leads.lead_id = a.lead_id\n  RETURNING leads.lead_id, leads.nombre, leads.email, leads.servicio, leads.espacio_id\n)\nSELECT l.lead_id, l.nombre, l.email, l.servicio, e.id AS espacio_id,\n       e.nombre AS espacio_nombre, e.email_contacto AS espacio_email,\n       p.precio_estimado, p.plazo\nFROM l JOIN espacios e ON e.id = l.espacio_id CROSS JOIN p;",
+        "options": {
+          "queryReplacement": "={{ [$json.token, $json.postulacion_id] }}"
+        }
+      },
+      "id": "9f4e15da-a0b3-424e-9c92-5f66414e6527",
+      "name": "Postgres - Asignar Pedido Bolsa",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        750,
+        20950
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.lead_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8659eb74-cb5c-438e-bd6a-b83721201c93",
+      "name": "IF - Pedido Asignado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1050,
+        20950
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'ok', espacio_nombre: $json.espacio_nombre }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "3b842d4c-7cd1-4c4d-b19f-5182c1f05d38",
+      "name": "Respond - Elección OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1350,
+        20950
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Dos correos al asignar un pedido de la bolsa: al cliente (sale con la\n// marca del espacio elegido y las respuestas le llegan a ese desarrollador) y\n// al desarrollador elegido (sale de la plataforma).\nconst l = $input.first().json;\nconst esc = (s) => String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');\nconst SERVICIO = {\n  desarrollo_web: 'desarrollo web', ecommerce: 'tienda online', app_movil: 'app móvil',\n  automatizacion: 'automatización', marketing: 'marketing digital', seo: 'SEO',\n  diseno_ui: 'diseño UX/UI', consultoria: 'consultoría', soporte: 'soporte',\n};\nlet plataforma = 'FormularioLeads';\ntry { plataforma = ($env && $env.PLATAFORMA_NOMBRE) || plataforma; } catch (e) {}\nconst servicio = SERVICIO[l.servicio] || String(l.servicio || '').replaceAll('_', ' ');\nconst precio = Number(l.precio_estimado).toLocaleString('es-AR');\nconst cliente = {\n  email: l.email,\n  espacio_nombre: l.espacio_nombre,\n  espacio_email: l.espacio_email,\n  asunto: `Elegiste a ${l.espacio_nombre} para tu proyecto de ${servicio}`,\n  cuerpo_html: `<p>Hola ${esc(l.nombre)},</p>\n<p>Listo: le pasamos tus datos a <b>${esc(l.espacio_nombre)}</b>, que te va a escribir con una propuesta formal. En su postulación estimó <b>US$ ${esc(precio)}</b> en <b>${esc(l.plazo)}</b>.</p>\n<p>Si tenés alguna pregunta, respondé este correo y le llega directo.</p>\n<p>Saludos,<br><b>${esc(plataforma)}</b></p>`,\n};\nconst desarrollador = {\n  email: l.espacio_email,\n  // Sale de la plataforma, no del propio espacio.\n  espacio_nombre: '',\n  espacio_email: '',\n  asunto: `Te eligieron para un proyecto de ${servicio}`,\n  cuerpo_html: `<p>Hola ${esc(l.espacio_nombre)},</p>\n<p><b>${esc(l.nombre)}</b> te eligió en la bolsa de proyectos para su proyecto de <b>${esc(servicio)}</b>.</p>\n<p>Ya está en tu panel como pedido nuevo, con sus datos de contacto. Fijá los términos y mandale la propuesta.</p>\n<p>Saludos,<br><b>${esc(plataforma)}</b></p>`,\n};\nreturn [cliente, desarrollador].filter((c) => c.email).map((c) => ({ json: { ...l, ...c } }));"
+      },
+      "id": "b8bc78b6-9873-440c-8927-8767136389bf",
+      "name": "Code - Emails Asignación Bolsa",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1350,
+        21150
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "={{ $json.asunto }}",
+        "message": "={{ $json.cuerpo_html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "={{ ($json.espacio_nombre ? $json.espacio_nombre + ' vía ' : '') + ($env.PLATAFORMA_NOMBRE || 'FormularioLeads') }}",
+          "replyTo": "={{ $json.espacio_email || '' }}"
+        }
+      },
+      "id": "aa407e9a-8bbe-435f-98ad-c06f28011a01",
+      "name": "Gmail - Aviso Asignación Bolsa",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        1650,
+        21150
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "KN5umVWzd1RZZuYM",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "bolsa_asignado",
+            "nivel": "atencion",
+            "mensaje": "=🎯 <b>Te eligieron en la bolsa</b>\nCliente: {{ String($json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nYa está en tu panel como pedido nuevo: fijá los términos y mandale la propuesta.",
+            "lead_id": "={{ $json.lead_id || '' }}",
+            "factura_id": "",
+            "espacio_id": "={{ $json.espacio_id || '' }}"
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "id": "5b30c3e0-72e1-4fd4-aedc-7424a0ef7ef7",
+      "name": "Aviso - Te Eligieron (bolsa)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1650,
+        21550
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"invalido\", \"mensaje\": \"No se pudo elegir: el enlace no es válido o el pedido ya se asignó.\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "c285c52b-e15f-4394-91cc-40b40a14115d",
+      "name": "Respond - Elección Invalida",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1350,
+        21350
+      ]
     }
   ],
   "connections": {
@@ -8836,6 +9177,111 @@
         [
           {
             "node": "Gmail - Aviso Rechazo Pedido",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🎯 Webhook - Ver Postulaciones (cliente)": {
+      "main": [
+        [
+          {
+            "node": "Code - Leer Token Bolsa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Leer Token Bolsa": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Leer Postulaciones Bolsa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Leer Postulaciones Bolsa": {
+      "main": [
+        [
+          {
+            "node": "Respond - Postulaciones Bolsa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🎯 Webhook - Elegir Postulación (cliente)": {
+      "main": [
+        [
+          {
+            "node": "Code - Leer Elección Bolsa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Leer Elección Bolsa": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Asignar Pedido Bolsa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Asignar Pedido Bolsa": {
+      "main": [
+        [
+          {
+            "node": "IF - Pedido Asignado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Pedido Asignado?": {
+      "main": [
+        [
+          {
+            "node": "Respond - Elección OK",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code - Emails Asignación Bolsa",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Aviso - Te Eligieron (bolsa)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Elección Invalida",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Emails Asignación Bolsa": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Aviso Asignación Bolsa",
             "type": "main",
             "index": 0
           }
