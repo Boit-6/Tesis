@@ -1,12 +1,13 @@
 import Link from "next/link";
 
+import MisProyectos from "./mis-proyectos";
+
 import {getClienteUser} from "@/lib/auth";
 
 // El gate usa la sesión en cada request.
 export const dynamic = "force-dynamic";
 
-// Panel del cliente. Por ahora muestra el estado vacío: publicar un proyecto
-// y verlo acá llegan en los pasos siguientes de la etapa 6.
+// Panel del cliente: sus proyectos, las postulaciones y la elección.
 export default async function ClientePage({
   searchParams,
 }: {
@@ -44,11 +45,13 @@ export default async function ClientePage({
       )}
 
       <Link
-        className="ease bg-ink text-paper hover:bg-ochre inline-block px-6 py-4 text-[11px] font-medium tracking-[0.2em] uppercase transition duration-200"
+        className="ease bg-ink text-paper hover:bg-ochre mb-10 inline-block px-6 py-4 text-[11px] font-medium tracking-[0.2em] uppercase transition duration-200"
         href="/publicar"
       >
         Publicar un proyecto
       </Link>
+
+      <MisProyectos />
     </main>
   );
 }

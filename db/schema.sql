@@ -1573,11 +1573,15 @@ $$;
 
 -- Los proyectos del cliente con sesión, con sus postulaciones (lo mismo que
 -- ve en /elegir: marca del espacio, mensaje, precio y plazo) y a quién eligió.
-CREATE OR REPLACE FUNCTION public.mis_proyectos()
+-- `eleccion_token` es el del propio cliente: con él elige desde su panel por
+-- el mismo webhook que el enlace del correo.
+DROP FUNCTION IF EXISTS public.mis_proyectos();
+CREATE FUNCTION public.mis_proyectos()
 RETURNS TABLE (
   id uuid, titulo text, resumen text, servicio servicio_tipo, urgencia urgencia_tipo,
   presupuesto_rango text, estado bolsa_estado, postulaciones int, tope_postulaciones int,
-  publicado_en timestamptz, vence_en timestamptz, elegido_nombre text, detalle json
+  publicado_en timestamptz, vence_en timestamptz, elegido_nombre text, detalle json,
+  eleccion_token uuid
 )
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   SELECT b.id, b.titulo, b.resumen, b.servicio, b.urgencia, b.presupuesto_rango, b.estado,
@@ -1589,7 +1593,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
                     'precio', p.precio_estimado, 'plazo', p.plazo) ORDER BY p.creado_en)
            FROM postulaciones p JOIN espacios e ON e.id = p.espacio_id
            WHERE p.pedido_id = b.id
-         ), '[]'::json)
+         ), '[]'::json),
+         b.eleccion_token
   FROM bolsa_pedidos b
   WHERE b.cliente_id = auth.uid()
   ORDER BY b.publicado_en DESC

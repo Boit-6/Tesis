@@ -1,0 +1,173 @@
+"use client";
+
+import type {Database} from "@/types/supabase";
+
+import {useEffect, useState} from "react";
+
+import {Cargando, Esqueleto} from "@/app/components/esqueleto";
+import {TarjetaPostulacion, elegirPostulacion, tarjetaClass} from "@/app/components/postulaciones";
+import {presupuestoDeclarado} from "@/lib/presupuesto";
+import {SERVICIO_LEGIBLE} from "@/lib/servicios";
+import {createClient} from "@/lib/supabase/client";
+
+type Proyecto = Database["public"]["Functions"]["mis_proyectos"]["Returns"][number];
+
+const DIA_MS = 86_400_000;
+
+function situacion(p: Proyecto, ahora: number): {texto: string; clase: string} {
+  if (p.estado === "ASIGNADO") return {texto: `Elegiste a ${p.elegido_nombre}`, clase: "text-moss"};
+  if (p.estado === "VENCIDO") return {texto: "Venció sin elección", clase: "text-mist"};
+  if (p.estado === "EN_ELECCION") return {texto: "Es hora de elegir", clase: "text-ochre"};
+
+  const dias = Math.ceil((new Date(p.vence_en).getTime() - ahora) / DIA_MS);
+
+  return {
+    texto:
+      dias <= 1 ? "Recibe postulaciones hasta mañana" : `Recibe postulaciones ${dias} días más`,
+    clase: "text-muted",
+  };
+}
+
+export function EsqueletoMisProyectos() {
+  return (
+    <Cargando className="flex flex-col gap-6" etiqueta="Cargando tus proyectos…">
+      {Array.from({length: 2}, (_, i) => (
+        <div key={i} className={`${tarjetaClass} flex flex-col gap-3 px-6 py-5`}>
+          <div className="flex justify-between gap-4">
+            <Esqueleto className="h-7 w-64 max-w-full" />
+            <Esqueleto className="h-3 w-28" />
+          </div>
+          <Esqueleto className="h-3 w-48" />
+          <Esqueleto className="h-4 w-full" />
+          <Esqueleto className="h-4 w-3/4" />
+        </div>
+      ))}
+    </Cargando>
+  );
+}
+
+function TarjetaProyecto({
+  proyecto,
+  ahora,
+  onElegido,
+}: {
+  proyecto: Proyecto;
+  ahora: number;
+  onElegido: () => void;
+}) {
+  const estado = situacion(proyecto, ahora);
+  const puedeElegir = proyecto.estado === "ABIERTO" || proyecto.estado === "EN_ELECCION";
+
+  return (
+    <li className={`${tarjetaClass} flex flex-col gap-4 px-6 py-5`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h2 className="text-ink font-serif text-[24px] leading-tight">
+          {proyecto.titulo ?? SERVICIO_LEGIBLE[proyecto.servicio]}
+        </h2>
+        <span className={`text-[10.5px] tracking-[0.14em] uppercase ${estado.clase}`}>
+          {estado.texto}
+        </span>
+      </div>
+      <p className="text-muted text-[13px]">
+        {SERVICIO_LEGIBLE[proyecto.servicio]} ·{" "}
+        {presupuestoDeclarado(proyecto.presupuesto_rango, 0)} · {proyecto.postulaciones}/
+        {proyecto.tope_postulaciones} postulaciones
+      </p>
+      <p className="text-ink-soft line-clamp-3 text-[14px] leading-relaxed">{proyecto.resumen}</p>
+
+      {puedeElegir && proyecto.detalle.length === 0 && (
+        <p className="text-mist text-[13px]">
+          Todavía no se postuló nadie. Te avisamos por correo cuando haya propuestas.
+        </p>
+      )}
+
+      {puedeElegir && proyecto.detalle.length > 0 && (
+        <ul className="border-rule-soft flex flex-col gap-3 border-t pt-4">
+          {proyecto.detalle.map((p) => (
+            <TarjetaPostulacion
+              key={p.id}
+              postulacion={p}
+              onElegir={async () => {
+                await elegirPostulacion(proyecto.eleccion_token, p.id);
+                onElegido();
+              }}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
+// Los proyectos del cliente con sus postulaciones. Elige desde acá con el
+// token de cada proyecto, por el mismo webhook que el enlace del correo.
+export default function MisProyectos() {
+  const [supabase] = useState(() => createClient());
+  const [carga, setCarga] = useState<{
+    proyectos: Proyecto[];
+    error: string | null;
+    ahora: number;
+  } | null>(null);
+  // Se incrementa para volver a cargar (después de elegir).
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    let vigente = true;
+
+    supabase.rpc("mis_proyectos").then(({data, error}) => {
+      if (vigente) {
+        setCarga({
+          proyectos: data ?? [],
+          error: error ? error.message : null,
+          ahora: Date.now(),
+        });
+      }
+    });
+
+    return () => {
+      vigente = false;
+    };
+  }, [supabase, version]);
+
+  if (!supabase) {
+    return (
+      <p className="text-brick text-[13px]" role="alert">
+        Faltan las variables de Supabase.
+      </p>
+    );
+  }
+
+  if (carga === null) return <EsqueletoMisProyectos />;
+
+  if (carga.error) {
+    return (
+      <p className="text-brick text-[13px]" role="alert">
+        {carga.error}
+      </p>
+    );
+  }
+
+  if (carga.proyectos.length === 0) {
+    return (
+      <p className="text-muted max-w-lg text-[14.5px] leading-relaxed">
+        Todavía no publicaste ningún proyecto. Contá qué necesitás y los desarrolladores se postulan
+        con precio y plazo.
+      </p>
+    );
+  }
+
+  return (
+    <ul className="flex flex-col gap-6">
+      {carga.proyectos.map((p) => (
+        <TarjetaProyecto
+          key={p.id}
+          ahora={carga.ahora}
+          proyecto={p}
+          onElegido={() => setVersion((v) => v + 1)}
+        />
+      ))}
+    </ul>
+  );
+}

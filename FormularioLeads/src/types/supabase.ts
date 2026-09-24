@@ -556,6 +556,8 @@ export interface Database {
             precio: number;
             plazo: string;
           }[];
+          // El token del propio proyecto: con él elige por el webhook bolsa-elegir.
+          eleccion_token: string;
         }[];
       };
     };

@@ -5,23 +5,18 @@ import type {ServicioTipo} from "@/types/supabase";
 import {useEffect, useState} from "react";
 
 import {Cargando, Esqueleto} from "@/app/components/esqueleto";
+import {
+  HEADERS,
+  N8N_BASE,
+  type Postulacion,
+  TarjetaPostulacion,
+  elegirPostulacion,
+  tarjetaClass,
+} from "@/app/components/postulaciones";
 import {presupuestoDeclarado} from "@/lib/presupuesto";
 import {SERVICIO_LEGIBLE} from "@/lib/servicios";
 
-const N8N_BASE = process.env.NEXT_PUBLIC_N8N_BASE;
-const HEADERS: Record<string, string> = {
-  "Content-Type": "application/json",
-  ...(process.env.NODE_ENV === "development" ? {"ngrok-skip-browser-warning": "true"} : {}),
-};
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-interface Postulacion {
-  id: string;
-  espacio: string;
-  mensaje: string;
-  precio: number;
-  plazo: string;
-}
 
 interface Pedido {
   status: "ok";
@@ -40,15 +35,6 @@ type Vista =
   | {tipo: "invalido"}
   | {tipo: "pedido"; pedido: Pedido}
   | {tipo: "elegido"; espacio: string};
-
-const tarjetaClass =
-  "border-rule-soft bg-card border shadow-[0_1px_2px_rgba(25,23,19,0.04),0_12px_32px_-18px_rgba(25,23,19,0.18)]";
-
-const formatoUsd = new Intl.NumberFormat("es-AR", {
-  style: "currency",
-  currency: "USD",
-  maximumFractionDigits: 0,
-});
 
 function Aviso({titulo, children}: {titulo: string; children: React.ReactNode}) {
   return (
@@ -83,87 +69,6 @@ function EsqueletoEleccion() {
   );
 }
 
-function TarjetaPostulacion({
-  postulacion,
-  onElegir,
-}: {
-  postulacion: Postulacion;
-  onElegir: () => Promise<void>;
-}) {
-  const [confirmando, setConfirmando] = useState(false);
-  const [enviando, setEnviando] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  return (
-    <li className={`${tarjetaClass} flex flex-col gap-3 px-6 py-5`}>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h3 className="text-ink font-serif text-[23px] leading-tight">{postulacion.espacio}</h3>
-        <span className="text-ink font-serif text-[23px]">
-          {formatoUsd.format(postulacion.precio)}
-        </span>
-      </div>
-      <p className="text-ochre text-[10.5px] tracking-[0.14em] uppercase">
-        Plazo estimado: {postulacion.plazo}
-      </p>
-      <p className="text-ink-soft text-[14.5px] leading-relaxed whitespace-pre-line">
-        {postulacion.mensaje}
-      </p>
-
-      {error && (
-        <p className="text-brick text-[13px]" role="alert">
-          {error}
-        </p>
-      )}
-
-      {confirmando ? (
-        <div className="border-rule-soft mt-1 flex flex-col gap-3 border-t pt-4">
-          <p className="text-ink-soft text-[14px] leading-relaxed">
-            ¿Elegir a <b>{postulacion.espacio}</b>? Le pasamos tus datos de contacto para que te
-            mande la propuesta formal. Los demás no reciben nada.
-          </p>
-          <div className="flex flex-wrap gap-3">
-            <button
-              className="ease bg-ink text-paper hover:bg-ochre px-6 py-3.5 text-[11px] tracking-[0.16em] uppercase transition duration-200 disabled:opacity-40"
-              disabled={enviando}
-              type="button"
-              onClick={async () => {
-                setEnviando(true);
-                setError(null);
-                try {
-                  await onElegir();
-                } catch (err) {
-                  setError(err instanceof Error ? err.message : "No se pudo elegir.");
-                  setEnviando(false);
-                }
-              }}
-            >
-              {enviando ? "Enviando…" : "Sí, elegir"}
-            </button>
-            <button
-              className="ease text-mist hover:text-ink px-4 py-3.5 text-[11px] tracking-[0.14em] uppercase transition duration-200 disabled:opacity-40"
-              disabled={enviando}
-              type="button"
-              onClick={() => setConfirmando(false)}
-            >
-              Volver
-            </button>
-          </div>
-        </div>
-      ) : (
-        <button
-          className="ease border-ink text-ink hover:border-ochre hover:text-ochre mt-1 self-start border px-5 py-3 text-[11px] tracking-[0.14em] uppercase transition duration-200"
-          type="button"
-          onClick={() => setConfirmando(true)}
-        >
-          Elegir a {postulacion.espacio}
-        </button>
-      )}
-    </li>
-  );
-}
-
-// El cliente ve las postulaciones a su pedido (sin que nadie haya visto sus
-// datos todavía) y elige una. Todo pasa por n8n con el token del enlace.
 export default function ElegirPostulacion({token}: {token: string}) {
   const tokenValido = UUID.test(token) && Boolean(N8N_BASE);
   const [vista, setVista] = useState<Vista>({tipo: "cargando"});
@@ -189,18 +94,10 @@ export default function ElegirPostulacion({token}: {token: string}) {
   }, [token, tokenValido]);
 
   async function elegir(postulacionId: string) {
-    const res = await fetch(`${N8N_BASE}/webhook/bolsa-elegir`, {
-      method: "POST",
-      headers: HEADERS,
-      body: JSON.stringify({t: token, postulacion_id: postulacionId}),
+    setVista({
+      tipo: "elegido",
+      espacio: await elegirPostulacion(token, postulacionId),
     });
-    const json = await res.json().catch(() => ({}));
-
-    if (!res.ok || json.status !== "ok") {
-      throw new Error(json.mensaje ?? "No se pudo elegir. Probá de nuevo en un rato.");
-    }
-
-    setVista({tipo: "elegido", espacio: json.espacio_nombre});
   }
 
   if (!tokenValido || vista.tipo === "invalido") {

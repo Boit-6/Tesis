@@ -6741,8 +6741,8 @@
     },
     {
       "parameters": {
-        "content": "## 🎯 Elección del cliente (bolsa)\nEl cliente abre **/elegir/<token>** y ve las postulaciones (`bolsa-postulaciones`, GET). Al elegir (`bolsa-elegir`, POST) el pedido pasa a **ASIGNADO**, el lead se muda al espacio elegido y vuelve a **NUEVO** sin los términos anteriores y con token de aceptación nuevo. Correo al cliente y al elegido, y aviso en su panel. El token es un UUID aleatorio (como el de pago).",
-        "height": 1450,
+        "content": "## 🎯 Elección del cliente (bolsa)\nEl cliente abre **/elegir/<token>** y ve las postulaciones (`bolsa-postulaciones`, GET). Al elegir (`bolsa-elegir`, POST) el pedido pasa a **ASIGNADO**, el lead se muda al espacio elegido y vuelve a **NUEVO** sin los términos anteriores y con token de aceptación nuevo. Correo al cliente y al elegido, y aviso en su panel. El token es un UUID aleatorio (como el de pago). Si el proyecto lo publicó un cliente (etapa 6), el lead **se crea** en el espacio elegido con los datos de contacto que dejó, y se le calcula el puntaje (copia de Code - Scoring).",
+        "height": 1650,
         "width": 1830,
         "color": 5
       },
@@ -6790,7 +6790,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT b.id AS pedido_id, b.estado, b.servicio, b.presupuesto_rango, b.presupuesto, b.resumen, b.vence_en,\n       l.nombre AS cliente_nombre,\n       (SELECT e.nombre FROM espacios e WHERE e.id = b.asignado_espacio_id) AS elegido_nombre,\n       COALESCE((\n         SELECT json_agg(json_build_object(\n                  'id', p.id, 'espacio', e.nombre, 'mensaje', p.mensaje,\n                  'precio', p.precio_estimado, 'plazo', p.plazo) ORDER BY p.creado_en)\n         FROM postulaciones p JOIN espacios e ON e.id = p.espacio_id\n         WHERE p.pedido_id = b.id\n       ), '[]'::json) AS postulaciones\nFROM bolsa_pedidos b\nJOIN leads l ON l.lead_id = b.lead_id\nWHERE b.eleccion_token = NULLIF($1::text, '')::uuid;",
+        "query": "SELECT b.id AS pedido_id, b.estado, b.servicio, b.presupuesto_rango, b.presupuesto, b.resumen, b.vence_en,\n       b.titulo, COALESCE(l.nombre, b.contacto_nombre) AS cliente_nombre,\n       (SELECT e.nombre FROM espacios e WHERE e.id = b.asignado_espacio_id) AS elegido_nombre,\n       COALESCE((\n         SELECT json_agg(json_build_object(\n                  'id', p.id, 'espacio', e.nombre, 'mensaje', p.mensaje,\n                  'precio', p.precio_estimado, 'plazo', p.plazo) ORDER BY p.creado_en)\n         FROM postulaciones p JOIN espacios e ON e.id = p.espacio_id\n         WHERE p.pedido_id = b.id\n       ), '[]'::json) AS postulaciones\nFROM bolsa_pedidos b\n-- LEFT: un proyecto publicado por un cliente no tiene lead hasta que elige.\nLEFT JOIN leads l ON l.lead_id = b.lead_id\nWHERE b.eleccion_token = NULLIF($1::text, '')::uuid;",
         "options": {
           "queryReplacement": "={{ [$json.token] }}"
         }
@@ -6814,7 +6814,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "={{ JSON.stringify($json.pedido_id ? { status: 'ok', estado: $json.estado, servicio: $json.servicio, presupuesto_rango: $json.presupuesto_rango, presupuesto: $json.presupuesto, resumen: $json.resumen, vence_en: $json.vence_en, cliente_nombre: $json.cliente_nombre, elegido_nombre: $json.elegido_nombre, postulaciones: $json.postulaciones } : { status: 'invalido' }) }}",
+        "responseBody": "={{ JSON.stringify($json.pedido_id ? { status: 'ok', estado: $json.estado, servicio: $json.servicio, presupuesto_rango: $json.presupuesto_rango, presupuesto: $json.presupuesto, titulo: $json.titulo, resumen: $json.resumen, vence_en: $json.vence_en, cliente_nombre: $json.cliente_nombre, elegido_nombre: $json.elegido_nombre, postulaciones: $json.postulaciones } : { status: 'invalido' }) }}",
         "options": {
           "responseCode": 200
         }
@@ -6849,7 +6849,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// El cliente elige una postulación. Token y postulación tienen que tener\n// forma de UUID; el resto (que el pedido siga sin asignar y que la\n// postulación sea de ese pedido) lo decide la consulta, con el pedido\n// bloqueado para que dos clics no asignen dos veces.\nconst b = $input.first().json.body || {};\nconst UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;\nconst token = String(b.t || '').trim();\nconst postulacion = String(b.postulacion_id || '').trim();\nreturn [{ json: {\n  token: UUID.test(token) ? token : '',\n  postulacion_id: UUID.test(postulacion) ? postulacion : '',\n} }];"
+        "jsCode": "// El cliente elige una postulación. Token y postulación tienen que tener\n// forma de UUID; el resto (que el pedido siga sin asignar y que la\n// postulación sea de ese pedido) lo decide la consulta, con el pedido\n// bloqueado para que dos clics no asignen dos veces.\nconst b = $input.first().json.body || {};\nconst UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;\nconst token = String(b.t || '').trim();\nconst postulacion = String(b.postulacion_id || '').trim();\n// Si el proyecto lo publicó un cliente, al elegir se crea el lead en el\n// espacio elegido: el id se arma acá, con el mismo formato que Code -\n// Normalizar Lead. En un pedido que ya tenía lead no se usa.\nlet azar;\ntry {\n  azar = require('crypto').randomBytes(5).toString('hex').toUpperCase();\n} catch (e) {\n  azar = Math.random().toString(36).substring(2, 12).toUpperCase();\n}\nreturn [{ json: {\n  token: UUID.test(token) ? token : '',\n  postulacion_id: UUID.test(postulacion) ? postulacion : '',\n  lead_nuevo: 'LD-' + Date.now() + '-' + azar,\n} }];"
       },
       "id": "5f1b5900-f520-4169-b9c4-d94d905708a8",
       "name": "Code - Leer Elección Bolsa",
@@ -6863,9 +6863,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH b AS (\n  SELECT bp.id, bp.lead_id FROM bolsa_pedidos bp\n  WHERE bp.eleccion_token = NULLIF($1::text, '')::uuid\n    AND bp.estado IN ('ABIERTO','EN_ELECCION')\n  FOR UPDATE\n), p AS (\n  SELECT po.id, po.pedido_id, po.espacio_id, po.precio_estimado, po.plazo\n  FROM postulaciones po JOIN b ON b.id = po.pedido_id\n  WHERE po.id = NULLIF($2::text, '')::uuid\n), asignado AS (\n  UPDATE bolsa_pedidos bp\n  SET estado = 'ASIGNADO', asignado_espacio_id = p.espacio_id, cerrado_en = now()\n  FROM p WHERE bp.id = p.pedido_id\n  RETURNING bp.lead_id, bp.asignado_espacio_id\n), l AS (\n  -- El pedido arranca de cero en el espacio elegido: sin los términos del\n  -- desarrollador anterior y con un token de aceptación nuevo, para que una\n  -- propuesta vieja que le haya mandado no se pueda aceptar.\n  UPDATE leads\n  SET espacio_id = a.asignado_espacio_id, estado = 'NUEVO',\n      precio_propuesto = NULL, plazo_propuesto = NULL, alcance_propuesto = NULL,\n      fecha_propuesta = NULL, notas = NULL, seguimientos = 0, fecha_ultimo_seguimiento = NULL,\n      accept_token = gen_random_uuid(), token_expira_en = NULL\n  FROM asignado a WHERE leads.lead_id = a.lead_id\n  RETURNING leads.lead_id, leads.nombre, leads.email, leads.servicio, leads.espacio_id\n)\nSELECT l.lead_id, l.nombre, l.email, l.servicio, e.id AS espacio_id,\n       e.nombre AS espacio_nombre, e.email_contacto AS espacio_email,\n       p.precio_estimado, p.plazo\nFROM l JOIN espacios e ON e.id = l.espacio_id CROSS JOIN p;",
+        "query": "WITH b AS (\n  SELECT bp.id FROM bolsa_pedidos bp\n  WHERE bp.eleccion_token = NULLIF($1::text, '')::uuid\n    AND bp.estado IN ('ABIERTO','EN_ELECCION')\n  FOR UPDATE\n), p AS (\n  SELECT po.id, po.pedido_id, po.espacio_id, po.precio_estimado, po.plazo\n  FROM postulaciones po JOIN b ON b.id = po.pedido_id\n  WHERE po.id = NULLIF($2::text, '')::uuid\n), asignado AS (\n  -- Un proyecto publicado por un cliente no tiene lead: se le asigna el id\n  -- nuevo acá y se crea abajo (la clave foránea se revisa al final).\n  UPDATE bolsa_pedidos bp\n  SET estado = 'ASIGNADO', asignado_espacio_id = p.espacio_id, cerrado_en = now(),\n      lead_id = COALESCE(bp.lead_id, $3::text)\n  FROM p WHERE bp.id = p.pedido_id\n  RETURNING bp.lead_id, bp.asignado_espacio_id, bp.cliente_id, bp.contacto_nombre, bp.contacto_email,\n            bp.contacto_telefono, bp.presupuesto, bp.presupuesto_rango, bp.urgencia, bp.servicio, bp.resumen\n), movido AS (\n  -- Pedido rechazado: arranca de cero en el espacio elegido, sin los términos\n  -- del desarrollador anterior y con un token de aceptación nuevo, para que\n  -- una propuesta vieja que le haya mandado no se pueda aceptar.\n  UPDATE leads\n  SET espacio_id = a.asignado_espacio_id, estado = 'NUEVO',\n      precio_propuesto = NULL, plazo_propuesto = NULL, alcance_propuesto = NULL,\n      fecha_propuesta = NULL, notas = NULL, seguimientos = 0, fecha_ultimo_seguimiento = NULL,\n      accept_token = gen_random_uuid(), token_expira_en = NULL\n  FROM asignado a WHERE a.cliente_id IS NULL AND leads.lead_id = a.lead_id\n  RETURNING leads.lead_id, leads.nombre, leads.email, leads.telefono, leads.servicio, leads.urgencia,\n            leads.presupuesto, leads.descripcion, leads.espacio_id, false AS creado\n), creado AS (\n  -- Proyecto de un cliente: el lead nace en el espacio elegido con los datos\n  -- de contacto que dejó al publicar. El puntaje lo calcula el paso siguiente.\n  INSERT INTO leads (lead_id, espacio_id, nombre, email, telefono, presupuesto, presupuesto_rango,\n                     urgencia, servicio, descripcion, fuente, score, tier, seguimientos, dias_ciclo_completo)\n  SELECT a.lead_id, a.asignado_espacio_id, a.contacto_nombre, a.contacto_email, a.contacto_telefono,\n         a.presupuesto, a.presupuesto_rango, a.urgencia, a.servicio, a.resumen, 'bolsa', 0, NULL, 0, 0\n  FROM asignado a WHERE a.cliente_id IS NOT NULL\n  RETURNING leads.lead_id, leads.nombre, leads.email, leads.telefono, leads.servicio, leads.urgencia,\n            leads.presupuesto, leads.descripcion, leads.espacio_id, true AS creado\n), l AS (\n  SELECT * FROM movido UNION ALL SELECT * FROM creado\n)\nSELECT l.lead_id, l.nombre, l.email, l.telefono, l.servicio, l.urgencia, l.presupuesto, l.descripcion,\n       l.creado, e.id AS espacio_id, e.nombre AS espacio_nombre, e.email_contacto AS espacio_email,\n       p.precio_estimado, p.plazo\nFROM l JOIN espacios e ON e.id = l.espacio_id CROSS JOIN p;",
         "options": {
-          "queryReplacement": "={{ [$json.token, $json.postulacion_id] }}"
+          "queryReplacement": "={{ [$json.token, $json.postulacion_id, $json.lead_nuevo] }}"
         }
       },
       "id": "9f4e15da-a0b3-424e-9c92-5f66414e6527",
@@ -7269,6 +7269,73 @@
         22170
       ],
       "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.creado }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6068a871-9712-4344-ac10-ac445f20014e",
+      "name": "IF - Lead Creado en Bolsa?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1350,
+        22000
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Calificación del lead. Los pesos y los umbrales de tier NO son constantes\n// de código: salen de variables de entorno, de modo que el criterio de\n// calificación se puede recalibrar sin tocar el workflow (§6, cuestión 3 del\n// dictamen). Los defaults reproducen exactamente la Tabla 4 de la tesis.\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n// \"umbral:puntos,umbral:puntos\" evaluado de mayor a menor.\nconst tramos = (clave, porDefecto) => leerEnv(clave, porDefecto)\n  .split(',')\n  .map((p) => p.split(':'))\n  .map(([k, v]) => [Number(k), Number(v)])\n  .filter(([k, v]) => Number.isFinite(k) && Number.isFinite(v))\n  .sort((a, b) => b[0] - a[0]);\n// \"clave:puntos,clave:puntos\"\nconst tabla = (clave, porDefecto) => Object.fromEntries(\n  leerEnv(clave, porDefecto)\n    .split(',')\n    .map((p) => p.split(':'))\n    .filter((p) => p.length === 2)\n    .map(([k, v]) => [String(k).trim(), Number(v)])\n);\n\nconst l = $input.first().json;\nlet score = 0;\n\nfunction parsearImporte(valor) {\n  if (typeof valor === 'number') return Number.isFinite(valor) ? valor : NaN;\n  if (typeof valor !== 'string') return NaN;\n  const limpio = valor.trim().replace(/^[^0-9.,-]+/, '');\n  if (!/^-?[0-9]+([.,][0-9]+)?$|^-?[0-9]{1,3}([.,][0-9]{3})*([.,][0-9]+)?$/.test(limpio)) return NaN;\n  const sep = Math.max(limpio.lastIndexOf(','), limpio.lastIndexOf('.'));\n  const normalizado = sep === -1 ? limpio : limpio.slice(0, sep).replace(/[.,]/g, '') + '.' + limpio.slice(sep + 1);\n  const n = Number(normalizado);\n  return Number.isFinite(n) ? n : NaN;\n}\nconst presupuestoParsed = parsearImporte(l.presupuesto);\nconst presupuesto = Number.isFinite(presupuestoParsed) ? presupuestoParsed : 0;\nfor (const [minimo, puntos] of tramos('SCORING_PRESUPUESTO', '5000:40,2000:30,1000:20,300:10')) {\n  if (presupuesto >= minimo) { score += puntos; break; }\n}\n\nconst porUrgencia = tabla('SCORING_URGENCIA', 'alta:30,media:15,baja:5');\nscore += porUrgencia[l.urgencia] !== undefined ? porUrgencia[l.urgencia] : Number(leerEnv('SCORING_URGENCIA_DEFAULT', '5'));\n\nconst porServicio = tabla('SCORING_SERVICIO', 'desarrollo_web:20,ecommerce:20,app_movil:18,automatizacion:18,marketing:15,seo:15,diseno_ui:15,consultoria:12,soporte:5');\nscore += porServicio[l.servicio] !== undefined ? porServicio[l.servicio] : Number(leerEnv('SCORING_SERVICIO_DEFAULT', '8'));\n\nif (l.telefono && l.telefono.length > 6) score += Number(leerEnv('SCORING_BONUS_TELEFONO', '5'));\nif (l.descripcion && l.descripcion.length > 50) score += Number(leerEnv('SCORING_BONUS_DESCRIPCION', '5'));\n\nconst umbralHot = Number(leerEnv('SCORING_UMBRAL_HOT', '70'));\nconst umbralWarm = Number(leerEnv('SCORING_UMBRAL_WARM', '40'));\nconst tier = score >= umbralHot ? 'HOT' : score >= umbralWarm ? 'WARM' : 'COLD';\n\nreturn [{ json: Object.assign({}, l, { score: score, tier: tier }) }];"
+      },
+      "id": "17a66110-2f71-4877-bfdc-b6dda522cf48",
+      "name": "Code - Scoring Lead Bolsa",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1650,
+        22000
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE leads SET score = $2::int, tier = $3::tier_tipo WHERE lead_id = $1 RETURNING lead_id;",
+        "options": {
+          "queryReplacement": "={{ [$json.lead_id, $json.score, $json.tier] }}"
+        }
+      },
+      "id": "f0f6efc5-06a2-4de5-8298-044282d5a629",
+      "name": "Postgres - Guardar Score Lead Bolsa",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        1950,
+        22000
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
     }
   ],
   "connections": {
@@ -9456,6 +9523,11 @@
             "node": "Aviso - Te Eligieron (bolsa)",
             "type": "main",
             "index": 0
+          },
+          {
+            "node": "IF - Lead Creado en Bolsa?",
+            "type": "main",
+            "index": 0
           }
         ],
         [
@@ -9510,6 +9582,29 @@
         [
           {
             "node": "Gmail - Bolsa Cliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Lead Creado en Bolsa?": {
+      "main": [
+        [
+          {
+            "node": "Code - Scoring Lead Bolsa",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Code - Scoring Lead Bolsa": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Guardar Score Lead Bolsa",
             "type": "main",
             "index": 0
           }

@@ -22,6 +22,17 @@ const wf = JSON.parse(
 );
 const jsCode = wf.nodes.find((n) => n.name === 'Code - Scoring').parameters.jsCode;
 
+// El lead que nace al elegir en la bolsa se califica con una copia de este
+// nodo (Code - Scoring Lead Bolsa): tienen que ser idénticos, o un proyecto
+// publicado por un cliente se puntuaría con otro criterio.
+const copiaBolsa = wf.nodes.find((n) => n.name === 'Code - Scoring Lead Bolsa')?.parameters.jsCode;
+
+if (copiaBolsa !== jsCode) {
+  console.log('FAIL  Code - Scoring Lead Bolsa es una copia exacta de Code - Scoring');
+  process.exit(1);
+}
+console.log('OK    Code - Scoring Lead Bolsa es una copia exacta de Code - Scoring');
+
 // Algoritmo ORIGINAL, tal como estaba antes de parametrizarlo. Es la referencia
 // contra la que se compara: es lo que la Tabla 4 de la tesis documenta.
 function scoringOriginal(l) {
