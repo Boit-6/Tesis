@@ -56,6 +56,7 @@ export interface Database {
           slug: string;
           nombre: string;
           dueno_id: string | null;
+          configurado_en: string | null;
           creado_en: string;
         };
         // Los crea la base al confirmar la cuenta (crear_espacio_propio).
@@ -64,9 +65,14 @@ export interface Database {
           slug: string;
           nombre: string;
           dueno_id?: string | null;
+          configurado_en?: string | null;
           creado_en?: string;
         };
-        Update: Partial<Database["public"]["Tables"]["espacios"]["Insert"]>;
+        // El dueño sólo puede cambiar estas dos (GRANT por columna).
+        Update: {
+          nombre?: string;
+          slug?: string;
+        };
         Relationships: [];
       };
       leads: {
@@ -429,7 +435,13 @@ export interface Database {
         Relationships: [];
       };
     };
-    Functions: Record<string, never>;
+    Functions: {
+      // Lo único que el formulario público (/f/<slug>) puede leer de un espacio.
+      espacio_publico: {
+        Args: {p_slug: string};
+        Returns: {slug: string; nombre: string}[];
+      };
+    };
     Enums: {
       urgencia_tipo: UrgenciaTipo;
       servicio_tipo: ServicioTipo;

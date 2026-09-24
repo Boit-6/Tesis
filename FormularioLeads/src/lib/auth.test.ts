@@ -17,7 +17,12 @@ vi.mock("next/navigation", () => ({
   }),
 }));
 
-const ESPACIO = {id: "esp-1", slug: "mi-espacio", nombre: "Mi espacio"};
+const ESPACIO = {
+  id: "esp-1",
+  slug: "mi-espacio",
+  nombre: "Mi espacio",
+  configurado_en: null,
+};
 
 // Reproduce sólo la parte de la cadena de Supabase que usa getPanelStatus:
 // `.from("espacios").select(...).eq("dueno_id", ...).maybeSingle()`.

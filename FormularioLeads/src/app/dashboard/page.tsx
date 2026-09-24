@@ -1,4 +1,5 @@
 import Link from "next/link";
+import {redirect} from "next/navigation";
 
 import DashboardClient from "./dashboard-client";
 
@@ -14,6 +15,9 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const {user, espacio} = await getPanelUser();
 
+  // Cuenta recién confirmada: primero elige nombre y dirección.
+  if (!espacio.configurado_en) redirect("/dashboard/espacio");
+
   return (
     <main className="mx-auto w-full max-w-6xl px-6 pt-8 pb-20 sm:px-10">
       <div className="border-rule mb-12 flex flex-wrap items-end justify-between gap-6 border-b pb-8">
@@ -27,6 +31,19 @@ export default async function DashboardPage() {
         <div className="flex flex-col items-end gap-2">
           <span className="text-muted text-[12.5px]">{espacio.nombre}</span>
           <span className="text-faint text-[12.5px]">{user.email}</span>
+          <Link
+            className="ease text-muted hover:text-ochre text-[12.5px] transition duration-200"
+            href={`/f/${espacio.slug}`}
+            target="_blank"
+          >
+            Tu formulario: /f/{espacio.slug} ↗
+          </Link>
+          <Link
+            className="ease text-muted hover:text-ochre text-[11px] tracking-[0.14em] uppercase transition duration-200"
+            href="/dashboard/espacio"
+          >
+            Tu espacio →
+          </Link>
           <Link
             className="ease text-muted hover:text-ochre text-[11px] tracking-[0.14em] uppercase transition duration-200"
             href="/dashboard/tickets"

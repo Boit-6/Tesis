@@ -75,7 +75,10 @@ function SectionHeader({num, title}: {num: string; title: string}) {
   );
 }
 
-export default function LeadForm() {
+// `espacio`: la dirección del desarrollador al que va el pedido (/f/<slug>).
+// Sin él, el pedido es del formulario de la raíz y n8n lo manda al espacio del
+// admin.
+export default function LeadForm({espacio}: {espacio?: string} = {}) {
   const {
     register,
     handleSubmit,
@@ -131,6 +134,7 @@ export default function LeadForm() {
         body: JSON.stringify({
           ...data,
           fuente: "formulario_web",
+          ...(espacio ? {espacio} : {}),
           timestamp: new Date().toISOString(),
         }),
       });

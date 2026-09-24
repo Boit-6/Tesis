@@ -145,6 +145,10 @@ try {
   psql(`
     INSERT INTO admin_emails (email) VALUES ('admin@test.com');
     INSERT INTO auth.users (email, email_confirmed_at) VALUES ('admin@test.com', now());
+    -- Otra desarrolladora, con su formulario en /f/estudio-ana.
+    INSERT INTO auth.users (email, email_confirmed_at) VALUES ('ana@estudio.com', now());
+    UPDATE espacios SET slug = 'estudio-ana', nombre = 'Estudio Ana'
+    WHERE dueno_id = (SELECT id FROM auth.users WHERE email = 'ana@estudio.com');
   `);
 
   const lit = (v) => (v === null ? 'NULL' : `'${String(v).replace(/'/g, "''")}'`);
@@ -163,7 +167,8 @@ try {
     return filas(`SET ROLE n8n_writer;\nPREPARE consulta AS ${sql};\nEXECUTE consulta${args};`);
   };
 
-  // Un lead tal como lo entrega `Code - Scoring`: los once parámetros del nodo.
+  // Un lead tal como lo entrega `Code - Scoring`: los doce parámetros del nodo.
+  // `espacio` vacío = el formulario de la raíz; con valor, el de /f/<slug>.
   const insertarLead = (over = {}) => {
     const l = {
       lead_id: 'LD-1000000000000-AAAA',
@@ -179,10 +184,11 @@ try {
       fuente: 'formulario_web',
       score: 100,
       tier: 'HOT',
+      espacio: '',
       ...over,
     };
     return ejecutar(SQL_INSERT_LEAD, [l.lead_id, l.nombre, l.email, l.telefono, l.presupuesto,
-      l.urgencia, l.servicio, l.descripcion, l.fuente, l.score, l.tier]).length;
+      l.urgencia, l.servicio, l.descripcion, l.fuente, l.score, l.tier, l.espacio]).length;
   };
 
   console.log('\n── S6 · Deduplicación por correo en la captación ──\n');
@@ -201,6 +207,22 @@ try {
 
   comprobar('otro interesado, con otro correo, sí entra',
     insertarLead({lead_id: 'LD-1000000000003-DDDD', email: 'ana@test.com'}) === 1);
+
+  // Cada desarrollador tiene su formulario: el mismo interesado puede escribirle
+  // a otro dentro de la ventana y no es un doble clic.
+  comprobar('el mismo correo, en el formulario de OTRO espacio, sí entra',
+    insertarLead({lead_id: 'LD-1000000000005-FFFF', espacio: 'estudio-ana'}) === 1);
+
+  comprobar('y queda en ese espacio, no en el del admin',
+    valor(`SELECT e.slug FROM leads l JOIN espacios e ON e.id = l.espacio_id
+           WHERE l.lead_id = 'LD-1000000000005-FFFF';`) === 'estudio-ana');
+
+  comprobar('el doble clic dentro de ese mismo espacio sigue sin duplicar',
+    insertarLead({lead_id: 'LD-1000000000006-GGGG', espacio: 'estudio-ana'}) === 0);
+
+  comprobar('un formulario con una dirección que no existe no crea nada',
+    insertarLead({lead_id: 'LD-1000000000007-HHHH', email: 'nadie@test.com', espacio: 'no-existe'}) === 0
+      && valor("SELECT count(*) FROM leads WHERE email = 'nadie@test.com';") === '0');
 
   comprobar('la descripción con comas llegó entera (los parámetros no se partieron)',
     valor("SELECT descripcion FROM leads WHERE lead_id = 'LD-1000000000000-AAAA';")
@@ -244,7 +266,7 @@ try {
     `SET ROLE n8n_writer;\n` +
     `PREPARE consulta AS ${SQL_INSERT_LEAD};\n` +
     `EXECUTE consulta(${[leadId, 'Doble Clic', correo, '', 1000, 'media', 'consultoria',
-      'Dos peticiones solapadas.', 'formulario_web', 50, 'WARM'].map(lit).join(', ')});\n`;
+      'Dos peticiones solapadas.', 'formulario_web', 50, 'WARM', ''].map(lit).join(', ')});\n`;
 
   const correoCarrera = 'concurrente@test.com';
   const sesionA = psqlAsincrono(`BEGIN;\n${sentenciaLead('LD-3000000000000-AAAA', correoCarrera)}SELECT pg_sleep(2);\nCOMMIT;\n`);

@@ -15,10 +15,10 @@ describe("LeadForm", () => {
     process.env = {...envOriginal};
   });
 
-  async function renderForm() {
+  async function renderForm(espacio?: string) {
     const {default: LeadForm} = await import("./lead-form");
 
-    return render(<LeadForm />);
+    return render(<LeadForm espacio={espacio} />);
   }
 
   async function llenarValido(user: ReturnType<typeof userEvent.setup>) {
@@ -100,6 +100,26 @@ describe("LeadForm", () => {
     expect(body.email).toBe("juan@test.com");
     expect(body.servicio).toBe("Desarrollo Web");
     expect(body.fuente).toBe("formulario_web");
+    // El de la raíz no es de ningún desarrollador: no manda espacio.
+    expect(body).not.toHaveProperty("espacio");
+  });
+
+  it("el formulario de un espacio (/f/<slug>) manda su dirección", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, {status: 200}));
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+
+    await renderForm("estudio-ana");
+    await llenarValido(user);
+    await user.click(screen.getByRole("button", {name: /Enviar consulta/i}));
+
+    expect(await screen.findByText("¡Gracias!")).toBeInTheDocument();
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string).espacio).toBe("estudio-ana");
   });
 
   it("un doble click no manda dos peticiones (deuda S6 de la Tabla 11)", async () => {

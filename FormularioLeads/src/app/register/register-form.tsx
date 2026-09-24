@@ -63,9 +63,8 @@ export default function RegisterForm() {
       if (signUpError) throw signUpError;
 
       // Si el proyecto tiene "Confirm email" desactivado, signUp ya devuelve una
-      // sesión activa. Aun así no se redirige al panel: toda cuenta nueva nace
-      // con rol de usuario y el panel la devolvería a la portada sin decir por
-      // qué. Se informa acá, que es donde la persona está mirando.
+      // sesión activa y la cuenta ya tiene su espacio: se ofrece el link al
+      // panel en vez de pedirle que revise el correo.
       setSesionActiva(Boolean(data.session));
       setCheckEmail(true);
     } catch (err) {
@@ -97,17 +96,22 @@ export default function RegisterForm() {
         <p className="text-muted max-w-xs text-[14.5px] leading-relaxed">
           {sesionActiva
             ? `Tu cuenta ${email} quedó creada.`
-            : `Te enviamos un link de confirmación a ${email}. Confirmalo para poder iniciar sesión.`}
+            : `Te enviamos un link de confirmación a ${email}. Confirmalo para entrar a tu panel.`}
         </p>
-        {/* El panel exige rol de administrador (§4.2.3) y toda cuenta nueva nace
-            con rol de usuario, así que confirmar el correo no alcanza para
-            entrar. Antes esto no se decía en ninguna parte: la cuenta se creaba,
-            el registro redirigía al panel y el panel devolvía a la portada sin
-            explicación. */}
+        {/* Cada cuenta confirmada tiene su espacio (plataforma compartida): al
+            entrar, el panel le pide el nombre y la dirección de su formulario. */}
         <p className="text-faint max-w-xs text-[13px] leading-relaxed">
-          El acceso al panel lo habilita un administrador. Hasta entonces vas a poder iniciar sesión
-          pero no ver el tablero.
+          Al entrar vas a elegir el nombre con el que te ven tus clientes y la dirección de tu
+          formulario.
         </p>
+        {sesionActiva && (
+          <Link
+            className="text-ochre text-[13px] underline-offset-4 hover:underline"
+            href="/dashboard"
+          >
+            Ir a mi panel →
+          </Link>
+        )}
       </div>
     );
   }

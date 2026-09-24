@@ -121,7 +121,9 @@ Después, dar de alta la dirección del administrador de la plataforma (el esque
 ```sql
 INSERT INTO admin_emails (email) VALUES ('tu-correo@dominio.com');
 ```
-Esa cuenta pasa a `admin` recién cuando confirma el email. El rol no da acceso a los datos de otros espacios. Por ahora, los pedidos del formulario público van al espacio del admin, hasta que cada desarrollador tenga su propio formulario en `/f/<slug>`.
+Esa cuenta pasa a `admin` recién cuando confirma el email. El rol no da acceso a los datos de otros espacios.
+
+Al entrar por primera vez, cada desarrollador elige el nombre de su espacio y la dirección de su formulario, que queda en `/f/<dirección>`: los pedidos que llegan por ahí van a su espacio. El formulario de la raíz (`/`) no es de nadie y por ahora manda los pedidos al espacio del admin.
 
 **3. Orquestación (n8n + Gotenberg):**
 ```bash
@@ -178,7 +180,7 @@ npm run test:docker
 | Prueba | Qué verifica |
 |---|---|
 | `test:sql` | Compila con `PREPARE` las **28 consultas SQL** de los workflows contra el esquema real. Una columna mal escrita en un nodo Postgres se detecta acá y no en producción |
-| `test:rls` | Aplica `db/schema.sql` **tal cual está en el repositorio** y ejecuta **85 casos** de RLS rol por rol: que `anon` no acceda a nada, que cada desarrollador vea sólo lo de su espacio y no pueda tocar lo de otro, que lo que cuelga de un lead siga siempre a su espacio, que la auditoría esté cerrada, que nadie pueda escribir desde el navegador ni auto-ascenderse a admin, y que la whitelist de admins exija un email confirmado |
+| `test:rls` | Aplica `db/schema.sql` **tal cual está en el repositorio** y ejecuta **98 casos** de RLS rol por rol: que `anon` no acceda a nada, que cada desarrollador vea sólo lo de su espacio y no pueda tocar lo de otro, que lo que cuelga de un lead siga siempre a su espacio, que la auditoría esté cerrada, que nadie pueda escribir desde el navegador ni auto-ascenderse a admin, y que la whitelist de admins exija un email confirmado |
 | `test:idempotencia` | Ejecuta de verdad las consultas de deduplicación (S6) y de reconciliación de facturas (S5) sobre el esquema real, leyendo el SQL del propio workflow: si un nodo deja de ser idempotente, se pone en rojo |
 
 Ambas levantan un PostgreSQL desechable: no tocan ninguna instancia real.

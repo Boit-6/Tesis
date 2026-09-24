@@ -84,5 +84,15 @@ check('un nombre de 101 caracteres se rechaza', nombreOk('a'.repeat(101)).error?
 check('un nombre con "https://" se rechaza', nombreOk('Juan https://estafa.test').error?.includes('nombre con enlace') ?? false);
 check('un nombre con "www." se rechaza', nombreOk('Visitá WWW.estafa.test').error?.includes('nombre con enlace') ?? false);
 
+// ── Espacio: la dirección del formulario de /f/<slug> ──────────────────────
+const conEspacio = (valor) => normalizar({...base, presupuesto: 6000, email: 'a@b.co', espacio: valor});
+
+check('sin espacio (formulario de la raíz) queda vacío', normalizar({...base, presupuesto: 6000, email: 'a@b.co'}).lead?.espacio === '');
+check('una dirección válida pasa tal cual', conEspacio('estudio-ana').lead?.espacio === 'estudio-ana');
+check('la dirección se pasa a minúsculas', conEspacio(' Estudio-Ana ').lead?.espacio === 'estudio-ana');
+check('una dirección con espacios o símbolos se rechaza, no cae al espacio del admin',
+  conEspacio("ana'; DROP TABLE leads;--").error?.includes('espacio invalido') ?? false);
+check('una dirección demasiado corta se rechaza', conEspacio('ab').error?.includes('espacio invalido') ?? false);
+
 console.log('\nResultado: ' + ok + ' OK, ' + fail + ' FAIL');
 process.exit(fail ? 1 : 0);

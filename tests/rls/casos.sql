@@ -324,8 +324,52 @@ SELECT probar('anon NO puede leer espacios', 'anon', NULL, 'SELECT count(*) FROM
 SELECT probar('un desarrollador NO puede quedarse con el espacio de otro',
   'authenticated', '22222222-2222-4222-8222-222222222222',
   'WITH x AS (UPDATE espacios SET dueno_id = auth.uid() RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
-SELECT probar('n8n_writer no lee espacios (todavía no le hace falta)',
-  'n8n_writer', NULL, 'SELECT count(*) FROM espacios', 'permiso denegado');
+
+-- ── 18.1 Alta: el dueño elige nombre y dirección, y nada más ───────────────
+SELECT probar('un espacio recién creado todavía no completó el alta',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'SELECT count(*) FROM espacios WHERE configurado_en IS NULL', '1 filas');
+SELECT probar('el dueño cambia el nombre y la dirección de su espacio',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (UPDATE espacios SET nombre = ''Estudio Pepe'', slug = ''estudio-pepe'' RETURNING 1) SELECT count(*) FROM x', '1 filas');
+SELECT probar('y con eso el alta queda completa',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'SELECT count(*) FROM espacios WHERE configurado_en IS NOT NULL', '1 filas');
+SELECT probar('el dueño NO puede marcar el alta a mano',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (UPDATE espacios SET configurado_en = NULL RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
+SELECT probar('el dueño NO puede cambiar el nombre del espacio de otro (0 filas)',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  format('WITH x AS (UPDATE espacios SET nombre = ''hackeado'' WHERE id = %L RETURNING 1) SELECT count(*) FROM x',
+         (SELECT id FROM espacios WHERE dueno_id = '11111111-1111-4111-8111-111111111111')),
+  '0 filas');
+SELECT probar('dos espacios no pueden tener la misma dirección',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  'WITH x AS (UPDATE espacios SET slug = ''estudio-pepe'' RETURNING 1) SELECT count(*) FROM x',
+  'error: duplicate key value violates unique constraint "espacios_slug_key"');
+SELECT probar('una dirección con mayúsculas o espacios no se acepta',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  'WITH x AS (UPDATE espacios SET slug = ''Mi Estudio'' RETURNING 1) SELECT count(*) FROM x',
+  'error: new row for relation "espacios" violates check constraint "espacios_slug_check"');
+SELECT probar('anon NO puede editar espacios',
+  'anon', NULL, 'WITH x AS (UPDATE espacios SET nombre = ''x'' RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
+
+-- ── 18.2 El formulario público lee sólo el nombre, por la dirección ────────
+SELECT probar('anon encuentra un espacio por su dirección',
+  'anon', NULL, 'SELECT count(*) FROM espacio_publico(''estudio-pepe'') WHERE nombre = ''Estudio Pepe''', '1 filas');
+SELECT probar('la dirección no distingue mayúsculas',
+  'anon', NULL, 'SELECT count(*) FROM espacio_publico(''Estudio-Pepe'')', '1 filas');
+SELECT probar('una dirección que no existe no devuelve nada',
+  'anon', NULL, 'SELECT count(*) FROM espacio_publico(''no-existe'')', '0 filas');
+
+-- ── 18.3 n8n resuelve el espacio de un pedido por la dirección ────────────
+-- 4: las dos cuentas del principio más las dos confirmadas de la sección 16.
+SELECT probar('n8n_writer lee id, dirección y nombre de todos los espacios',
+  'n8n_writer', NULL, 'SELECT count(*) FROM (SELECT id, slug, nombre FROM espacios) e', '4 filas');
+SELECT probar('pero no el dueño',
+  'n8n_writer', NULL, 'SELECT count(dueno_id) FROM espacios', 'permiso denegado');
+SELECT probar('n8n_writer NO puede editar espacios',
+  'n8n_writer', NULL, 'WITH x AS (UPDATE espacios SET nombre = ''x'' RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
 
 UPDATE auth.users SET email_confirmed_at = now() WHERE id = '66666666-6666-4666-8666-666666666666';
 SELECT probar('al confirmar la cuenta se crea su espacio',

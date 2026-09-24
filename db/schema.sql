@@ -75,6 +75,10 @@ CREATE TABLE IF NOT EXISTS espacios (
   -- La marca que ve el cliente en el formulario, los correos y la factura.
   nombre     TEXT NOT NULL CHECK (length(btrim(nombre)) BETWEEN 1 AND 80),
   dueno_id   UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
+  -- NULL hasta que el dueño elige el nombre y la dirección por primera vez:
+  -- mientras tanto, el panel lo manda a completar su alta. Lo fija el
+  -- trigger trg_espacios_configurado, no quien edita.
+  configurado_en TIMESTAMPTZ,
   creado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -419,6 +423,8 @@ UPDATE seguimientos s SET espacio_id = l.espacio_id FROM leads l WHERE s.lead_id
 UPDATE tickets t      SET espacio_id = l.espacio_id FROM leads l WHERE t.lead_id = l.lead_id AND t.espacio_id IS NULL;
 UPDATE logs g         SET espacio_id = l.espacio_id FROM leads l WHERE g.lead_id = l.lead_id AND g.espacio_id IS NULL;
 
+ALTER TABLE espacios ADD COLUMN IF NOT EXISTS configurado_en TIMESTAMPTZ;
+
 ALTER TABLE leads        ALTER COLUMN espacio_id SET NOT NULL;
 ALTER TABLE facturas     ALTER COLUMN espacio_id SET NOT NULL;
 ALTER TABLE seguimientos ALTER COLUMN espacio_id SET NOT NULL;
@@ -536,10 +542,10 @@ CREATE TRIGGER trg_tickets_movimiento
 -- Espacios: a qué espacio pertenece cada fila
 -- ---------------------------------------------------------------------
 -- Un lead sin espacio_id va al espacio del primer admin (o al "principal"
--- migrado). Es el comportamiento de un solo dueño y es TRANSITORIO: se usa
--- mientras el formulario público no diga de qué espacio viene el pedido (etapa
--- 3 del plan, formulario en /f/<slug>). SECURITY DEFINER porque n8n_writer no
--- lee espacios ni profiles.
+-- migrado). Es lo que llega del formulario de la raíz (/), que no es de ningún
+-- desarrollador; el de cada uno está en /f/<slug> y n8n le resuelve el espacio
+-- por la dirección. TRANSITORIO: se revisa cuando el rediseño decida qué es la
+-- raíz. SECURITY DEFINER porque n8n_writer no lee profiles.
 CREATE OR REPLACE FUNCTION public.leads_espacio_por_defecto() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
@@ -629,6 +635,37 @@ BEGIN
   RETURN NULL;
 END;
 $$;
+
+-- El alta queda completa la primera vez que el dueño cambia el nombre o la
+-- dirección. Por trigger y no con una columna editable, para que nadie la
+-- marque sin haber elegido nada.
+CREATE OR REPLACE FUNCTION public.espacios_configurado() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.configurado_en := OLD.configurado_en;
+  IF NEW.configurado_en IS NULL
+     AND (NEW.nombre IS DISTINCT FROM OLD.nombre OR NEW.slug IS DISTINCT FROM OLD.slug) THEN
+    NEW.configurado_en := now();
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_espacios_configurado ON espacios;
+CREATE TRIGGER trg_espacios_configurado
+  BEFORE UPDATE ON espacios
+  FOR EACH ROW EXECUTE FUNCTION public.espacios_configurado();
+
+-- Lo que el formulario público necesita saber de un espacio para mostrarse:
+-- su nombre, a partir de la dirección. `anon` no lee la tabla, así que pasa
+-- por acá y no ve ninguna otra columna (ni el dueño, ni nada que venga).
+CREATE OR REPLACE FUNCTION public.espacio_publico(p_slug text)
+RETURNS TABLE (slug text, nombre text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT e.slug, e.nombre FROM espacios e WHERE e.slug = lower(p_slug)
+$$;
+REVOKE ALL ON FUNCTION public.espacio_publico(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.espacio_publico(text) TO anon, authenticated;
 
 DROP TRIGGER IF EXISTS trg_leads_propagar_espacio ON leads;
 CREATE TRIGGER trg_leads_propagar_espacio
@@ -897,6 +934,15 @@ DROP POLICY IF EXISTS espacios_select_dueno ON espacios;
 CREATE POLICY espacios_select_dueno ON espacios
   FOR SELECT TO authenticated USING (dueno_id = (SELECT auth.uid()));
 
+-- El dueño elige el nombre y la dirección de su espacio (alta, etapa 2). El
+-- GRANT es por columna: no puede tocar ni el dueño ni `configurado_en`. La
+-- dirección la validan el CHECK del formato y el UNIQUE.
+DROP POLICY IF EXISTS espacios_update_dueno ON espacios;
+CREATE POLICY espacios_update_dueno ON espacios
+  FOR UPDATE TO authenticated
+  USING (dueno_id = (SELECT auth.uid()))
+  WITH CHECK (dueno_id = (SELECT auth.uid()));
+
 DROP POLICY IF EXISTS leads_select_authenticated ON leads;
 CREATE POLICY leads_select_authenticated ON leads
   FOR SELECT TO authenticated
@@ -932,6 +978,7 @@ CREATE POLICY profiles_select_own ON profiles
 -- 4) Privilegios de tabla (GRANT). La RLS filtra filas, pero el rol
 --    igual necesita el privilegio SELECT sobre el objeto.
 GRANT SELECT ON leads, facturas, seguimientos, profiles, espacios TO authenticated;
+GRANT UPDATE (nombre, slug) ON espacios TO authenticated;
 
 -- 4.1) Tickets: a diferencia del resto, el tablero SÍ escribe (crear y mover
 --      tickets desde /api/tickets, con la sesión del desarrollador), siempre
@@ -996,10 +1043,14 @@ GRANT SELECT, INSERT ON rate_limit_log TO n8n_writer;
 GRANT SELECT ON metrics_mensuales, facturas_pendientes TO n8n_writer;
 REVOKE ALL ON profiles FROM n8n_writer;
 REVOKE ALL ON admin_emails FROM n8n_writer;
--- `espacios` todavía no la necesita n8n: la va a leer cuando los correos
--- salgan con la marca de cada espacio (etapa 3). Los triggers que la leen son
--- SECURITY DEFINER.
+-- `espacios`: n8n la lee para saber a qué espacio va un pedido del formulario
+-- (por la dirección, /f/<slug>) y, desde la etapa 3, con qué marca escribir.
+-- Sólo esas columnas; el dueño no lo necesita.
 REVOKE ALL ON espacios FROM n8n_writer;
+GRANT SELECT (id, slug, nombre) ON espacios TO n8n_writer;
+DROP POLICY IF EXISTS espacios_select_n8n_writer ON espacios;
+CREATE POLICY espacios_select_n8n_writer ON espacios
+  FOR SELECT TO n8n_writer USING (true);
 
 -- Políticas de escritura de `n8n_writer`. No filtran filas (USING/WITH CHECK
 -- en true): a diferencia de las políticas de `authenticated`, el límite de
