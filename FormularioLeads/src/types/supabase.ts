@@ -84,6 +84,10 @@ export interface Database {
           stripe_cobros_activos: boolean;
           configurado_en: string | null;
           creado_en: string;
+          // Perfil público (etapa 7).
+          presentacion: string | null;
+          habilidades: string[];
+          portfolio_urls: string[];
         };
         // Los crea la base al confirmar la cuenta (crear_espacio_propio).
         Insert: {
@@ -100,6 +104,9 @@ export interface Database {
           nombre?: string;
           slug?: string;
           email_contacto?: string | null;
+          presentacion?: string | null;
+          habilidades?: string[];
+          portfolio_urls?: string[];
         };
         Relationships: [];
       };
@@ -519,6 +526,48 @@ export interface Database {
           p_plazo: string;
         };
         Returns: undefined;
+      };
+      // Perfil público y reputación (etapas 7 y 8).
+      perfil_publico: {
+        Args: {p_slug: string};
+        Returns: {
+          slug: string;
+          nombre: string;
+          presentacion: string | null;
+          habilidades: string[];
+          portfolio_urls: string[];
+          promedio: number | null;
+          calificaciones: number;
+          proyectos_terminados: number;
+          miembro_desde: string;
+        }[];
+      };
+      resenas_publicas: {
+        Args: {p_slug: string};
+        Returns: {
+          estrellas: number;
+          comentario: string | null;
+          autor_nombre: string;
+          origen: "plataforma" | "formulario";
+          creado_en: string;
+        }[];
+      };
+      calificacion_pendiente: {
+        Args: {p_token: string};
+        Returns: {
+          espacio_nombre: string;
+          servicio: ServicioTipo;
+          cliente_nombre: string;
+          ya_calificado: boolean;
+        }[];
+      };
+      calificar: {
+        Args: {
+          p_token: string;
+          p_estrellas: number;
+          p_comentario: string | null;
+        };
+        Returns: string;
       };
       // El cliente publica su proyecto (sólo cuentas de cliente).
       publicar_proyecto: {

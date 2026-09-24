@@ -178,15 +178,15 @@ SELECT probar('anon NO puede borrar un lead',
   'WITH x AS (DELETE FROM leads WHERE lead_id = ''LD-TEST-0001'' RETURNING 1) SELECT count(*) FROM x',
   'permiso denegado');
 
--- ── 13. La RLS está habilitada Y forzada en las 12 tablas de negocio ───────
+-- ── 13. La RLS está habilitada Y forzada en las 13 tablas de negocio ───────
 -- No alcanza con que cada caso de arriba dé el resultado esperado: si a una
 -- tabla nueva se le olvida `ENABLE`/`FORCE ROW LEVEL SECURITY`, este es el
 -- único caso que lo detecta directo contra el catálogo, sin depender de que
 -- alguien se acuerde de sumarle sus propios casos de permisos.
-SELECT probar('las 12 tablas de negocio tienen RLS habilitada y forzada',
+SELECT probar('las 13 tablas de negocio tienen RLS habilitada y forzada',
   'service_role', NULL,
-  'SELECT count(*) FROM pg_class WHERE relname IN (''leads'',''facturas'',''seguimientos'',''logs'',''profiles'',''rate_limit_log'',''admin_emails'',''tickets'',''espacios'',''avisos'',''bolsa_pedidos'',''postulaciones'') AND relrowsecurity AND relforcerowsecurity',
-  '12 filas');
+  'SELECT count(*) FROM pg_class WHERE relname IN (''leads'',''facturas'',''seguimientos'',''logs'',''profiles'',''rate_limit_log'',''admin_emails'',''tickets'',''espacios'',''avisos'',''bolsa_pedidos'',''postulaciones'',''calificaciones'') AND relrowsecurity AND relforcerowsecurity',
+  '13 filas');
 
 -- ── 14. seguimientos: mismo patrón de acceso que facturas ──────────────────
 SELECT probar('n8n_writer inserta un seguimiento',
@@ -677,6 +677,90 @@ SELECT probar('con 5 proyectos abiertos no puede publicar otro',
   'authenticated', '77777777-7777-4777-8777-777777777777',
   'SELECT count(*) FROM (SELECT publicar_proyecto(''Un sexto proyecto más'', ''Descripción suficientemente larga del sexto proyecto.'', ''seo'', ''baja'', ''hasta_300'', ''Marta'', NULL)) x',
   'error: Ya tenés 5 proyectos abiertos: elegí o esperá a que cierre alguno');
+
+-- ── 26. Perfiles públicos y calificaciones ─────────────────────────────────
+-- Los dos leads de prueba son de Pepe («Estudio Pepe», estudio-pepe). Se
+-- cierran como lo hace n8n; LD-TEST-0001 además quedó asignado por la bolsa.
+UPDATE leads SET estado = 'CERRADO' WHERE lead_id IN ('LD-PEPE-0001', 'LD-TEST-0001');
+UPDATE bolsa_pedidos SET estado = 'ASIGNADO', asignado_espacio_id = (SELECT espacio_id FROM leads WHERE lead_id = 'LD-TEST-0001')
+WHERE lead_id = 'LD-TEST-0001';
+INSERT INTO leads (lead_id, espacio_id, nombre, email, presupuesto, urgencia, servicio, estado)
+VALUES ('LD-PEPE-ABIERTO', (SELECT id FROM espacios WHERE dueno_id = '22222222-2222-4222-8222-222222222222'),
+        'Cliente Abierto', 'abierto@test.com', 500, 'media', 'seo', 'NUEVO');
+
+SELECT probar('anon ve a quién califica con el token del correo',
+  'anon', NULL,
+  format('SELECT count(*) FROM calificacion_pendiente(%L) WHERE espacio_nombre = ''Estudio Pepe'' AND NOT ya_calificado',
+         (SELECT calificacion_token FROM leads WHERE lead_id = 'LD-PEPE-0001')),
+  '1 filas');
+SELECT probar('anon califica un proyecto cerrado con el token',
+  'anon', NULL,
+  format('SELECT count(*) FROM (SELECT calificar(%L, 5, %L)) x',
+         (SELECT calificacion_token FROM leads WHERE lead_id = 'LD-PEPE-0001'), 'Excelente trabajo, muy prolijo.'),
+  '1 filas');
+SELECT probar('queda con el nombre de pila y como cliente del formulario propio',
+  'service_role', NULL,
+  'SELECT count(*) FROM calificaciones WHERE lead_id = ''LD-PEPE-0001'' AND autor_nombre = ''Cliente'' AND origen = ''formulario''',
+  '1 filas');
+SELECT probar('no se puede calificar dos veces',
+  'anon', NULL,
+  format('SELECT count(*) FROM (SELECT calificar(%L, 1, NULL)) x',
+         (SELECT calificacion_token FROM leads WHERE lead_id = 'LD-PEPE-0001')),
+  'error: Ya calificaste este proyecto');
+SELECT probar('las estrellas van de 1 a 5',
+  'anon', NULL,
+  format('SELECT count(*) FROM (SELECT calificar(%L, 6, NULL)) x',
+         (SELECT calificacion_token FROM leads WHERE lead_id = 'LD-TEST-0001')),
+  'error: Elegí entre 1 y 5 estrellas');
+SELECT probar('un proyecto que no está cerrado no se califica',
+  'anon', NULL,
+  format('SELECT count(*) FROM (SELECT calificar(%L, 5, NULL)) x',
+         (SELECT calificacion_token FROM leads WHERE lead_id = 'LD-PEPE-ABIERTO')),
+  'error: El enlace no es válido o el proyecto no está cerrado');
+SELECT probar('un token inventado no califica nada',
+  'anon', NULL,
+  format('SELECT count(*) FROM (SELECT calificar(%L, 5, NULL)) x', gen_random_uuid()),
+  'error: El enlace no es válido o el proyecto no está cerrado');
+SELECT probar('se califica un proyecto que llegó por la bolsa',
+  'anon', NULL,
+  format('SELECT count(*) FROM (SELECT calificar(%L, 3, NULL)) x',
+         (SELECT calificacion_token FROM leads WHERE lead_id = 'LD-TEST-0001')),
+  '1 filas');
+SELECT probar('(visto por n8n) quedó como de la plataforma',
+  'n8n_writer', NULL,
+  'SELECT count(*) FROM calificaciones WHERE lead_id = ''LD-TEST-0001'' AND origen = ''plataforma'' AND estrellas = 3', '1 filas');
+SELECT probar('anon NO lee la tabla de calificaciones',
+  'anon', NULL, 'SELECT count(*) FROM calificaciones', 'permiso denegado');
+SELECT probar('ni un desarrollador (la lee por el perfil)',
+  'authenticated', '22222222-2222-4222-8222-222222222222', 'SELECT count(*) FROM calificaciones', 'permiso denegado');
+SELECT probar('el perfil público muestra el promedio, la cantidad y los proyectos terminados',
+  'anon', NULL,
+  'SELECT count(*) FROM perfil_publico(''estudio-pepe'') WHERE promedio = 4.0 AND calificaciones = 2 AND proyectos_terminados = 2',
+  '1 filas');
+SELECT probar('y las reseñas, sin datos de contacto',
+  'anon', NULL,
+  'SELECT count(*) FROM resenas_publicas(''estudio-pepe'') WHERE autor_nombre = ''Cliente''', '2 filas');
+SELECT probar('un espacio sin el alta completa no tiene perfil público',
+  'anon', NULL,
+  format('SELECT count(*) FROM perfil_publico(%L)', (SELECT slug FROM espacios WHERE dueno_id = '66666666-6666-4666-8666-666666666666')),
+  '0 filas');
+SELECT probar('el dueño edita su presentación, habilidades y portfolio',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (UPDATE espacios SET presentacion = ''Hago sitios y tiendas.'', habilidades = ARRAY[''React'',''Next.js''], portfolio_urls = ARRAY[''https://pepe.dev''] RETURNING 1) SELECT count(*) FROM x',
+  '1 filas');
+SELECT probar('un enlace del portfolio que no es http(s) no se acepta',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (UPDATE espacios SET portfolio_urls = ARRAY[''javascript:alert(1)''] RETURNING 1) SELECT count(*) FROM x',
+  'error: Los enlaces del portfolio tienen que empezar con http:// o https://');
+SELECT probar('ni una habilidad vacía',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (UPDATE espacios SET habilidades = ARRAY[''  ''] RETURNING 1) SELECT count(*) FROM x',
+  'error: Cada habilidad tiene que tener entre 1 y 40 caracteres');
+SELECT probar('nadie edita el perfil de otro (0 filas)',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  format('WITH x AS (UPDATE espacios SET presentacion = ''hackeado'' WHERE id = %L RETURNING 1) SELECT count(*) FROM x',
+         (SELECT id FROM espacios WHERE dueno_id = '11111111-1111-4111-8111-111111111111')),
+  '0 filas');
 
 -- ── Reporte ────────────────────────────────────────────────────────────────
 \o

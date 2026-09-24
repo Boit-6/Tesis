@@ -1630,3 +1630,164 @@ CREATE POLICY bolsa_pedidos_update_n8n_writer ON bolsa_pedidos
 DROP POLICY IF EXISTS postulaciones_select_n8n_writer ON postulaciones;
 CREATE POLICY postulaciones_select_n8n_writer ON postulaciones
   FOR SELECT TO n8n_writer USING (true);
+
+-- =====================================================================
+-- 9) Perfiles públicos y calificaciones (etapas 7 y 8, 24-sep-2026)
+-- =====================================================================
+-- Cada desarrollador tiene un perfil público (/d/<slug>) con su
+-- presentación, habilidades, portfolio y reputación. Al cerrar un proyecto,
+-- el cliente recibe un enlace para calificarlo con estrellas (1 a 5) y un
+-- comentario opcional. Se califican todos los proyectos cerrados, y cada
+-- reseña indica si el cliente llegó por la plataforma (bolsa) o por el
+-- formulario propio del desarrollador.
+--
+-- Nadie lee ni escribe estas tablas directo desde afuera: el perfil, las
+-- reseñas y la calificación pasan por funciones que devuelven y validan sólo
+-- lo que corresponde.
+
+ALTER TABLE espacios ADD COLUMN IF NOT EXISTS presentacion TEXT
+  CHECK (presentacion IS NULL OR length(presentacion) <= 1500);
+ALTER TABLE espacios ADD COLUMN IF NOT EXISTS habilidades TEXT[] NOT NULL DEFAULT '{}'
+  CHECK (cardinality(habilidades) <= 15);
+ALTER TABLE espacios ADD COLUMN IF NOT EXISTS portfolio_urls TEXT[] NOT NULL DEFAULT '{}'
+  CHECK (cardinality(portfolio_urls) <= 5);
+-- El dueño edita su perfil (la política espacios_update_dueno ya limita a su fila).
+GRANT UPDATE (presentacion, habilidades, portfolio_urls) ON espacios TO authenticated;
+
+-- Cada habilidad es una etiqueta corta y cada enlace del portfolio, una URL
+-- http(s): el perfil es público y no debe poder llevar javascript: ni HTML.
+CREATE OR REPLACE FUNCTION public.espacios_validar_perfil() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM unnest(NEW.habilidades) h WHERE length(btrim(h)) NOT BETWEEN 1 AND 40) THEN
+    RAISE EXCEPTION 'Cada habilidad tiene que tener entre 1 y 40 caracteres';
+  END IF;
+  IF EXISTS (SELECT 1 FROM unnest(NEW.portfolio_urls) u
+             WHERE u !~ '^https?://[^\s<>"]+$' OR length(u) > 300) THEN
+    RAISE EXCEPTION 'Los enlaces del portfolio tienen que empezar con http:// o https://';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_espacios_validar_perfil ON espacios;
+CREATE TRIGGER trg_espacios_validar_perfil
+  BEFORE INSERT OR UPDATE OF habilidades, portfolio_urls ON espacios
+  FOR EACH ROW EXECUTE FUNCTION public.espacios_validar_perfil();
+
+-- Enlace para calificar que recibe el cliente al cerrarse el proyecto.
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS calificacion_token UUID NOT NULL DEFAULT gen_random_uuid();
+CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_calificacion_token ON leads (calificacion_token);
+
+CREATE TABLE IF NOT EXISTS calificaciones (
+  id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Una por proyecto.
+  lead_id      TEXT UNIQUE NOT NULL REFERENCES leads(lead_id) ON DELETE CASCADE,
+  -- El espacio que hizo el trabajo, fijo: si el lead se mudara después, la
+  -- reseña sigue siendo de quien lo hizo.
+  espacio_id   UUID NOT NULL REFERENCES espacios(id),
+  estrellas    SMALLINT NOT NULL CHECK (estrellas BETWEEN 1 AND 5),
+  comentario   TEXT CHECK (comentario IS NULL OR length(comentario) <= 1000),
+  -- Sólo el nombre de pila, que es lo que se muestra.
+  autor_nombre TEXT NOT NULL,
+  origen       TEXT NOT NULL CHECK (origen IN ('plataforma','formulario')),
+  creado_en    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_calificaciones_espacio ON calificaciones (espacio_id, creado_en DESC);
+
+ALTER TABLE calificaciones ENABLE ROW LEVEL SECURITY;
+ALTER TABLE calificaciones FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON calificaciones FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON calificaciones TO service_role;
+GRANT SELECT ON calificaciones TO n8n_writer;
+DROP POLICY IF EXISTS calificaciones_select_n8n_writer ON calificaciones;
+CREATE POLICY calificaciones_select_n8n_writer ON calificaciones FOR SELECT TO n8n_writer USING (true);
+
+-- Reputación de un espacio: promedio (con un decimal) y cantidad. La usan el
+-- perfil, las postulaciones y el sorteo ponderado.
+CREATE OR REPLACE FUNCTION public.reputacion(p_espacio uuid)
+RETURNS TABLE (promedio numeric, cantidad int)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT round(avg(c.estrellas)::numeric, 1), count(*)::int
+  FROM calificaciones c WHERE c.espacio_id = p_espacio
+$$;
+
+-- Lo que ve la página /calificar/<token> antes de calificar: a quién y si ya
+-- lo hizo. Sólo proyectos cerrados.
+CREATE OR REPLACE FUNCTION public.calificacion_pendiente(p_token uuid)
+RETURNS TABLE (espacio_nombre text, servicio servicio_tipo, cliente_nombre text, ya_calificado boolean)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT e.nombre, l.servicio, split_part(btrim(l.nombre), ' ', 1),
+         EXISTS (SELECT 1 FROM calificaciones c WHERE c.lead_id = l.lead_id)
+  FROM leads l JOIN espacios e ON e.id = l.espacio_id
+  WHERE l.calificacion_token = p_token AND l.estado = 'CERRADO'
+$$;
+
+-- El cliente califica con el token del correo. Una vez por proyecto, sólo
+-- cerrados. El origen se decide acá: «plataforma» si el pedido pasó por la
+-- bolsa y quedó asignado a este espacio.
+CREATE OR REPLACE FUNCTION public.calificar(p_token uuid, p_estrellas int, p_comentario text)
+RETURNS text
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  l leads%ROWTYPE;
+  marca text;
+BEGIN
+  SELECT * INTO l FROM leads WHERE calificacion_token = p_token AND estado = 'CERRADO';
+  IF NOT FOUND THEN RAISE EXCEPTION 'El enlace no es válido o el proyecto no está cerrado'; END IF;
+  IF p_estrellas IS NULL OR p_estrellas NOT BETWEEN 1 AND 5 THEN
+    RAISE EXCEPTION 'Elegí entre 1 y 5 estrellas';
+  END IF;
+
+  INSERT INTO calificaciones (lead_id, espacio_id, estrellas, comentario, autor_nombre, origen)
+  VALUES (
+    l.lead_id, l.espacio_id, p_estrellas, nullif(btrim(coalesce(p_comentario, '')), ''),
+    split_part(btrim(l.nombre), ' ', 1),
+    CASE WHEN EXISTS (SELECT 1 FROM bolsa_pedidos b
+                      WHERE b.lead_id = l.lead_id AND b.estado = 'ASIGNADO' AND b.asignado_espacio_id = l.espacio_id)
+         THEN 'plataforma' ELSE 'formulario' END
+  )
+  ON CONFLICT (lead_id) DO NOTHING;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Ya calificaste este proyecto'; END IF;
+
+  SELECT e.nombre INTO marca FROM espacios e WHERE e.id = l.espacio_id;
+  RETURN marca;
+END;
+$$;
+
+-- El perfil público de un desarrollador, por su dirección. Sólo espacios con
+-- el alta completa. Proyectos terminados = leads cerrados del espacio.
+CREATE OR REPLACE FUNCTION public.perfil_publico(p_slug text)
+RETURNS TABLE (
+  slug text, nombre text, presentacion text, habilidades text[], portfolio_urls text[],
+  promedio numeric, calificaciones int, proyectos_terminados int, miembro_desde timestamptz
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT e.slug, e.nombre, e.presentacion, e.habilidades, e.portfolio_urls,
+         r.promedio, r.cantidad,
+         (SELECT count(*)::int FROM leads l WHERE l.espacio_id = e.id AND l.estado = 'CERRADO'),
+         e.configurado_en
+  FROM espacios e, LATERAL reputacion(e.id) r
+  WHERE e.slug = lower(p_slug) AND e.configurado_en IS NOT NULL
+$$;
+
+-- Las reseñas de un perfil, de la más nueva a la más vieja.
+CREATE OR REPLACE FUNCTION public.resenas_publicas(p_slug text)
+RETURNS TABLE (estrellas smallint, comentario text, autor_nombre text, origen text, creado_en timestamptz)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT c.estrellas, c.comentario, c.autor_nombre, c.origen, c.creado_en
+  FROM calificaciones c JOIN espacios e ON e.id = c.espacio_id
+  WHERE e.slug = lower(p_slug) AND e.configurado_en IS NOT NULL
+  ORDER BY c.creado_en DESC
+  LIMIT 50
+$$;
+
+REVOKE ALL ON FUNCTION public.reputacion(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.calificacion_pendiente(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.calificar(uuid, int, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.perfil_publico(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.resenas_publicas(text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.reputacion(uuid) TO authenticated, n8n_writer;
+GRANT EXECUTE ON FUNCTION public.calificacion_pendiente(uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.calificar(uuid, int, text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.perfil_publico(text) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.resenas_publicas(text) TO anon, authenticated;
