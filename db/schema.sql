@@ -1418,6 +1418,13 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 CREATE INDEX IF NOT EXISTS idx_bolsa_pedidos_cliente ON bolsa_pedidos (cliente_id);
 
+-- Etapa 10: etiquetas de habilidades opcionales que suma el cliente al
+-- publicar (hasta 8, limpias por publicar_proyecto()) y la marca de que ya
+-- se mandaron las alertas a los desarrolladores a los que les encaja.
+ALTER TABLE bolsa_pedidos ADD COLUMN IF NOT EXISTS etiquetas TEXT[] NOT NULL DEFAULT '{}'
+  CHECK (cardinality(etiquetas) <= 8);
+ALTER TABLE bolsa_pedidos ADD COLUMN IF NOT EXISTS alertas_enviadas_en TIMESTAMPTZ;
+
 -- Al publicar un pedido rechazado: exige el consentimiento y copia del lead
 -- los datos que se muestran, para que quien publica no pueda poner otros (ni
 -- personales). Los proyectos de un cliente llegan armados por
@@ -1461,7 +1468,7 @@ RETURNS TABLE (
   presupuesto_rango text, presupuesto numeric, estado bolsa_estado,
   postulaciones int, tope_postulaciones int, publicado_en timestamptz,
   vence_en timestamptz, propio boolean, me_postule boolean, asignado_a_mi boolean,
-  titulo text, directo boolean, mi_postulacion uuid
+  titulo text, directo boolean, mi_postulacion uuid, etiquetas text[]
 )
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   WITH mio AS (
@@ -1474,7 +1481,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
          b.asignado_espacio_id IS NOT DISTINCT FROM mio.id,
          b.titulo, b.cliente_id IS NOT NULL,
          -- La postulación propia: con ella se abre la conversación (etapa 9).
-         (SELECT p.id FROM postulaciones p WHERE p.pedido_id = b.id AND p.espacio_id = mio.id)
+         (SELECT p.id FROM postulaciones p WHERE p.pedido_id = b.id AND p.espacio_id = mio.id),
+         b.etiquetas
   FROM bolsa_pedidos b, mio
   WHERE (b.estado = 'ABIERTO' AND b.vence_en > now())
      OR b.origen_espacio_id = mio.id
@@ -1529,9 +1537,13 @@ GRANT EXECUTE ON FUNCTION public.postularme(uuid, text, numeric, text) TO authen
 -- defecto. Hasta 5 proyectos abiertos por cliente,
 -- para que una cuenta no llene la bolsa. El importe es el piso del rango, con
 -- la misma tabla que Code - Normalizar Lead.
+-- p_etiquetas (etapa 10): opcionales. Se limpian, se sacan las repetidas y
+-- se admiten hasta 8, de 1 a 40 caracteres cada una. Cambió la firma: se
+-- borra la anterior para que no quede una sobrecarga ambigua.
+DROP FUNCTION IF EXISTS public.publicar_proyecto(text, text, servicio_tipo, urgencia_tipo, text, text, text);
 CREATE OR REPLACE FUNCTION public.publicar_proyecto(
   p_titulo text, p_descripcion text, p_servicio servicio_tipo, p_urgencia urgencia_tipo,
-  p_presupuesto_rango text, p_nombre text, p_telefono text
+  p_presupuesto_rango text, p_nombre text, p_telefono text, p_etiquetas text[] DEFAULT '{}'
 ) RETURNS uuid
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
@@ -1539,6 +1551,7 @@ DECLARE
   piso numeric;
   nuevo uuid;
   tope int := coalesce(nullif(current_setting('app.bolsa_tope_directo', true), '')::int, 15);
+  etiquetas text[];
   dias int := coalesce(nullif(current_setting('app.bolsa_dias', true), '')::int, 7);
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND tipo = 'cliente') THEN
@@ -1556,6 +1569,18 @@ BEGIN
     RAISE EXCEPTION 'El nombre tiene que tener entre 2 y 100 caracteres';
   END IF;
 
+  -- Etiquetas: sin vacías ni repetidas (sin distinguir mayúsculas), en orden.
+  SELECT coalesce(array_agg(e ORDER BY primera), '{}') INTO etiquetas FROM (
+    SELECT min(btrim(x)) AS e, min(o) AS primera
+    FROM unnest(coalesce(p_etiquetas, '{}')) WITH ORDINALITY u(x, o)
+    WHERE btrim(x) <> ''
+    GROUP BY lower(btrim(x))
+  ) t;
+  IF cardinality(etiquetas) > 8 THEN RAISE EXCEPTION 'Hasta 8 etiquetas'; END IF;
+  IF EXISTS (SELECT 1 FROM unnest(etiquetas) e WHERE length(e) > 40) THEN
+    RAISE EXCEPTION 'Cada etiqueta puede tener hasta 40 caracteres';
+  END IF;
+
   piso := CASE p_presupuesto_rango
     WHEN 'hasta_300' THEN 100 WHEN '300_1000' THEN 300 WHEN '1000_2000' THEN 1000
     WHEN '2000_5000' THEN 2000 WHEN 'mas_5000' THEN 5000 END;
@@ -1563,10 +1588,11 @@ BEGIN
 
   INSERT INTO bolsa_pedidos (
     cliente_id, titulo, resumen, servicio, urgencia, presupuesto_rango, presupuesto,
-    contacto_nombre, contacto_email, contacto_telefono, tope_postulaciones, vence_en
+    contacto_nombre, contacto_email, contacto_telefono, tope_postulaciones, vence_en, etiquetas
   ) VALUES (
     auth.uid(), btrim(p_titulo), btrim(p_descripcion), p_servicio, p_urgencia, p_presupuesto_rango, piso,
-    btrim(p_nombre), correo, nullif(btrim(coalesce(p_telefono, '')), ''), tope, now() + make_interval(days => dias)
+    btrim(p_nombre), correo, nullif(btrim(coalesce(p_telefono, '')), ''), tope, now() + make_interval(days => dias),
+    etiquetas
   ) RETURNING id INTO nuevo;
 
   RETURN nuevo;
@@ -1574,8 +1600,8 @@ END;
 $$;
 
 
-REVOKE ALL ON FUNCTION public.publicar_proyecto(text, text, servicio_tipo, urgencia_tipo, text, text, text) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.publicar_proyecto(text, text, servicio_tipo, urgencia_tipo, text, text, text) TO authenticated;
+REVOKE ALL ON FUNCTION public.publicar_proyecto(text, text, servicio_tipo, urgencia_tipo, text, text, text, text[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.publicar_proyecto(text, text, servicio_tipo, urgencia_tipo, text, text, text, text[]) TO authenticated;
 
 -- RLS sin políticas para authenticated ni anon: denegado por defecto. n8n
 -- publica, lee las postulaciones para la página del cliente, asigna y vence.
@@ -2004,3 +2030,41 @@ BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.mensajes;
   END IF;
 END $$;
+
+-- =====================================================================
+-- 11) Directorio y alertas (etapa 10, 24-sep-2026)
+-- =====================================================================
+-- Cada desarrollador declara los servicios que ofrece: con eso aparece en el
+-- directorio público (/desarrolladores) y recibe alertas de los proyectos
+-- nuevos de la bolsa de esos tipos, con un presupuesto mínimo opcional.
+ALTER TABLE espacios ADD COLUMN IF NOT EXISTS servicios servicio_tipo[] NOT NULL DEFAULT '{}';
+ALTER TABLE espacios ADD COLUMN IF NOT EXISTS alerta_presupuesto_min NUMERIC(12,2)
+  CHECK (alerta_presupuesto_min IS NULL OR alerta_presupuesto_min >= 0);
+ALTER TABLE espacios ADD COLUMN IF NOT EXISTS alertas_correo BOOLEAN NOT NULL DEFAULT true;
+GRANT UPDATE (servicios, alerta_presupuesto_min, alertas_correo) ON espacios TO authenticated;
+-- n8n arma las alertas: necesita saber qué ofrece cada uno y si completó el alta.
+GRANT SELECT (servicios, alerta_presupuesto_min, alertas_correo, configurado_en) ON espacios TO n8n_writer;
+
+-- Directorio público: sólo espacios con el alta completa que declararon al
+-- menos un servicio (así no aparecen perfiles vacíos). Filtra por tipo de
+-- trabajo y por habilidad (sin distinguir mayúsculas), y ordena por estrellas.
+CREATE OR REPLACE FUNCTION public.directorio_publico(p_servicio servicio_tipo DEFAULT NULL, p_habilidad text DEFAULT NULL)
+RETURNS TABLE (
+  slug text, nombre text, presentacion text, habilidades text[], servicios servicio_tipo[],
+  promedio numeric, calificaciones int, proyectos_terminados int
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT e.slug, e.nombre, left(e.presentacion, 240), e.habilidades, e.servicios,
+         r.promedio, r.cantidad,
+         (SELECT count(*)::int FROM leads l WHERE l.espacio_id = e.id AND l.estado = 'CERRADO')
+  FROM espacios e, LATERAL reputacion(e.id) r
+  WHERE e.configurado_en IS NOT NULL
+    AND cardinality(e.servicios) > 0
+    AND (p_servicio IS NULL OR p_servicio = ANY (e.servicios))
+    AND (nullif(btrim(coalesce(p_habilidad, '')), '') IS NULL
+         OR EXISTS (SELECT 1 FROM unnest(e.habilidades) h WHERE lower(h) LIKE '%' || lower(btrim(p_habilidad)) || '%'))
+  ORDER BY r.promedio DESC NULLS LAST, r.cantidad DESC, e.nombre
+  LIMIT 100
+$$;
+REVOKE ALL ON FUNCTION public.directorio_publico(servicio_tipo, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.directorio_publico(servicio_tipo, text) TO anon, authenticated;

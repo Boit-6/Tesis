@@ -31,6 +31,7 @@ const pedido = (id: string, extra: Partial<PedidoBolsa> = {}): PedidoBolsa => ({
   titulo: null,
   directo: false,
   mi_postulacion: null,
+  etiquetas: [],
   ...extra,
 });
 

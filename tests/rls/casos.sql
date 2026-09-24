@@ -890,6 +890,48 @@ SELECT probar('n8n lee los mensajes para avisar',
 SELECT probar('pero sólo puede marcar avisado_en, no cambiar el texto',
   'n8n_writer', NULL, 'WITH x AS (UPDATE mensajes SET texto = ''otro'' RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
 
+-- ── 29. Etiquetas, directorio y alertas (etapa 10) ─────────────────────────
+SELECT probar('una clienta publica con etiquetas: se limpian y no se repiten',
+  'authenticated', '88888888-8888-4888-8888-888888888888',
+  $q$SELECT count(*) FROM (SELECT publicar_proyecto('Tienda en Shopify para mi marca', 'Migrar mi tienda a Shopify con pagos y envíos.', 'ecommerce', 'media', '1000_2000', 'Laura', NULL, ARRAY[' Shopify ', 'shopify', 'React', ''])) x$q$,
+  '1 filas');
+SELECT probar('(vistas por n8n) quedaron Shopify y React',
+  'n8n_writer', NULL,
+  'SELECT count(*) FROM bolsa_pedidos WHERE titulo = ''Tienda en Shopify para mi marca'' AND etiquetas = ARRAY[''Shopify'', ''React'']',
+  '1 filas');
+SELECT probar('más de 8 etiquetas no se aceptan',
+  'authenticated', '88888888-8888-4888-8888-888888888888',
+  $q$SELECT count(*) FROM (SELECT publicar_proyecto('Otro proyecto de prueba', 'Descripción suficientemente larga del proyecto.', 'seo', 'baja', 'hasta_300', 'Laura', NULL, ARRAY['a','b','c','d','e','f','g','h','i'])) x$q$,
+  'error: Hasta 8 etiquetas');
+SELECT probar('un desarrollador ve las etiquetas en la bolsa',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'SELECT count(*) FROM bolsa_abierta() WHERE titulo = ''Tienda en Shopify para mi marca'' AND ''Shopify'' = ANY (etiquetas)',
+  '1 filas');
+SELECT probar('el dueño declara sus servicios y sus alertas',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (UPDATE espacios SET servicios = ARRAY[''ecommerce'', ''desarrollo_web'']::servicio_tipo[], alerta_presupuesto_min = 1000, alertas_correo = true RETURNING 1) SELECT count(*) FROM x',
+  '1 filas');
+SELECT probar('nadie cambia los servicios de otro (0 filas)',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  format('WITH x AS (UPDATE espacios SET servicios = ARRAY[''seo'']::servicio_tipo[] WHERE id = %L RETURNING 1) SELECT count(*) FROM x',
+         (SELECT id FROM espacios WHERE dueno_id = '11111111-1111-4111-8111-111111111111')),
+  '0 filas');
+SELECT probar('el directorio público muestra a quien declaró servicios',
+  'anon', NULL, 'SELECT count(*) FROM directorio_publico() WHERE slug = ''estudio-pepe'' AND promedio = 4.0', '1 filas');
+SELECT probar('y no a quien no declaró ninguno',
+  'anon', NULL,
+  format('SELECT count(*) FROM directorio_publico() WHERE slug = %L',
+         (SELECT slug FROM espacios WHERE dueno_id = '11111111-1111-4111-8111-111111111111')),
+  '0 filas');
+SELECT probar('filtra por tipo de trabajo',
+  'anon', NULL, 'SELECT count(*) FROM directorio_publico(''seo'')', '0 filas');
+SELECT probar('y por habilidad, sin distinguir mayúsculas',
+  'anon', NULL, 'SELECT count(*) FROM directorio_publico(NULL, ''next'')', '1 filas');
+SELECT probar('n8n lee los servicios y las alertas de cada espacio',
+  'n8n_writer', NULL,
+  'SELECT count(*) FROM espacios WHERE ''ecommerce'' = ANY (servicios) AND alerta_presupuesto_min = 1000 AND alertas_correo AND configurado_en IS NOT NULL',
+  '1 filas');
+
 -- ── Reporte ────────────────────────────────────────────────────────────────
 \o
 \pset border 2

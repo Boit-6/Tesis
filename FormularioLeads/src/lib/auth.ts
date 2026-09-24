@@ -1,3 +1,4 @@
+import type {ServicioTipo} from "@/types/supabase";
 import type {User} from "@supabase/supabase-js";
 
 import {redirect} from "next/navigation";
@@ -24,6 +25,10 @@ export interface Espacio {
   presentacion: string | null;
   habilidades: string[];
   portfolio_urls: string[];
+  // Servicios que ofrece (directorio y alertas) y preferencias de alerta.
+  servicios: ServicioTipo[];
+  alerta_presupuesto_min: number | null;
+  alertas_correo: boolean;
 }
 
 export interface EstadoPanel {
@@ -51,7 +56,7 @@ export async function getPanelStatus(): Promise<EstadoPanel> {
   const {data: espacio} = await supabase
     .from("espacios")
     .select(
-      "id, slug, nombre, email_contacto, telegram_chat_id, stripe_account_id, stripe_cobros_activos, configurado_en, presentacion, habilidades, portfolio_urls",
+      "id, slug, nombre, email_contacto, telegram_chat_id, stripe_account_id, stripe_cobros_activos, configurado_en, presentacion, habilidades, portfolio_urls, servicios, alerta_presupuesto_min, alertas_correo",
     )
     .eq("dueno_id", user.id)
     .maybeSingle();

@@ -104,6 +104,10 @@ export interface Database {
           presentacion: string | null;
           habilidades: string[];
           portfolio_urls: string[];
+          // Servicios que ofrece y alertas (etapa 10).
+          servicios: ServicioTipo[];
+          alerta_presupuesto_min: number | null;
+          alertas_correo: boolean;
         };
         // Los crea la base al confirmar la cuenta (crear_espacio_propio).
         Insert: {
@@ -123,6 +127,9 @@ export interface Database {
           presentacion?: string | null;
           habilidades?: string[];
           portfolio_urls?: string[];
+          servicios?: ServicioTipo[];
+          alerta_presupuesto_min?: number | null;
+          alertas_correo?: boolean;
         };
         Relationships: [];
       };
@@ -534,6 +541,8 @@ export interface Database {
           directo: boolean;
           // La postulación propia (para abrir la conversación con el cliente).
           mi_postulacion: string | null;
+          // Etiquetas de habilidades que sumó el cliente (etapa 10).
+          etiquetas: string[];
         }[];
       };
       postularme: {
@@ -614,8 +623,23 @@ export interface Database {
           p_presupuesto_rango: string;
           p_nombre: string;
           p_telefono: string | null;
+          p_etiquetas?: string[];
         };
         Returns: string;
+      };
+      // Directorio público de desarrolladores (etapa 10).
+      directorio_publico: {
+        Args: {p_servicio?: ServicioTipo | null; p_habilidad?: string | null};
+        Returns: {
+          slug: string;
+          nombre: string;
+          presentacion: string | null;
+          habilidades: string[];
+          servicios: ServicioTipo[];
+          promedio: number | null;
+          calificaciones: number;
+          proyectos_terminados: number;
+        }[];
       };
       // Los proyectos del cliente con sesión y sus postulaciones.
       mis_proyectos: {
