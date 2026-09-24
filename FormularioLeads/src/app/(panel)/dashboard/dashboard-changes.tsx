@@ -16,7 +16,7 @@ export default function DashboardChanges({
 }) {
   return (
     <section>
-      <SectionHeader num="VI" title="Pedidos de cambio" />
+      <SectionHeader num="III" title="Pedidos de cambio" />
       {pedidos.length === 0 ? (
         <p className="text-muted text-[13px]">No hay pedidos de cambio.</p>
       ) : (

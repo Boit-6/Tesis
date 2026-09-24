@@ -19,7 +19,7 @@ export default function DashboardWork({
 }) {
   return (
     <section>
-      <SectionHeader num="V" title="Trabajos activos" />
+      <SectionHeader num="I" title="Trabajos activos" />
       {trabajos.length === 0 ? (
         <p className="text-muted text-[13px]">No hay trabajos en curso.</p>
       ) : (

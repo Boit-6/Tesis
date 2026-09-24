@@ -9,15 +9,10 @@ import type {
   Trabajo,
 } from "./dashboard-types";
 import type {Database} from "@/types/supabase";
+import type {ReactNode} from "react";
 
-import {useCallback, useEffect, useState} from "react";
+import {createContext, useCallback, useContext, useEffect, useState} from "react";
 
-import DashboardChanges from "./dashboard-changes";
-import DashboardInvoices from "./dashboard-invoices";
-import DashboardKpi from "./dashboard-kpi";
-import DashboardLeadsTable from "./dashboard-leads-table";
-import DashboardProposals from "./dashboard-proposals";
-import DashboardWork from "./dashboard-work";
 import {LEADS_LIMITE} from "./dashboard-types";
 
 import {useConfirm} from "@/app/components/confirm-dialog";
@@ -113,10 +108,46 @@ function aFacturaVencida(
   };
 }
 
+interface PanelDatos {
+  metrics: Metrics | null;
+  funnel: Record<string, number>;
+  leads: Lead[];
+  facturas: FacturaPendiente[];
+  trabajos: Trabajo[];
+  pedidos: PedidoCambio[];
+  porEnviar: PorEnviar[];
+  enviarPropuesta: (
+    leadId: string,
+    precio: number,
+    plazo: string,
+    alcance: string,
+  ) => Promise<void>;
+  cancelar: (leadId: string) => void;
+  cerrarProyecto: (leadId: string) => void;
+  aceptarCambio: (leadId: string) => void;
+  rechazarCambio: (leadId: string) => void;
+  anularFactura: (facturaId: string) => void;
+  cambiarEstadoTrabajo: (leadId: string, estado: Trabajo["estado_trabajo"]) => void;
+}
+
+const PanelDatosContext = createContext<PanelDatos | null>(null);
+
+// Lo usan las páginas del panel (Inicio, Leads, Facturas, Trabajos) para leer
+// los datos y disparar las acciones.
+export function usePanelDatos() {
+  const datos = useContext(PanelDatosContext);
+
+  if (!datos) throw new Error("usePanelDatos se usa dentro de PanelDatosProvider.");
+
+  return datos;
+}
+
 // Coordinador: junta los datos del tablero, mantiene la suscripción Realtime
-// y reparte props a cada sección (dashboard-*.tsx). Las secciones no hablan
-// con Supabase ni con /api/crm directamente, solo reciben datos y callbacks.
-export default function DashboardClient() {
+// y los reparte por contexto a cada página. Vive en el layout de las
+// secciones, así que cambiar de pestaña no vuelve a consultar ni abre otra
+// suscripción. Las secciones no hablan con Supabase ni con /api/crm
+// directamente, solo reciben datos y callbacks.
+export default function PanelDatosProvider({children}: {children: ReactNode}) {
   const [supabase] = useState(() => createClient());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -399,38 +430,44 @@ export default function DashboardClient() {
     accionPanel("factura-anular", {factura_id: facturaId}, "No se pudo anular la factura.");
   }
 
-  if (loading) {
-    return <p className="text-faint text-[11px] tracking-[0.2em] uppercase">Cargando datos…</p>;
-  }
+  const datos: PanelDatos = {
+    metrics,
+    funnel,
+    leads,
+    facturas,
+    trabajos,
+    pedidos,
+    porEnviar,
+    enviarPropuesta,
+    cancelar,
+    cerrarProyecto,
+    aceptarCambio,
+    rechazarCambio,
+    anularFactura,
+    cambiarEstadoTrabajo: (leadId, estado) =>
+      setTrabajos((prev) =>
+        prev.map((x) => (x.lead_id === leadId ? {...x, estado_trabajo: estado} : x)),
+      ),
+  };
 
   return (
-    <div className="flex flex-col gap-14">
+    <PanelDatosContext.Provider value={datos}>
       {error && (
         <div
-          className="border-brick bg-brick/5 text-brick border-l-2 px-5 py-3.5 text-[13px]"
+          className="border-brick bg-brick/5 text-brick mb-10 border-l-2 px-5 py-3.5 text-[13px]"
           role="alert"
         >
           {error}
         </div>
       )}
 
-      <DashboardProposals porEnviar={porEnviar} onEnviar={enviarPropuesta} />
-      <DashboardKpi funnel={funnel} metrics={metrics} />
-      <DashboardLeadsTable leads={leads} />
-      <DashboardInvoices facturas={facturas} onAnular={anularFactura} />
-      <DashboardWork
-        trabajos={trabajos}
-        onCancelar={cancelar}
-        onCerrar={cerrarProyecto}
-        onEstadoCambio={(leadId, estado) =>
-          setTrabajos((prev) =>
-            prev.map((x) => (x.lead_id === leadId ? {...x, estado_trabajo: estado} : x)),
-          )
-        }
-      />
-      <DashboardChanges pedidos={pedidos} onAceptar={aceptarCambio} onRechazar={rechazarCambio} />
+      {loading ? (
+        <p className="text-faint text-[11px] tracking-[0.2em] uppercase">Cargando datos…</p>
+      ) : (
+        children
+      )}
 
       <ConfirmDialog />
-    </div>
+    </PanelDatosContext.Provider>
   );
 }

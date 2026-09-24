@@ -39,7 +39,7 @@ export default function DashboardLeadsTable({leads}: {leads: Lead[]}) {
 
   return (
     <section>
-      <SectionHeader num="III" title="Leads recientes" />
+      <SectionHeader num="I" title="Leads recientes" />
       <div className="relative mb-6 max-w-sm">
         <svg
           aria-hidden="true"

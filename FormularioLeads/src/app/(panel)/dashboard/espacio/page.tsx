@@ -1,20 +1,15 @@
-import Link from "next/link";
-
 import CobrosStripe from "./cobros-stripe";
 import EspacioForm from "./espacio-form";
 import TelegramVinculo from "./telegram-vinculo";
 
 import {getPanelUser} from "@/lib/auth";
 
-// Ver la nota de /dashboard/page.tsx: el gate tiene que correr en cada request.
-export const dynamic = "force-dynamic";
-
 export default async function EspacioPage() {
   const {espacio} = await getPanelUser();
   const bienvenida = !espacio.configurado_en;
 
   return (
-    <main className="mx-auto w-full max-w-xl px-6 pt-10 pb-20 sm:px-10">
+    <div className="max-w-xl">
       <div className="border-rule mb-10 border-b pb-8">
         <p className="text-ochre mb-4 text-[10px] tracking-[0.22em] uppercase">
           {bienvenida ? "Bienvenido" : "Tu espacio"}
@@ -41,15 +36,6 @@ export default async function EspacioPage() {
       )}
 
       {!bienvenida && <TelegramVinculo vinculado={Boolean(espacio.telegram_chat_id)} />}
-
-      {!bienvenida && (
-        <Link
-          className="ease text-muted hover:text-ochre mt-10 inline-block text-[11px] tracking-[0.14em] uppercase transition duration-200"
-          href="/dashboard"
-        >
-          ← Volver al panel
-        </Link>
-      )}
-    </main>
+    </div>
   );
 }

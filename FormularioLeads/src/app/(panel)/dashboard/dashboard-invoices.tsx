@@ -14,7 +14,7 @@ export default function DashboardInvoices({
 }) {
   return (
     <section>
-      <SectionHeader num="IV" title="Facturas por cobrar" />
+      <SectionHeader num="I" title="Facturas por cobrar" />
       {facturas.length === 0 ? (
         <p className="text-muted text-[13px]">No hay facturas por cobrar.</p>
       ) : (

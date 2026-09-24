@@ -88,7 +88,10 @@ export default function EspacioForm({
       }
 
       if (bienvenida) {
+        // El refresh vuelve a pedir el layout del panel, que recién ahora
+        // muestra el menú (lo esconde mientras el espacio no está configurado).
         router.push("/dashboard");
+        router.refresh();
       } else {
         setGuardado(true);
         router.refresh();

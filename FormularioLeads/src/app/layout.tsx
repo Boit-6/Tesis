@@ -43,7 +43,7 @@ export const metadata: Metadata = {
 export default async function RootLayout({children}: {children: ReactNode}) {
   return (
     <html className={`${instrumentSans.variable} ${instrumentSerif.variable}`} lang="es">
-      <body className="bg-paper text-ink grid min-h-screen grid-rows-[1fr_auto] font-sans antialiased">
+      <body className="bg-paper text-ink grid min-h-screen grid-cols-[minmax(0,1fr)] grid-rows-[1fr_auto] font-sans antialiased">
         <a
           className="focus:bg-ink focus:text-paper sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:px-4 focus:py-2 focus:text-[12px] focus:tracking-[0.1em] focus:uppercase"
           href="#contenido"
