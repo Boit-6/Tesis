@@ -51,9 +51,9 @@ const CICLO = [
   ['Generar el comprobante en PDF',                            SISTEMA, 'HTTP - Gotenberg PDF'],
   ['Enviar la factura al cliente',                             SISTEMA, 'Gmail - Enviar Factura PDF'],
   ['Archivar la factura emitida',                              SISTEMA, 'Postgres - Insert Factura'],
-  ['Generar el enlace de pago',                                SISTEMA, 'HTTP - MercadoPago Crear Preferencia'],
+  ['Generar el enlace de pago',                                SISTEMA, 'Code - Resolver Link de Pago'],
   ['Reclamar el pago vencido (hasta 4 avisos)',                SISTEMA, 'Gmail - Recordatorio Pago'],
-  ['Registrar el cobro',                                       SISTEMA, 'Postgres - Marcar Cobrado MP'],
+  ['Registrar el cobro',                                       SISTEMA, 'Postgres - Marcar Cobrado Stripe'],
   ['Dar por cerrado el proyecto',                              PROFESIONAL, 'Postgres - Lead Cerrado'],
   ['Solicitar el testimonio',                                  SISTEMA, 'Gmail - Solicitar Testimonio'],
 ];

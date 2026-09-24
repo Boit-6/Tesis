@@ -469,6 +469,27 @@ SELECT probar('el dueño desvincula su Telegram',
 SELECT probar('y deja de recibir avisos por ahí',
   'service_role', NULL, 'SELECT count(*) FROM espacios WHERE telegram_chat_id IS NOT NULL', '0 filas');
 
+-- ── 21.1 Cobros con Stripe: la cuenta la escribe n8n, no el dueño ─────────
+SELECT probar('el dueño NO puede escribirse una cuenta de Stripe (cobraría en la de otro)',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (UPDATE espacios SET stripe_account_id = ''acct_ajena'' RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
+SELECT probar('el dueño NO puede marcarse los cobros como activos',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (UPDATE espacios SET stripe_cobros_activos = true RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
+SELECT probar('n8n guarda la cuenta de Stripe que creó para el espacio',
+  'n8n_writer', NULL,
+  'WITH x AS (UPDATE espacios SET stripe_account_id = ''acct_pepe'', stripe_cobros_activos = true WHERE nombre = ''Estudio Pepe'' RETURNING 1) SELECT count(*) FROM x', '1 filas');
+SELECT probar('pero no puede tocar el nombre ni el dueño',
+  'n8n_writer', NULL,
+  'WITH x AS (UPDATE espacios SET nombre = ''otro'' RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
+SELECT probar('una cuenta de Stripe no puede quedar en dos espacios',
+  'n8n_writer', NULL,
+  'WITH x AS (UPDATE espacios SET stripe_account_id = ''acct_pepe'' WHERE nombre <> ''Estudio Pepe'' RETURNING 1) SELECT count(*) FROM x',
+  'error: duplicate key value violates unique constraint "espacios_stripe_account_id_key"');
+SELECT probar('el dueño ve el estado de sus cobros',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'SELECT count(*) FROM espacios WHERE stripe_cobros_activos', '1 filas');
+
 -- ── 22. Métricas: una fila por espacio y mes ───────────────────────────────
 SELECT probar('n8n ve las métricas separadas por espacio',
   'n8n_writer', NULL, 'SELECT count(DISTINCT espacio_id) FROM metrics_mensuales', '2 filas');

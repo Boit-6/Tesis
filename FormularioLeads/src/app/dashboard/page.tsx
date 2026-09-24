@@ -39,6 +39,14 @@ export default async function DashboardPage() {
           >
             Tu formulario: /f/{espacio.slug} ↗
           </Link>
+          {!espacio.stripe_cobros_activos && (
+            <Link
+              className="ease text-ochre hover:text-ochre-deep text-[12.5px] transition duration-200"
+              href="/dashboard/espacio"
+            >
+              Activá los cobros online →
+            </Link>
+          )}
           <Link
             className="ease text-muted hover:text-ochre text-[11px] tracking-[0.14em] uppercase transition duration-200"
             href="/dashboard/espacio"

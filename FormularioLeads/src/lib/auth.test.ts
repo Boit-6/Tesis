@@ -23,6 +23,8 @@ const ESPACIO = {
   nombre: "Mi espacio",
   email_contacto: null,
   telegram_chat_id: null,
+  stripe_account_id: null,
+  stripe_cobros_activos: false,
   configurado_en: null,
 };
 

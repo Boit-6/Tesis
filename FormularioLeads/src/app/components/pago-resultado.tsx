@@ -2,19 +2,24 @@ type Variante = "exito" | "pendiente" | "fallido";
 
 const COPIA: Record<
   Variante,
-  {eyebrow: string; titulo: string; cuerpo: string; icono: string; accent: string}
+  {
+    eyebrow: string;
+    titulo: string;
+    cuerpo: string;
+    icono: string;
+    accent: string;
+  }
 > = {
-  // Esta página es una `back_url`: la abre el navegador del cliente cuando
-  // MercadoPago lo devuelve, no el sistema al registrar el cobro. La factura se
-  // marca COBRADO recién cuando llega la notificación servidor a servidor y se
-  // verifica contra la API de MercadoPago (§4.3.3), que puede tardar o no
-  // llegar. Por eso el texto no afirma que el pago quedó registrado: decirlo
+  // Esta página es la `success_url` / `cancel_url` de Stripe: la abre el
+  // navegador del cliente cuando Stripe lo devuelve, no el sistema al
+  // registrar el cobro. La factura se marca COBRADO recién cuando llega el
+  // evento firmado de Stripe al webhook de n8n, que puede tardar o no llegar. Por eso el texto no afirma que el pago quedó registrado: decirlo
   // acá sería afirmar algo que en ese momento todavía no se comprobó.
   exito: {
     eyebrow: "Pago aprobado",
     titulo: "¡Listo, gracias!",
     cuerpo:
-      "MercadoPago nos informó que el pago se aprobó. Lo confirmamos con el comprobante y te avisamos por email en cuanto quede registrado.",
+      "Stripe nos informó que el pago se aprobó. En unos minutos queda registrado en la factura.",
     icono: "✅",
     accent: "text-ochre",
   },
@@ -22,7 +27,7 @@ const COPIA: Record<
     eyebrow: "Pago en revisión",
     titulo: "Lo estamos procesando.",
     cuerpo:
-      "MercadoPago todavía está confirmando el pago (algunos medios tardan un poco). Te avisamos por email en cuanto se acredite.",
+      "El medio de pago todavía está confirmando el cobro (algunos tardan un poco). Queda registrado en cuanto se acredite.",
     icono: "⏳",
     accent: "text-mist",
   },

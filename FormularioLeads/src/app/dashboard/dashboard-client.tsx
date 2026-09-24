@@ -251,7 +251,7 @@ export default function DashboardClient() {
 
     // Refresca en vivo cuando entra o cambia un lead o una factura, agrupando
     // la ráfaga. Las facturas cambian solas sin tocar su lead: el pago de
-    // MercadoPago, el cron que las marca VENCIDA o una anulación.
+    // Stripe, el cron que las marca VENCIDA o una anulación.
     //
     // Cada evento de `postgres_changes` obliga a recargar el tablero entero, que
     // son seis consultas. Sin agrupar, un proceso programado que actualiza N

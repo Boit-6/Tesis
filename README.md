@@ -19,7 +19,7 @@ Características técnicas clave:
 - 🧩 **Arquitectura desacoplada en 3 capas** (presentación / orquestación / datos).
 - 🗄️ **PostgreSQL como única fuente de verdad** con enums, integridad referencial, RLS y vistas calculadas en vivo.
 - 🔑 **Aceptación segura y atómica** mediante token UUID validado contra la base (sin doble facturación en concurrencia).
-- 🧾 **Facturación automática en PDF** (HTML → Gotenberg) y **cobro real con MercadoPago** (idempotente; sin credenciales configuradas cae a un modo de desarrollo sin gateway).
+- 🧾 **Facturación automática en PDF** (HTML → Gotenberg) y **cobro con Stripe Connect** en USD: cada desarrollador cobra en su cuenta y la plataforma se queda con su comisión (idempotente; sin credenciales cae a un modo de desarrollo sin pasarela).
 - 🎫 **Tablero de tickets propio** con envejecimiento de prioridades + alertas por **Telegram**.
 - 📊 **Tablero interno en tiempo real** (Supabase Realtime) con gestión del estado del trabajo y de los pedidos de cambio.
 
@@ -53,8 +53,10 @@ La orquestación tiene **13 webhooks** y **4 procesos programados** (más loggin
 | Webhook `trabajo-estado` | Estado del trabajo | Actualiza `estado_trabajo` (PENDIENTE→…→ENTREGADO) |
 | Webhook `lead-cancelar` | Cancelación | Cancela el lead desde el tablero (PERDIDO + Telegram) |
 | Webhook `cambio-aceptar` / `cambio-rechazar` | Resolver pedidos de cambio | Reenvía la propuesta / mantiene la original |
-| Webhook `mp/notificacion` (POST) | Cobro real con MercadoPago | MercadoPago avisa el pago → se verifica contra su API → marca la factura COBRADO (idempotente) |
-| Webhook `pago-confirmado` (GET) | Cobro — modo de desarrollo | Sin `MP_ACCESS_TOKEN` configurado, marca la factura COBRADO a mano (idempotente) |
+| Webhook `pagar` (GET) | Enlace de pago de la factura | Al abrirlo, crea la sesión de Checkout de Stripe a la cuenta del desarrollador, con la comisión de la plataforma |
+| Webhook `stripe` (POST) | Cobro con Stripe | Stripe avisa el pago (evento firmado) → se verifica la firma → marca la factura COBRADO (idempotente) |
+| Webhooks `stripe-conectar` / `stripe-estado` (POST, panel) | Alta de cobros | Crea la cuenta Express del desarrollador, el enlace de onboarding, y lee si ya puede cobrar |
+| Webhook `pago-confirmado` (GET) | Cobro — modo de desarrollo | Sin `STRIPE_SECRET_KEY` configurado, marca la factura COBRADO a mano (idempotente) |
 | Webhook `proyecto-cerrado` | Cierre + testimonio | Cierra, calcula el ciclo y pide reseña |
 | Cron L-V 9:00 | Follow-up | Seguimiento automático; marca PERDIDO tras N intentos |
 | Cron 10:00 | Recordatorios | Avisos de facturas por vencer / vencidas |
@@ -88,7 +90,7 @@ Detalle: [`docs/modulo-tickets.md`](docs/modulo-tickets.md).
 - PostgreSQL / Supabase (tablas, enums, vistas, triggers, RLS)
 
 **Integraciones**
-- Gmail (OAuth2) · Telegram Bot · MercadoPago (Checkout Pro + Webhooks)
+- Gmail (OAuth2) · Telegram Bot · Stripe Connect (Checkout + Webhooks)
 
 **DevOps**
 - Docker / Docker Compose
@@ -185,7 +187,7 @@ npm run test:docker
 | Prueba | Qué verifica |
 |---|---|
 | `test:sql` | Compila con `PREPARE` las **28 consultas SQL** de los workflows contra el esquema real. Una columna mal escrita en un nodo Postgres se detecta acá y no en producción |
-| `test:rls` | Aplica `db/schema.sql` **tal cual está en el repositorio** y ejecuta **121 casos** de RLS rol por rol: que `anon` no acceda a nada, que cada desarrollador vea sólo lo de su espacio y no pueda tocar lo de otro, que lo que cuelga de un lead siga siempre a su espacio, que la auditoría esté cerrada, que nadie pueda escribir desde el navegador ni auto-ascenderse a admin, y que la whitelist de admins exija un email confirmado |
+| `test:rls` | Aplica `db/schema.sql` **tal cual está en el repositorio** y ejecuta **127 casos** de RLS rol por rol: que `anon` no acceda a nada, que cada desarrollador vea sólo lo de su espacio y no pueda tocar lo de otro, que lo que cuelga de un lead siga siempre a su espacio, que la auditoría esté cerrada, que nadie pueda escribir desde el navegador ni auto-ascenderse a admin, y que la whitelist de admins exija un email confirmado |
 | `test:idempotencia` | Ejecuta de verdad las consultas de deduplicación (S6) y de reconciliación de facturas (S5) sobre el esquema real, leyendo el SQL del propio workflow: si un nodo deja de ser idempotente, se pone en rojo |
 
 Ambas levantan un PostgreSQL desechable: no tocan ninguna instancia real.
@@ -228,7 +230,7 @@ tesis/
 │   ├── evidencia-validacion.md        # Reporte que genera la suite de escenarios
 │   ├── dictamen-v6-reejecucion.md     # Corrida manual de E11–E13 (evidencia citada en el Anexo A)
 │   ├── modulo-tickets.md              # Documentación del módulo de tickets
-│   ├── modulo-pagos.md                # Cobro real con MercadoPago + comisión de la plataforma
+│   ├── modulo-pagos.md                # Cobro con Stripe Connect + comisión de la plataforma
 │   ├── roadmap-mejoras.md             # Backlog de mejoras
 │   └── figura*.jpg                    # Capturas vigentes del Anexo A
 ├── FormularioLeads/           # Front Next.js (parte del monorepo — deploy en Vercel)
@@ -254,10 +256,10 @@ tesis/
 ## 🔐 Seguridad
 
 - **Token de aceptación:** UUID aleatorio por lead, validado contra la base (no falsificable) y **con vencimiento** (`TOKEN_VIGENCIA_DIAS`, 14 días por defecto). Las cuatro consultas que aceptan el token revalidan la vigencia.
-- **Webhooks del panel con credencial:** las acciones internas (cancelar, resolver pedidos de cambio, mover el estado del trabajo) usan Header Auth y ya no se llaman desde el navegador: pasan por `/api/crm/[accion]`, que revalida el rol `admin` y agrega el secreto del lado del servidor.
+- **Webhooks del panel con credencial:** las acciones internas (cancelar, resolver pedidos de cambio, mover el estado del trabajo) usan Header Auth y ya no se llaman desde el navegador: pasan por `/api/crm/[accion]`, que revalida la sesión, que el pedido sea del espacio de quien llama, y agrega el secreto del lado del servidor.
 - **Aceptación atómica:** `UPDATE ... WHERE lead_id = $1 AND estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO')` — evita doble facturación ante aceptaciones concurrentes.
-- **Pago idempotente:** `UPDATE ... WHERE estado_pago = 'PENDIENTE'` evita cobrar dos veces, tanto en el cobro real con MercadoPago como en el modo de desarrollo.
-- **Pago verificado contra la fuente:** la notificación de MercadoPago (`/webhook/mp/notificacion`) nunca se toma como verdad por sí sola — antes de marcar COBRADO se consulta el pago por su ID en la API de MercadoPago. Firma obligatoria (`MP_WEBHOOK_SECRET`, HMAC-SHA256 sobre `x-signature`): sin ese secreto, o con firma inválida, el nodo descarta la notificación. Detalle en [`docs/modulo-pagos.md`](docs/modulo-pagos.md).
+- **Pago idempotente:** `UPDATE ... WHERE estado_pago IN ('PENDIENTE','VENCIDA')` evita cobrar dos veces, tanto en el cobro con Stripe como en el modo de desarrollo.
+- **Pago verificado:** el evento de Stripe (`/webhook/stripe`) sólo se aplica con la firma `Stripe-Signature` válida (HMAC SHA-256 del cuerpo crudo con `STRIPE_WEBHOOK_SECRET`, con tolerancia de 5 minutos contra reenvíos) y si el monto y la moneda coinciden con la factura. Un pago que no se pudo aplicar genera un aviso crítico. Detalle en [`docs/modulo-pagos.md`](docs/modulo-pagos.md).
 - **Dashboard con control de acceso:** Supabase Auth + compuerta de espacio propio en la página y en cada route handler; lee con la anon key bajo sesión, nunca la service key. Las acciones que pasan por n8n comprueban antes que el pedido sea del espacio de quien llama.
 - **RLS en la base:** cada fila de negocio lleva `espacio_id` y las políticas sólo dejan leer lo del espacio propio; vistas con `security_invoker`, `anon` revocado.
 - **Secretos fuera del repo:** credenciales en n8n y en `.env.local` (ignorado por git). El workflow versionado usa `REEMPLAZAR_AL_IMPORTAR` en lugar de IDs reales, y **ninguna URL ni ID queda escrito a mano dentro de los nodos**: todo sale de variables de entorno.

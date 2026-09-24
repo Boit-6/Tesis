@@ -1,13 +1,14 @@
 import {NextRequest} from "next/server";
 import {afterEach, beforeEach, describe, expect, it, vi} from "vitest";
 
-import {requirePanel} from "@/lib/auth";
+import {getPanelStatus, requirePanel} from "@/lib/auth";
 import {createClient} from "@/lib/supabase/server";
 
 // `vi.mock` queda hoisteado por Vitest al tope del archivo, antes que
 // cualquier import — no hace falta escribirlo primero a mano.
 vi.mock("@/lib/auth", () => ({
   requirePanel: vi.fn(),
+  getPanelStatus: vi.fn(),
 }));
 
 vi.mock("@/lib/supabase/server", () => ({
@@ -174,6 +175,53 @@ describe("POST /api/crm/[accion]", () => {
 
       expect(res.status).toBe(400);
     }
+  });
+
+  it("stripe-conectar manda el espacio de la sesión, no el que venga en el cuerpo", async () => {
+    vi.mocked(getPanelStatus).mockResolvedValue({
+      user: {id: "u1"} as never,
+      espacio: {id: "esp-propio"} as never,
+      supabaseDisponible: true,
+    });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ok: true, url: "https://stripe"}), {
+        status: 200,
+      }),
+    );
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const {POST} = await import("./route");
+    const res = await POST(post({espacio_id: "esp-ajeno"}), {
+      params: Promise.resolve({accion: "stripe-conectar"}),
+    });
+
+    expect(res.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://n8n.local/webhook/stripe-conectar",
+      expect.objectContaining({
+        body: JSON.stringify({espacio_id: "esp-propio"}),
+      }),
+    );
+  });
+
+  it("stripe-estado sin espacio en la sesión: 403 sin llamar a n8n", async () => {
+    vi.mocked(getPanelStatus).mockResolvedValue({
+      user: null,
+      espacio: null,
+      supabaseDisponible: true,
+    });
+    const fetchMock = vi.fn();
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const {POST} = await import("./route");
+    const res = await POST(post({}), {
+      params: Promise.resolve({accion: "stripe-estado"}),
+    });
+
+    expect(res.status).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("manda el header del panel a n8n y reenvía su respuesta JSON", async () => {

@@ -58,7 +58,7 @@ const SQL_INSERT_LEAD = consultaDe('Postgres - Insert Lead');
 const SQL_LEER_ACEPTADO = consultaDe('Postgres - Leer Aceptado Sin Factura');
 const SQL_INSERT_FACTURA = consultaDe('Postgres - Insert Factura Reconciliada');
 const SQL_LEAD_FACTURADO = consultaDe('Postgres - Lead a Facturado (Reconciliación)');
-const SQL_COBRADO_MP = consultaDe('Postgres - Marcar Cobrado MP');
+const SQL_COBRADO = consultaDe('Postgres - Marcar Cobrado Stripe');
 const SQL_BUSCAR_NO_APLICADO = consultaDe('Postgres - Buscar Pago No Aplicado');
 const SQL_LOG_NO_APLICADO = consultaDe('Postgres - Log Pago No Aplicado');
 const SQL_FACTURA_COBRADA_CIERRE = consultaDe('Postgres - Factura Cobrada');
@@ -73,7 +73,7 @@ const JS_CLASIFICAR_NO_APLICADO = wf.nodes
 // Si algún `{{ … }}` sobrevivió, la consulta no es ejecutable y el verificador
 // estaría probando otra cosa. Mejor fallar acá y a la vista.
 for (const [nombre, sql] of Object.entries({SQL_INSERT_LEAD, SQL_LEER_ACEPTADO, SQL_INSERT_FACTURA, SQL_LEAD_FACTURADO,
-  SQL_COBRADO_MP, SQL_BUSCAR_NO_APLICADO, SQL_LOG_NO_APLICADO, SQL_FACTURA_COBRADA_CIERRE,
+  SQL_COBRADO, SQL_BUSCAR_NO_APLICADO, SQL_LOG_NO_APLICADO, SQL_FACTURA_COBRADA_CIERRE,
   SQL_MARCAR_ACEPTADO, SQL_CREAR_TICKETS, SQL_ESCALAR})) {
   if (sql.includes('{{')) throw new Error(`${nombre} conserva una expresión sin resolver: ${sql}`);
 }
@@ -282,8 +282,8 @@ try {
   console.log('\n── S5 · Reconciliación de la factura perdida ──\n');
 
   // Escenario de la deuda: la aceptación se aplicó y la cadena se cortó antes
-  // de persistir la factura (es lo que pasa hoy si falla Gotenberg, la API de
-  // MercadoPago o el nodo de correo).
+  // de persistir la factura (es lo que pasa si falla Gotenberg o el nodo de
+  // correo).
   psql(`
     INSERT INTO leads (lead_id, nombre, email, presupuesto, servicio, estado, fecha_aceptacion, precio_propuesto)
     VALUES ('LD-2000000000000-PERD', 'Cliente Huérfano', 'huerfano@test.com', 3000, 'desarrollo_web',
@@ -309,7 +309,7 @@ try {
   comprobar('no toca el lead que sí tiene factura',
     !pendientes().join('|').includes('LD-2000000000002-CONF'));
 
-  // Los trece parámetros que arma `Code - Preparar Factura Reconciliada`.
+  // Los doce parámetros que arma `Code - Preparar Factura Reconciliada`.
   // `factura_id` es determinista: mismo lead, mismo identificador. `pago_token`
   // se sumó al cerrar S1 (Tabla 11): el enlace de pago_confirmado ya no
   // alcanza sólo con adivinar factura_id.
@@ -321,17 +321,16 @@ try {
       email: 'huerfano@test.com',
       servicio: 'desarrollo_web',
       monto: 7200,
-      moneda: 'ARS',
+      moneda: 'USD',
       fecha_emision: new Date().toISOString(),
       fecha_vencimiento: new Date(Date.now() + 15 * 86400000).toISOString(),
-      mp_preference_id: null,
       comision_plataforma: 72,
-      pay_url: 'http://localhost:5678/webhook/pago-confirmado?factura_id=FAC-R-0000PERD',
+      pay_url: 'http://localhost:5678/webhook/pagar?f=FAC-R-0000PERD&t=11111111-2222-4333-8444-555555555555',
       pago_token: '11111111-2222-4333-8444-555555555555',
       ...over,
     };
     return ejecutar(SQL_INSERT_FACTURA, [f.factura_id, f.lead_id, f.cliente, f.email, f.servicio,
-      f.monto, f.moneda, f.fecha_emision, f.fecha_vencimiento, f.mp_preference_id,
+      f.monto, f.moneda, f.fecha_emision, f.fecha_vencimiento,
       f.comision_plataforma, f.pay_url, f.pago_token]).length;
   };
 
@@ -364,30 +363,30 @@ try {
   comprobar('la factura recuperada entra al circuito de recordatorios de pago',
     valor("SELECT count(*) FROM facturas_pendientes WHERE lead_id = 'LD-2000000000000-PERD';") === '1');
 
-  console.log('\n── Cobro por MercadoPago: ningún pago aprobado se pierde en silencio ──\n');
+  console.log('\n── Cobro por Stripe: ningún pago confirmado se pierde en silencio ──\n');
 
   // Una factura por caso, todas del lead que ya tiene factura más arriba.
   psql(`
-    INSERT INTO facturas (factura_id, lead_id, cliente, email, servicio, monto, moneda, estado_pago, fecha_emision, fecha_vencimiento, mp_payment_id)
-    VALUES ('FAC-MP-PEND', 'LD-2000000000002-CONF', 'Cliente', 'c@test.com', 'seo', 1000, 'ARS', 'PENDIENTE', now(), now() + interval '5 days', NULL),
-           ('FAC-MP-VENC', 'LD-2000000000002-CONF', 'Cliente', 'c@test.com', 'seo', 1000, 'ARS', 'VENCIDA',   now() - interval '35 days', now() - interval '20 days', NULL),
-           ('FAC-MP-ANUL', 'LD-2000000000002-CONF', 'Cliente', 'c@test.com', 'seo', 1000, 'ARS', 'ANULADA',   now(), now() + interval '5 days', NULL),
-           ('FAC-MP-MONT', 'LD-2000000000002-CONF', 'Cliente', 'c@test.com', 'seo', 1000, 'ARS', 'PENDIENTE', now(), now() + interval '5 days', NULL),
-           ('FAC-MP-DOBL', 'LD-2000000000002-CONF', 'Cliente', 'c@test.com', 'seo', 1000, 'ARS', 'COBRADO',   now(), now() + interval '5 days', '111');
+    INSERT INTO facturas (factura_id, lead_id, cliente, email, servicio, monto, moneda, estado_pago, fecha_emision, fecha_vencimiento, stripe_pago_id)
+    VALUES ('FAC-ST-PEND', 'LD-2000000000002-CONF', 'Cliente', 'c@test.com', 'seo', 1000, 'USD', 'PENDIENTE', now(), now() + interval '5 days', NULL),
+           ('FAC-ST-VENC', 'LD-2000000000002-CONF', 'Cliente', 'c@test.com', 'seo', 1000, 'USD', 'VENCIDA',   now() - interval '35 days', now() - interval '20 days', NULL),
+           ('FAC-ST-ANUL', 'LD-2000000000002-CONF', 'Cliente', 'c@test.com', 'seo', 1000, 'USD', 'ANULADA',   now(), now() + interval '5 days', NULL),
+           ('FAC-ST-MONT', 'LD-2000000000002-CONF', 'Cliente', 'c@test.com', 'seo', 1000, 'USD', 'PENDIENTE', now(), now() + interval '5 days', NULL),
+           ('FAC-ST-DOBL', 'LD-2000000000002-CONF', 'Cliente', 'c@test.com', 'seo', 1000, 'USD', 'COBRADO',   now(), now() + interval '5 days', 'pi_111');
   `);
 
-  // Lo que entrega `Code - Procesar Pago MP` para un pago aprobado.
+  // Lo que entrega `Code - Verificar Evento Stripe` para un pago confirmado.
   const pago = (facturaId, over = {}) =>
-    ({factura_id: facturaId, mp_payment_id: '555', monto_pagado: 1000, moneda_pagada: 'ARS', ...over});
-  const cobrar = (p) => ejecutar(SQL_COBRADO_MP, [p.factura_id, p.mp_payment_id, p.monto_pagado, p.moneda_pagada]).length;
+    ({factura_id: facturaId, stripe_pago_id: 'pi_555', monto_pagado: 1000, moneda_pagada: 'USD', ...over});
+  const cobrar = (p) => ejecutar(SQL_COBRADO, [p.factura_id, p.stripe_pago_id, p.monto_pagado, p.moneda_pagada]).length;
   const estado = (id) => valor(`SELECT estado_pago FROM facturas WHERE factura_id = '${id}';`);
 
   // La rama de «no aplicó»: la consulta real y el nodo Code real, encadenados
   // igual que en el workflow. Devuelve lo que llegaría a `logs` y a Telegram.
   const clasificar = (p) => {
     const [fila = ''] = ejecutar(SQL_BUSCAR_NO_APLICADO, [p.factura_id]);
-    const [factura_id, estado_pago, mp_payment_id, cliente, monto, moneda] = fila.split('|');
-    const encontrada = fila ? {factura_id, estado_pago, mp_payment_id, cliente, monto, moneda} : {};
+    const [factura_id, estado_pago, stripe_pago_id, cliente, monto, moneda] = fila.split('|');
+    const encontrada = fila ? {factura_id, estado_pago, stripe_pago_id, cliente, monto, moneda} : {};
     const item = {json: encontrada};
     const salida = new Function('$input', '$', JS_CLASIFICAR_NO_APLICADO)(
       {first: () => item},
@@ -397,41 +396,41 @@ try {
   };
 
   comprobar('un pago por el monto justo cobra la factura PENDIENTE',
-    cobrar(pago('FAC-MP-PEND')) === 1 && estado('FAC-MP-PEND') === 'COBRADO');
-  comprobar('y queda registrado que la cobró MercadoPago',
-    valor("SELECT metodo_cobro FROM facturas WHERE factura_id = 'FAC-MP-PEND';") === 'MERCADOPAGO');
+    cobrar(pago('FAC-ST-PEND')) === 1 && estado('FAC-ST-PEND') === 'COBRADO');
+  comprobar('y queda registrado que la cobró Stripe, con su PaymentIntent',
+    valor("SELECT metodo_cobro || '/' || stripe_pago_id FROM facturas WHERE factura_id = 'FAC-ST-PEND';") === 'STRIPE/pi_555');
 
   comprobar('la notificación repetida del mismo pago no vuelve a aplicarse',
-    cobrar(pago('FAC-MP-PEND')) === 0);
-  comprobar('y no genera alerta (MercadoPago reintenta: es ruido esperable)',
-    clasificar(pago('FAC-MP-PEND')) === null);
+    cobrar(pago('FAC-ST-PEND')) === 0);
+  comprobar('y no genera alerta (Stripe reintenta: es ruido esperable)',
+    clasificar(pago('FAC-ST-PEND')) === null);
 
   comprobar('un pago tardío cobra la factura VENCIDA (antes se perdía)',
-    cobrar(pago('FAC-MP-VENC')) === 1 && estado('FAC-MP-VENC') === 'COBRADO');
+    cobrar(pago('FAC-ST-VENC')) === 1 && estado('FAC-ST-VENC') === 'COBRADO');
 
   comprobar('un pago sobre una factura ANULADA no la cobra',
-    cobrar(pago('FAC-MP-ANUL')) === 0 && estado('FAC-MP-ANUL') === 'ANULADA');
+    cobrar(pago('FAC-ST-ANUL')) === 0 && estado('FAC-ST-ANUL') === 'ANULADA');
   comprobar('pero deja alerta: la plata ya entró',
-    /ANULADA/.test(clasificar(pago('FAC-MP-ANUL')) ?? ''), clasificar(pago('FAC-MP-ANUL')));
+    /ANULADA/.test(clasificar(pago('FAC-ST-ANUL')) ?? ''), clasificar(pago('FAC-ST-ANUL')));
 
   comprobar('un pago por menos de lo facturado no cobra la factura',
-    cobrar(pago('FAC-MP-MONT', {monto_pagado: 1})) === 0 && estado('FAC-MP-MONT') === 'PENDIENTE');
+    cobrar(pago('FAC-ST-MONT', {monto_pagado: 1})) === 0 && estado('FAC-ST-MONT') === 'PENDIENTE');
   comprobar('y la alerta dice cuánto se pagó y cuánto se facturó',
-    /se pagaron 1 ARS y la factura es por 1000/.test(clasificar(pago('FAC-MP-MONT', {monto_pagado: 1})) ?? ''),
-    clasificar(pago('FAC-MP-MONT', {monto_pagado: 1})));
+    /se pagaron 1 USD y la factura es por 1000/.test(clasificar(pago('FAC-ST-MONT', {monto_pagado: 1})) ?? ''),
+    clasificar(pago('FAC-ST-MONT', {monto_pagado: 1})));
   comprobar('un pago en otra moneda tampoco la cobra',
-    cobrar(pago('FAC-MP-MONT', {moneda_pagada: 'USD'})) === 0 && estado('FAC-MP-MONT') === 'PENDIENTE');
+    cobrar(pago('FAC-ST-MONT', {moneda_pagada: 'EUR'})) === 0 && estado('FAC-ST-MONT') === 'PENDIENTE');
 
   comprobar('un segundo pago sobre una factura ya cobrada se detecta como pago doble',
-    cobrar(pago('FAC-MP-DOBL')) === 0 && /pago doble/.test(clasificar(pago('FAC-MP-DOBL')) ?? ''));
+    cobrar(pago('FAC-ST-DOBL')) === 0 && /pago doble/.test(clasificar(pago('FAC-ST-DOBL')) ?? ''));
 
   comprobar('un pago que apunta a una factura inexistente deja alerta',
     /no existe/.test(clasificar(pago('FAC-NO-EXISTE')) ?? ''));
 
-  comprobar('un pago no aprobado (factura_id vacío) no toca nada ni alerta',
+  comprobar('un evento sin factura (factura_id vacío) no toca nada ni alerta',
     cobrar(pago('')) === 0 && clasificar(pago('')) === null);
 
-  ejecutar(SQL_LOG_NO_APLICADO, ['factura=FAC-MP-ANUL pago_mp=555 motivo=la factura está ANULADA']);
+  ejecutar(SQL_LOG_NO_APLICADO, ['factura=FAC-ST-ANUL pago_stripe=pi_555 motivo=la factura está ANULADA']);
   comprobar('n8n_writer puede dejar la alerta en logs',
     valor("SELECT count(*) FROM logs WHERE evento = 'pago_no_aplicado' AND nivel = 'ERROR';") === '1');
 

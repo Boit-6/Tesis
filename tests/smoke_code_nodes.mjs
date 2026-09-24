@@ -45,6 +45,8 @@ const sample = {
     nombre: 'Juan Pérez', email: 'JUAN@test.com', presupuesto: '6000', urgencia: 'ALTA',
     servicio: 'ecommerce', telefono: '+541155555555',
     descripcion: 'Necesito una tienda online completa con varias funcionalidades.',
+    // Panel → n8n: el espacio de la sesión (cobros con Stripe).
+    espacio_id: '6e6466dc-a839-442b-9278-6b84b9e31ff8',
     // Tickets
     titulo: 'Arreglar el PDF de la factura',
     prioridad: 'ALTA',
@@ -84,8 +86,12 @@ for (const file of wfFiles) {
   for (const n of codeNodes) {
     try {
       const {$input, $, $json} = makeMocks(sample);
-      const fn = new Function('$input', '$', '$json', '$env', 'Buffer', n.parameters.jsCode);
-      const res = fn($input, $, $json, envMock, Buffer);
+      // Los nodos que leen binario (el cuerpo crudo del webhook de Stripe) usan
+      // await y this.helpers, como lo permite el nodo Code de n8n.
+      const Ctor = /\bawait\b/.test(n.parameters.jsCode) ? Object.getPrototypeOf(async () => {}).constructor : Function;
+      const fn = new Ctor('$input', '$', '$json', '$env', 'Buffer', n.parameters.jsCode);
+      const helpers = {getBinaryDataBuffer: async () => Buffer.from('{}')};
+      const res = await fn.call({helpers}, $input, $, $json, envMock, Buffer);
       if (!Array.isArray(res)) throw new Error('no devolvio un array');
       for (const r of res) if (!r || typeof r.json !== 'object') throw new Error('item sin .json valido');
       console.log('OK    ' + n.name + '  ->  ' + res.length + ' item(s)');

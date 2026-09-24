@@ -15,6 +15,9 @@ export interface Espacio {
   email_contacto: string | null;
   // Telegram vinculado para los avisos (opcional).
   telegram_chat_id: string | null;
+  // Cobros con Stripe Connect: la cuenta del desarrollador y si ya puede cobrar.
+  stripe_account_id: string | null;
+  stripe_cobros_activos: boolean;
   // NULL hasta que el dueño elige nombre y dirección (alta).
   configurado_en: string | null;
 }
@@ -43,7 +46,9 @@ export async function getPanelStatus(): Promise<EstadoPanel> {
 
   const {data: espacio} = await supabase
     .from("espacios")
-    .select("id, slug, nombre, email_contacto, telegram_chat_id, configurado_en")
+    .select(
+      "id, slug, nombre, email_contacto, telegram_chat_id, stripe_account_id, stripe_cobros_activos, configurado_en",
+    )
     .eq("dueno_id", user.id)
     .maybeSingle();
 

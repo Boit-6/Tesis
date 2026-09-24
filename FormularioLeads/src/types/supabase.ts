@@ -37,7 +37,7 @@ export type LeadEstadoDb =
 export type PagoEstado = "PENDIENTE" | "COBRADO" | "VENCIDA" | "ANULADA";
 
 // No es un enum de Postgres: TEXT con CHECK (chk_facturas_metodo_cobro).
-export type MetodoCobro = "MERCADOPAGO" | "DESARROLLO" | "CIERRE_MANUAL";
+export type MetodoCobro = "STRIPE" | "MERCADOPAGO" | "DESARROLLO" | "CIERRE_MANUAL";
 
 export type LogNivel = "INFO" | "RECORDATORIO" | "HOY" | "VENCIDA" | "URGENTE" | "WARN" | "ERROR";
 
@@ -78,6 +78,8 @@ export interface Database {
           telegram_chat_id: string | null;
           telegram_codigo: string | null;
           telegram_codigo_vence: string | null;
+          stripe_account_id: string | null;
+          stripe_cobros_activos: boolean;
           configurado_en: string | null;
           creado_en: string;
         };
@@ -186,6 +188,8 @@ export interface Database {
           fecha_emision: string;
           fecha_vencimiento: string;
           fecha_cobro: string | null;
+          stripe_checkout_id: string | null;
+          stripe_pago_id: string | null;
           mp_preference_id: string | null;
           mp_payment_id: string | null;
           comision_plataforma: number;
@@ -211,6 +215,8 @@ export interface Database {
           fecha_emision?: string;
           fecha_vencimiento: string;
           fecha_cobro?: string | null;
+          stripe_checkout_id?: string | null;
+          stripe_pago_id?: string | null;
           mp_preference_id?: string | null;
           mp_payment_id?: string | null;
           comision_plataforma?: number;
@@ -447,6 +453,8 @@ export interface Database {
           fecha_emision: string | null;
           fecha_vencimiento: string | null;
           fecha_cobro: string | null;
+          stripe_checkout_id: string | null;
+          stripe_pago_id: string | null;
           mp_preference_id: string | null;
           mp_payment_id: string | null;
           comision_plataforma: number | null;

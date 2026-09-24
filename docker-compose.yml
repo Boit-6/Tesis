@@ -63,25 +63,20 @@ services:
       # que usa la rama de aceptación).
       - FACTURA_VENCIMIENTO_DIAS=${FACTURA_VENCIMIENTO_DIAS:-15}
       # Permite `require('crypto')` dentro de los nodos Code (valida la firma
-      # de las notificaciones de MercadoPago). Sin esto, el Code node no
-      # puede acceder al módulo aunque MP_WEBHOOK_SECRET esté configurado.
+      # de los eventos de Stripe). Sin esto, el Code node no puede acceder al
+      # módulo aunque STRIPE_WEBHOOK_SECRET esté configurado.
       - NODE_FUNCTION_ALLOW_BUILTIN=crypto
       # Apaga la telemetría de uso que n8n manda a sus propios servidores.
       - N8N_DIAGNOSTICS_ENABLED=false
-      # ── Cobro con MercadoPago (RAMA 8) ─────────────────────────────────────
-      # Base de la API de MercadoPago. El default es el servicio real, de modo
-      # que no cambia el comportamiento de producción. Se parametriza para poder
-      # apuntar los dos nodos HTTP a un doble de prueba local y ejercitar el
-      # escenario E14 sin depender del sandbox del proveedor (tests/mp-doble.mjs).
-      - MP_API_BASE=${MP_API_BASE:-https://api.mercadopago.com}
-      - MP_ACCESS_TOKEN=${MP_ACCESS_TOKEN:-}
-      - MP_CURRENCY=${MP_CURRENCY:-ARS}
-      - MP_COMISION_PORCENTAJE=${MP_COMISION_PORCENTAJE:-1}
-      # Firma obligatoria por defecto (S8 de la Tabla 11, cerrada): el nodo
-      # rechaza toda notificación sin secreto configurado o con firma inválida.
-      # El valor de acá abajo es sólo para desarrollo local; en producción hay
-      # que reemplazarlo por el secreto real que entrega el panel de MercadoPago.
-      - MP_WEBHOOK_SECRET=${MP_WEBHOOK_SECRET:-dev-secret-cambiar-en-produccion}
+      # ── Cobro con Stripe Connect (RAMA 8) ────────────────────────────────
+      # Sin STRIPE_SECRET_KEY, el enlace de la factura cae al pago simulado.
+      # STRIPE_API_BASE vacío = la API real; se cambia sólo para apuntar a un
+      # doble local (tests/stripe-doble.mjs). El secreto del webhook es
+      # obligatorio: sin él, todo evento se rechaza.
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+      - STRIPE_API_BASE=${STRIPE_API_BASE:-}
+      - COMISION_PLATAFORMA_PORCENTAJE=${COMISION_PLATAFORMA_PORCENTAJE:-1}
       # ── Calificación de leads (Tabla 4) ───────────────────────────────────
       # Los defaults reproducen exactamente la tabla documentada en la tesis;
       # están acá para poder recalibrar el criterio sin tocar el workflow.

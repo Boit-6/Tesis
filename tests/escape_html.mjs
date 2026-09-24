@@ -100,13 +100,26 @@ for (const nombre of NODOS_HTML) {
   check(nombre + ': ningún href se cierra antes de tiempo', !/href='[^']*'\s+onmouseover/i.test(html));
 }
 
+// La página que ve el cliente al abrir el enlace de pago: el nombre del espacio
+// lo elige el desarrollador y no puede inyectar HTML en ella.
+{
+  const nodo = crm.nodes.find((n) => n.name === 'Code - Decidir Pago');
+  const item = {json: {factura_id: 'FAC-2026-0001', estado_pago: 'PENDIENTE', monto: 10, espacio_nombre: PAYLOAD,
+    stripe_account_id: null, stripe_cobros_activos: false}};
+  const salida = new Function('$input', '$env', nodo.parameters.jsCode)({first: () => item}, {STRIPE_SECRET_KEY: 'sk_test_x'});
+  const html = salida[0].json.html;
+
+  check('Code - Decidir Pago: produce la página', html.includes('Pago online no disponible'));
+  check('Code - Decidir Pago: sin <iframe> crudo', !/<iframe/i.test(html));
+}
+
 // Cualquier nodo Code nuevo que arme HTML tiene que sumarse a la lista de arriba.
 const armanHtml = crm.nodes.filter(
   (n) => n.type === 'n8n-nodes-base.code' && /<(p|div|table|b)[\s>]/.test(n.parameters.jsCode || ''),
 );
 
 for (const n of armanHtml) {
-  check('cubierto por el test: ' + n.name, NODOS_HTML.includes(n.name) || n.name === 'Code - HTML Confirmacion');
+  check('cubierto por el test: ' + n.name, NODOS_HTML.includes(n.name) || ['Code - HTML Confirmacion', 'Code - Decidir Pago'].includes(n.name));
 }
 
 // ── Expresiones {{ }} que van a Telegram (parse_mode HTML) o a Gmail ───────

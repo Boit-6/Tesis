@@ -43,7 +43,8 @@ const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? '';
 const INEXISTENTE = 'LD-0000000000000-NOEX';
 const TOKEN_FALSO = '00000000-0000-4000-8000-000000000000';
 
-// Los catorce webhooks de la Tabla 10, con lo que el documento afirma de cada uno.
+// Los webhooks de la Tabla 10 (catorce en la tesis; diecisiete desde el cobro
+// con Stripe Connect, 24-sep-2026), con lo que el documento afirma de cada uno.
 // (factura-anular, 01-sep-2026, cierra la transición ANULADA de §4.8 / Cap. 8 punto 7).
 const WEBHOOKS = [
   {ruta: 'lead-nuevo', metodo: 'POST', esperado: 'sin auth', grupo: 'público',
@@ -58,8 +59,10 @@ const WEBHOOKS = [
     cuerpo: {lead_id: INEXISTENTE, token: TOKEN_FALSO, mensaje: 'prueba de exposición'}},
   {ruta: 'pago-confirmado', metodo: 'GET', esperado: 'sin auth', grupo: 'público',
     query: '?factura_id=FAC-0000-0000'},
-  {ruta: 'mp/notificacion', metodo: 'POST', esperado: 'firma obligatoria', grupo: 'pasarela',
-    cuerpo: {type: 'payment', data: {id: '0'}}},
+  {ruta: 'pagar', metodo: 'GET', esperado: 'sin auth (token en el enlace)', grupo: 'público',
+    query: `?f=FAC-0000-0000&t=${TOKEN_FALSO}`},
+  {ruta: 'stripe', metodo: 'POST', esperado: 'firma obligatoria', grupo: 'pasarela',
+    cuerpo: {type: 'checkout.session.completed', data: {object: {payment_status: 'paid', metadata: {factura_id: 'FAC-0000-0000'}}}}},
   {ruta: 'propuesta-enviar', metodo: 'POST', esperado: 'Header Auth', grupo: 'panel',
     cuerpo: {lead_id: INEXISTENTE, precio: 1, plazo: 'x', alcance: 'x'}},
   {ruta: 'proyecto-cerrado', metodo: 'POST', esperado: 'Header Auth', grupo: 'panel',
@@ -72,6 +75,10 @@ const WEBHOOKS = [
     cuerpo: {lead_id: INEXISTENTE}},
   {ruta: 'cambio-rechazar', metodo: 'POST', esperado: 'Header Auth', grupo: 'panel',
     cuerpo: {lead_id: INEXISTENTE}},
+  {ruta: 'stripe-conectar', metodo: 'POST', esperado: 'Header Auth', grupo: 'panel',
+    cuerpo: {espacio_id: TOKEN_FALSO}},
+  {ruta: 'stripe-estado', metodo: 'POST', esperado: 'Header Auth', grupo: 'panel',
+    cuerpo: {espacio_id: TOKEN_FALSO}},
   {ruta: 'factura-anular', metodo: 'POST', esperado: 'Header Auth', grupo: 'panel',
     cuerpo: {factura_id: 'FAC-0000-0000'}},
 ];
@@ -132,10 +139,9 @@ for (const w of WEBHOOKS) {
   // 403 = el webhook exigió una credencial que no se le dio.
   const rechazado = status === 403;
 
-  // El webhook de pasarela (mp/notificacion) siempre responde 200, aplique o
-  // no el cambio —deliberado, para que MercadoPago no reintente—. La única
-  // señal de si una notificación sin firma se aplicó o se ignoró (S8) está
-  // en el cuerpo de la respuesta, no en el status HTTP.
+  // El webhook de la pasarela (stripe) responde 400 a un evento sin firma
+  // válida y 200 a los que ignora. Lo que dice si se aplicó (S8) es el cuerpo:
+  // { ok: false } cuando se rechazó.
   let aplicado = null;
   if (w.grupo === 'pasarela') {
     try { aplicado = JSON.parse(crudo).ok === true; } catch { /* cuerpo no-JSON */ }

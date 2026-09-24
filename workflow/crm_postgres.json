@@ -162,13 +162,13 @@
     },
     {
       "parameters": {
-        "content": "## 🟣 Pago (RAMA 8 · integración real con MercadoPago)\nIzquierda: link de la factura → **preferencia real de MercadoPago** (RAMA 2 la crea) → notificación acá confirma el pago vía la API de MP y marca la factura **COBRADO**. Sin `MP_ACCESS_TOKEN` configurado, el link cae al modo de desarrollo (webhook GET, marca cobrado a mano). Idempotente en ambos casos.",
+        "content": "## 💳 RAMA 8 · Cobro con Stripe Connect (24-sep-2026)\nCada desarrollador conecta su cuenta de Stripe (Express) desde \"Tu espacio\" (**🏦 Stripe Conectar / Estado**). Lo que paga su cliente va a esa cuenta y Stripe separa sola la comisión de la plataforma (`application_fee_amount`, `COMISION_PLATAFORMA_PORCENTAJE`, 1%).\n\n**Enlace de la factura** → `/webhook/pagar?f&t` (**💳 Pagar Factura**): recién ahí se crea la sesión de Checkout con el importe de la base. Una factura anulada o cobrada no abre cobro; sin Stripe configurado, cae al pago simulado.\n\n**💳 Webhook - Stripe**: verifica `Stripe-Signature` sobre el cuerpo crudo (`STRIPE_WEBHOOK_SECRET`) y marca **COBRADO** con guarda de estado, monto y moneda. Un pago que no se pudo aplicar se registra y avisa como crítico. Anular una factura expira su sesión abierta.",
         "height": 830,
         "width": 4050,
         "color": 6
       },
       "id": "sticky-10-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "Nota — 🟣 RAMA 8 · Cobro con MercadoPago",
+      "name": "Nota — 💳 RAMA 8 · Cobro con Stripe Connect",
       "type": "n8n-nodes-base.stickyNote",
       "typeVersion": 1,
       "position": [
@@ -274,7 +274,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const q = $input.first().json.query || {};\n// Estado del cobro real. Si n8n bloquea el acceso a $env no se puede saber si\n// MercadoPago está activo, y adivinar sería abrir de nuevo S2: se falla cerrado.\nlet mpConfigurado;\ntry {\n  mpConfigurado = (typeof $env !== 'undefined' && $env) ? Boolean($env.MP_ACCESS_TOKEN) : false;\n} catch (e) {\n  throw new Error('No se puede leer MP_ACCESS_TOKEN: n8n tiene bloqueado el acceso al entorno en los nodos Code. Configurar N8N_BLOCK_ENV_ACCESS_IN_NODE=false (ver docker-compose.yml) para habilitar el modo de desarrollo.');\n}\nif (mpConfigurado) throw new Error('Modo de desarrollo deshabilitado: hay credenciales de MercadoPago configuradas');\nif (!q.factura_id) throw new Error('Falta factura_id');\n// pago_token (S1 de la Tabla 11, cerrada): sin él, factura_id solo (10.000\n// combinaciones adivinables por año) alcanzaba para marcar cualquier\n// factura como cobrada. Se verifica contra la base en el próximo nodo.\nif (!q.pago_token) throw new Error('Falta pago_token');\nreturn [{ json: { factura_id: q.factura_id, pago_token: q.pago_token, lead_id: q.lead_id || '' } }];"
+        "jsCode": "const q = $input.first().json.query || {};\n// Estado del cobro real. Si n8n bloquea el acceso a $env no se puede saber si\n// Stripe está activo, y adivinar sería abrir de nuevo S2: se falla cerrado.\nlet stripeConfigurado;\ntry {\n  stripeConfigurado = (typeof $env !== 'undefined' && $env) ? Boolean($env.STRIPE_SECRET_KEY) : false;\n} catch (e) {\n  throw new Error('No se puede leer STRIPE_SECRET_KEY: n8n tiene bloqueado el acceso al entorno en los nodos Code. Configurar N8N_BLOCK_ENV_ACCESS_IN_NODE=false (ver docker-compose.yml) para habilitar el modo de desarrollo.');\n}\nif (stripeConfigurado) throw new Error('Modo de desarrollo deshabilitado: hay credenciales de Stripe configuradas');\nif (!q.factura_id) throw new Error('Falta factura_id');\n// pago_token (S1 de la Tabla 11, cerrada): sin él, factura_id solo (10.000\n// combinaciones adivinables por año) alcanzaba para marcar cualquier\n// factura como cobrada. Se verifica contra la base en el próximo nodo.\nif (!q.pago_token) throw new Error('Falta pago_token');\nreturn [{ json: { factura_id: q.factura_id, pago_token: q.pago_token, lead_id: q.lead_id || '' } }];"
       },
       "id": "1e6fe838-47b9-4438-bbd7-75489ee85449",
       "name": "Code - Validar Pago",
@@ -1442,7 +1442,6 @@
             "monto": "={{ $('Code - Generar Factura HTML').item.json.monto }}",
             "fecha_emision": "={{ $('Code - Generar Factura HTML').item.json.fecha_emision_iso }}",
             "fecha_vencimiento": "={{ $('Code - Generar Factura HTML').item.json.fecha_vencimiento_iso }}",
-            "mp_preference_id": "={{ $('Code - Generar Factura HTML').item.json.mp_preference_id }}",
             "comision_plataforma": "={{ $('Code - Generar Factura HTML').item.json.comision_plataforma }}",
             "moneda": "={{ $('Code - Generar Factura HTML').item.json.moneda }}",
             "pay_url": "={{ $('Code - Generar Factura HTML').item.json.payUrl }}",
@@ -3959,7 +3958,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const l = $input.first().json;\nconst fid = 'FAC-' + new Date().getFullYear() + '-' + String(Math.floor(Math.random() * 9000) + 1000);\n// Token del modo de desarrollo de pago (S1 de la Tabla 11): el enlace de\n// pago_confirmado ya no alcanza sólo con adivinar el factura_id. Se genera\n// acá, antes de que la fila exista en la base, porque el enlace de pago se\n// arma antes del INSERT — no puede depender de un default de columna.\n// require puede estar bloqueado en el entorno (ver Code - Leer Notificacion\n// MP): con un UUID v4 en JS puro como respaldo, el flujo no se cae.\nconst uuidV4 = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {\n  const r = Math.random() * 16 | 0;\n  return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);\n});\nlet pagoToken;\ntry { pagoToken = require('crypto').randomUUID(); } catch (e) { pagoToken = uuidV4(); }\nconst vencISO = new Date(Date.now() + 15 * 86400000).toISOString();\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n// Comisión de la plataforma sobre el total facturado (MP_COMISION_PORCENTAJE,\n// 1% por defecto). Es contable: MercadoPago no la separa sola (ver RAMA 8).\nconst pct = Number(leerEnv('MP_COMISION_PORCENTAJE', '1')) || 0;\n// El importe que se factura es el que fijó el profesional al enviar la\n// propuesta, no el que el interesado declaró en el formulario. El respaldo\n// cubre las propuestas emitidas antes de que existiera precio_propuesto.\nconst monto = Number(l.precio_propuesto) > 0 ? Number(l.precio_propuesto) : Number(l.presupuesto) || 0;\nconst moneda = leerEnv('MP_CURRENCY', 'ARS');\nconst comision = Math.round(monto * (pct / 100) * 100) / 100;\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst BASE = leerEnv('N8N_PUBLIC_URL', 'http://localhost:5678/').replace(/\\/+$/, '');\nconst FRONT = leerEnv('FRONTEND_URL', 'http://localhost:3000').replace(/\\/+$/, '');\n// Preferencia de pago de MercadoPago (Checkout Pro). Se crea en el próximo\n// nodo; acá solo se arma el cuerpo para no repetir esta lógica ahí.\nconst preferencia = {\n  items: [{ title: svc, quantity: 1, unit_price: monto, currency_id: moneda }],\n  external_reference: fid,\n  notification_url: BASE + '/webhook/mp/notificacion',\n  back_urls: {\n    success: FRONT + '/pago-exitoso',\n    pending: FRONT + '/pago-pendiente',\n    failure: FRONT + '/pago-fallido'\n  },\n  auto_return: 'approved'\n};\nreturn [{ json: Object.assign({}, l, { factura_id: fid, pago_token: pagoToken, fecha_emision_iso: new Date().toISOString(), fecha_vencimiento_iso: vencISO, comision_plataforma: comision, monto: monto, moneda, mp_preference_body: preferencia }) }];"
+        "jsCode": "const l = $input.first().json;\n// Identificador: FAC-<año>-<8 caracteres al azar>. Hasta el 24-sep-2026 eran 4\n// dígitos (9000 por año para toda la plataforma): con varios desarrolladores\n// facturando, dos facturas chocaban en el UNIQUE a las pocas decenas.\nconst azar = () => {\n  try { return require('crypto').randomBytes(4).toString('hex').toUpperCase(); }\n  catch (e) { return Math.random().toString(16).slice(2, 10).toUpperCase().padEnd(8, '0'); }\n};\nconst fid = 'FAC-' + new Date().getFullYear() + '-' + azar();\n// pago_token (S1 de la Tabla 11): va en el enlace de pago de la factura, así\n// no alcanza con adivinar el factura_id para abrir un cobro o simularlo. Se\n// genera acá, antes de que la fila exista, porque el enlace se arma antes del\n// INSERT. require puede estar bloqueado: con un UUID v4 en JS puro como\n// respaldo, el flujo no se cae.\nconst uuidV4 = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {\n  const r = Math.random() * 16 | 0;\n  return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);\n});\nlet pagoToken;\ntry { pagoToken = require('crypto').randomUUID(); } catch (e) { pagoToken = uuidV4(); }\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\nconst dias = Number(leerEnv('FACTURA_VENCIMIENTO_DIAS', '15')) || 15;\nconst vencISO = new Date(Date.now() + dias * 86400000).toISOString();\n// Comisión de la plataforma (COMISION_PLATAFORMA_PORCENTAJE, 1% por defecto).\n// Stripe la separa sola al cobrar (application fee); acá queda registrada.\nconst pct = Number(leerEnv('COMISION_PLATAFORMA_PORCENTAJE', '1')) || 0;\n// El importe que se factura es el que fijó el profesional al enviar la\n// propuesta, no el que el interesado declaró en el formulario. El respaldo\n// cubre las propuestas emitidas antes de que existiera precio_propuesto.\nconst monto = Number(l.precio_propuesto) > 0 ? Number(l.precio_propuesto) : Number(l.presupuesto) || 0;\nconst comision = Math.round(monto * (pct / 100) * 100) / 100;\nreturn [{ json: Object.assign({}, l, { factura_id: fid, pago_token: pagoToken, fecha_emision_iso: new Date().toISOString(), fecha_vencimiento_iso: vencISO, comision_plataforma: comision, monto: monto, moneda: 'USD' }) }];"
       },
       "id": "mp-01-0000-4000-8000-aaaaaaaaaaaa",
       "name": "Code - Generar ID Factura",
@@ -3972,36 +3971,7 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "={{ $env.MP_API_BASE || 'https://api.mercadopago.com' }}/checkout/preferences",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $env.MP_ACCESS_TOKEN || '' }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.mp_preference_body) }}",
-        "options": {}
-      },
-      "id": "mp-02-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "HTTP - MercadoPago Crear Preferencia",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [
-        1950,
-        1070
-      ],
-      "onError": "continueRegularOutput",
-      "alwaysOutputData": true
-    },
-    {
-      "parameters": {
-        "jsCode": "const l = $('Code - Generar ID Factura').first().json;\nconst r = $input.first().json || {};\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\nconst BASE = leerEnv('N8N_PUBLIC_URL', 'http://localhost:5678/').replace(/\\/+$/, '');\n// Sin MP_ACCESS_TOKEN configurado (o si MercadoPago no respondió), cae al\n// link de desarrollo que marca la factura pagada a mano (RAMA 8, modo\n// simulado) — así el flujo sigue siendo probable sin credenciales reales.\n// pago_token (S1, Tabla 11): sin él, factura_id solo (10.000 combinaciones\n// por año) era adivinable; ahora Code - Validar Pago lo exige.\nconst linkDesarrollo = BASE + '/webhook/pago-confirmado?factura_id=' + l.factura_id + '&pago_token=' + l.pago_token + '&lead_id=' + l.lead_id;\nconst initPoint = r.init_point || r.sandbox_init_point || '';\nreturn [{ json: Object.assign({}, l, { payUrl: initPoint || linkDesarrollo, mp_preference_id: r.id || null }) }];"
+        "jsCode": "const l = $('Code - Generar ID Factura').first().json;\n// Enlace de pago de la factura: una página de n8n que, cuando el cliente la\n// abre, crea en ese momento la sesión de pago de Stripe con el importe de la\n// base (💳 Webhook - Pagar Factura). No se crea nada en Stripe al emitir: una\n// sesión dura como mucho 24 horas y la factura vence en días; así el enlace\n// sirve hasta que se pague, y una factura anulada o cobrada ya no abre cobro.\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\nconst BASE = leerEnv('N8N_PUBLIC_URL', 'http://localhost:5678/').replace(/\\/+$/, '');\nconst payUrl = BASE + '/webhook/pagar?f=' + encodeURIComponent(l.factura_id) + '&t=' + encodeURIComponent(l.pago_token);\nreturn [{ json: Object.assign({}, l, { payUrl }) }];"
       },
       "id": "mp-03-0000-4000-8000-aaaaaaaaaaaa",
       "name": "Code - Resolver Link de Pago",
@@ -4015,12 +3985,14 @@
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "mp/notificacion",
+        "path": "stripe",
         "responseMode": "responseNode",
-        "options": {}
+        "options": {
+          "rawBody": true
+        }
       },
       "id": "mp-04-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "🟣 Webhook - Notificacion MercadoPago",
+      "name": "💳 Webhook - Stripe",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
       "position": [
@@ -4031,10 +4003,10 @@
     },
     {
       "parameters": {
-        "jsCode": "const item = $input.first().json || {};\nconst body = item.body || {};\nconst query = item.query || {};\nconst headers = item.headers || {};\n\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n\n// MercadoPago manda el id del pago en el body (Webhooks v2: {type, data:{id}})\n// o, en notificaciones IPN viejas, por query (?topic=payment&id=123).\nlet paymentId = '';\nif (body && body.data && body.data.id) paymentId = String(body.data.id);\nelse if (query && query['data.id']) paymentId = String(query['data.id']);\nelse if (body && body.type === 'payment' && body.id) paymentId = String(body.id);\nelse if (query && query.topic === 'payment' && query.id) paymentId = String(query.id);\n\n// Firma obligatoria (MP_WEBHOOK_SECRET vacío = se rechaza la notificación). Formato oficial:\n// header x-signature \"ts=...,v1=...\", manifest \"id:{id};request-id:{req};ts:{ts};\"\n// HMAC-SHA256 con el secreto. Requiere NODE_FUNCTION_ALLOW_BUILTIN=crypto.\nconst secreto = leerEnv('MP_WEBHOOK_SECRET', '');\nlet firmaValida = false;\nif (secreto && paymentId) {\n  try {\n    const crypto = require('crypto');\n    const firma = String(headers['x-signature'] || '');\n    const requestId = String(headers['x-request-id'] || '');\n    const partes = {};\n    for (const par of firma.split(',')) {\n      const kv = par.split('=');\n      const k = (kv[0] || '').trim();\n      const v = (kv[1] || '').trim();\n      if (k) partes[k] = v;\n    }\n    if (partes.ts && partes.v1) {\n      const manifest = 'id:' + paymentId.toLowerCase() + ';request-id:' + requestId + ';ts:' + partes.ts + ';';\n      const hmac = crypto.createHmac('sha256', secreto).update(manifest).digest('hex');\n      // Tiempo constante: con === se puede medir cuántos caracteres acertó\n      // una firma falsa.\n      const esperada = Buffer.from(hmac);\n      const recibida = Buffer.from(String(partes.v1));\n      firmaValida = esperada.length === recibida.length && crypto.timingSafeEqual(esperada, recibida);\n    }\n  } catch (e) {\n    firmaValida = false;\n  }\n}\n\nreturn [{ json: { payment_id: firmaValida ? paymentId : '' } }];"
+        "jsCode": "// Eventos que Stripe manda al webhook de la plataforma. Con destination\n// charges la sesión de pago es de la cuenta de la plataforma, así que los\n// eventos llegan acá y no a un endpoint de Connect.\n//\n// Firma (Stripe-Signature: t=<unix>,v1=<hex>): HMAC SHA-256 de \"<t>.<cuerpo>\"\n// con STRIPE_WEBHOOK_SECRET, sobre el cuerpo CRUDO (por eso el webhook tiene\n// rawBody). Sin secreto configurado se falla cerrado: sin verificar la firma,\n// cualquiera podría dar por pagada una factura mandando un evento inventado.\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\nconst item = $input.first();\nconst headers = (item.json && item.json.headers) || {};\nlet crudo = '';\ntry {\n  const buf = await this.helpers.getBinaryDataBuffer(0, 'data');\n  crudo = buf.toString('utf8');\n} catch (e) {\n  const bin = item.binary && item.binary.data;\n  crudo = bin && bin.data ? Buffer.from(bin.data, 'base64').toString('utf8') : '';\n}\nconst rechazar = (motivo) => [{ json: { accion: 'rechazar', status: 400, motivo } }];\nconst secreto = leerEnv('STRIPE_WEBHOOK_SECRET', '');\nif (!secreto) return rechazar('STRIPE_WEBHOOK_SECRET sin configurar');\n// Sin crypto (NODE_FUNCTION_ALLOW_BUILTIN) no hay cómo verificar: se rechaza.\nlet crypto;\ntry { crypto = require('crypto'); } catch (e) { return rechazar('crypto no disponible en el nodo Code'); }\nconst partes = String(headers['stripe-signature'] || '').split(',').map((p) => p.split('='));\nconst t = (partes.find(([k]) => k === 't') || [])[1];\nconst firmas = partes.filter(([k]) => k === 'v1').map(([, v]) => v);\nif (!t || !firmas.length || !crudo) return rechazar('firma ausente');\n// Tolerancia de 5 minutos, como las librerías de Stripe: una firma vieja\n// reenviada (replay) no sirve.\nconst tolerancia = Number(leerEnv('STRIPE_WEBHOOK_TOLERANCIA_S', '300')) || 300;\nif (Math.abs(Math.floor(Date.now() / 1000) - Number(t)) > tolerancia) return rechazar('firma vencida');\nconst esperada = crypto.createHmac('sha256', secreto).update(t + '.' + crudo).digest('hex');\nconst igual = (a) => a.length === esperada.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(esperada));\nif (!firmas.some(igual)) return rechazar('firma inválida');\nlet evento;\ntry { evento = JSON.parse(crudo); } catch (e) { return rechazar('cuerpo inválido'); }\nconst s = (evento.data && evento.data.object) || {};\nconst pagado = (evento.type === 'checkout.session.completed' && s.payment_status === 'paid') || evento.type === 'checkout.session.async_payment_succeeded';\nconst facturaId = (s.metadata && s.metadata.factura_id) || s.client_reference_id || '';\nif (!pagado || !facturaId) return [{ json: { accion: 'ignorar', status: 200, tipo: evento.type } }];\nreturn [{ json: {\n  accion: 'aplicar',\n  factura_id: String(facturaId),\n  stripe_pago_id: String(s.payment_intent || s.id || ''),\n  monto_pagado: Number(s.amount_total) / 100,\n  moneda_pagada: String(s.currency || '').toUpperCase(),\n} }];"
       },
       "id": "mp-05-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "Code - Leer Notificacion MP",
+      "name": "Code - Verificar Evento Stripe",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -4044,53 +4016,14 @@
     },
     {
       "parameters": {
-        "method": "GET",
-        "url": "={{ $env.MP_API_BASE || 'https://api.mercadopago.com' }}/v1/payments/{{ $json.payment_id }}",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $env.MP_ACCESS_TOKEN || '' }}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "id": "mp-06-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "HTTP - MercadoPago Obtener Pago",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [
-        2600,
-        11600
-      ],
-      "onError": "continueRegularOutput",
-      "alwaysOutputData": true
-    },
-    {
-      "parameters": {
-        "jsCode": "const r = $input.first().json || {};\nconst aprobado = r.status === 'approved' && !!r.external_reference && r.id !== undefined && r.id !== null;\nconst idNum = aprobado ? String(Number(r.id)) : '';\nconst idSano = /^[0-9]+$/.test(idNum) ? idNum : '';\n// Lo que MercadoPago dice haber cobrado. Postgres - Marcar Cobrado MP sólo da\n// la factura por cobrada si coincide con lo facturado.\nconst montoPagado = Number(r.transaction_amount);\nreturn [{ json: {\n  factura_id: (aprobado && idSano) ? String(r.external_reference) : '',\n  mp_payment_id: idSano,\n  monto_pagado: Number.isFinite(montoPagado) ? montoPagado : 0,\n  moneda_pagada: String(r.currency_id || ''),\n} }];"
-      },
-      "id": "mp-07-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "Code - Procesar Pago MP",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [
-        2900,
-        11600
-      ]
-    },
-    {
-      "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE facturas SET estado_pago = 'COBRADO', fecha_cobro = now(), metodo_cobro = 'MERCADOPAGO', mp_payment_id = $2 WHERE factura_id = $1 AND estado_pago IN ('PENDIENTE','VENCIDA') AND monto = $3::numeric AND moneda = $4 RETURNING *;",
+        "query": "UPDATE facturas SET estado_pago = 'COBRADO', fecha_cobro = now(), metodo_cobro = 'STRIPE', stripe_pago_id = $2 WHERE factura_id = $1 AND estado_pago IN ('PENDIENTE','VENCIDA') AND monto = $3::numeric AND moneda = $4 RETURNING *;",
         "options": {
-          "queryReplacement": "={{ [$json.factura_id, $json.mp_payment_id, $json.monto_pagado, $json.moneda_pagada] }}"
+          "queryReplacement": "={{ [$json.factura_id, $json.stripe_pago_id, $json.monto_pagado, $json.moneda_pagada] }}"
         }
       },
       "id": "mp-08-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "Postgres - Marcar Cobrado MP",
+      "name": "Postgres - Marcar Cobrado Stripe",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
       "position": [
@@ -4128,7 +4061,7 @@
         "options": {}
       },
       "id": "mp-09-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "IF - Actualizacion Aplico MP?",
+      "name": "IF - Pago Aplicado?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
@@ -4145,7 +4078,7 @@
         }
       },
       "id": "mp-10-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "Respond - Notificacion MP OK",
+      "name": "Respond - Stripe OK",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
@@ -4156,13 +4089,13 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "{ \"ok\": false }",
+        "responseBody": "{ \"ok\": true, \"aplicado\": false }",
         "options": {
           "responseCode": 200
         }
       },
       "id": "mp-11-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "Respond - Notificacion MP Ignorada",
+      "name": "Respond - Stripe Pago No Aplicado",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
       "position": [
@@ -4521,7 +4454,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Reconciliación (S5): arma la factura que la rama de aceptación no llegó a\n// persistir. Toma UN lead por corrida (la consulta trae LIMIT 1), igual que el\n// resto de la cadena de facturación, que también razona sobre un ítem.\nconst l = $input.first().json;\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n// El identificador es DETERMINISTA a partir del lead: dos corridas del cron\n// producen el mismo `factura_id`, de modo que la restricción UNIQUE de la\n// columna es una segunda red por debajo del `WHERE NOT EXISTS` de la consulta.\nconst alnum = String(l.lead_id || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();\nconst fid = 'FAC-R-' + (alnum.slice(-8) || 'SINLEAD');\n// pago_token (S1 de la Tabla 11): mismo criterio que la rama normal de\n// facturación — se genera acá porque el enlace se arma antes del INSERT.\n// require puede estar bloqueado (ver Code - Leer Notificacion MP): con un\n// UUID v4 en JS puro como respaldo, el flujo no se cae.\nconst uuidV4 = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {\n  const r = Math.random() * 16 | 0;\n  return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);\n});\nlet pagoToken;\ntry { pagoToken = require('crypto').randomUUID(); } catch (e) { pagoToken = uuidV4(); }\n// Mismo criterio de importe que la rama normal: manda el precio que fijó el\n// profesional; `presupuesto` es solo el respaldo de las propuestas viejas.\nconst monto = Number(l.precio_propuesto) > 0 ? Number(l.precio_propuesto) : Number(l.presupuesto) || 0;\nconst moneda = leerEnv('MP_CURRENCY', 'ARS');\nconst pct = Number(leerEnv('MP_COMISION_PORCENTAJE', '1')) || 0;\nconst comision = Math.round(monto * (pct / 100) * 100) / 100;\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\nconst BASE = leerEnv('N8N_PUBLIC_URL', 'http://localhost:5678/').replace(/\\/+$/, '');\nconst FRONT = leerEnv('FRONTEND_URL', 'http://localhost:3000').replace(/\\/+$/, '');\nconst dias = Number(leerEnv('FACTURA_VENCIMIENTO_DIAS', '15')) || 15;\nconst preferencia = {\n  items: [{ title: svc, quantity: 1, unit_price: monto, currency_id: moneda }],\n  external_reference: fid,\n  notification_url: BASE + '/webhook/mp/notificacion',\n  back_urls: {\n    success: FRONT + '/pago-exitoso',\n    pending: FRONT + '/pago-pendiente',\n    failure: FRONT + '/pago-fallido'\n  },\n  auto_return: 'approved'\n};\nreturn [{ json: {\n  lead_id: String(l.lead_id || ''),\n  nombre: String(l.nombre || ''),\n  email: String(l.email || ''),\n  servicio: String(l.servicio || 'consultoria'),\n  factura_id: fid,\n  pago_token: pagoToken,\n  monto: monto,\n  moneda: moneda,\n  comision_plataforma: comision,\n  fecha_emision_iso: new Date().toISOString(),\n  fecha_vencimiento_iso: new Date(Date.now() + dias * 86400000).toISOString(),\n  mp_preference_body: preferencia\n} }];"
+        "jsCode": "// Reconciliación (S5): arma la factura que la rama de aceptación no llegó a\n// persistir. Toma UN lead por corrida (la consulta trae LIMIT 1), igual que el\n// resto de la cadena de facturación, que también razona sobre un ítem.\nconst l = $input.first().json;\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n// El identificador es DETERMINISTA a partir del lead: dos corridas del cron\n// producen el mismo `factura_id`, de modo que la restricción UNIQUE de la\n// columna es una segunda red por debajo del `WHERE NOT EXISTS` de la consulta.\nconst alnum = String(l.lead_id || '').replace(/[^A-Za-z0-9]/g, '').toUpperCase();\nconst fid = 'FAC-R-' + (alnum.slice(-8) || 'SINLEAD');\n// pago_token (S1 de la Tabla 11): mismo criterio que la rama normal de\n// facturación — se genera acá porque el enlace se arma antes del INSERT.\n// require puede estar bloqueado: con un UUID v4 en JS puro como respaldo, el flujo no se cae.\nconst uuidV4 = () => 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {\n  const r = Math.random() * 16 | 0;\n  return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);\n});\nlet pagoToken;\ntry { pagoToken = require('crypto').randomUUID(); } catch (e) { pagoToken = uuidV4(); }\n// Mismo criterio de importe que la rama normal: manda el precio que fijó el\n// profesional; `presupuesto` es solo el respaldo de las propuestas viejas.\nconst monto = Number(l.precio_propuesto) > 0 ? Number(l.precio_propuesto) : Number(l.presupuesto) || 0;\nconst moneda = 'USD';\nconst pct = Number(leerEnv('COMISION_PLATAFORMA_PORCENTAJE', '1')) || 0;\nconst comision = Math.round(monto * (pct / 100) * 100) / 100;\nconst dias = Number(leerEnv('FACTURA_VENCIMIENTO_DIAS', '15')) || 15;\nreturn [{ json: {\n  lead_id: String(l.lead_id || ''),\n  nombre: String(l.nombre || ''),\n  email: String(l.email || ''),\n  servicio: String(l.servicio || 'consultoria'),\n  factura_id: fid,\n  pago_token: pagoToken,\n  monto: monto,\n  moneda: moneda,\n  comision_plataforma: comision,\n  fecha_emision_iso: new Date().toISOString(),\n  fecha_vencimiento_iso: new Date(Date.now() + dias * 86400000).toISOString()\n} }];"
       },
       "id": "s5codeprepararfacturarecon00001",
       "name": "Code - Preparar Factura Reconciliada",
@@ -4534,36 +4467,7 @@
     },
     {
       "parameters": {
-        "method": "POST",
-        "url": "={{ $env.MP_API_BASE || 'https://api.mercadopago.com' }}/checkout/preferences",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Authorization",
-              "value": "=Bearer {{ $env.MP_ACCESS_TOKEN || '' }}"
-            }
-          ]
-        },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.mp_preference_body) }}",
-        "options": {}
-      },
-      "id": "s5httpmppreferenciarecon0000001",
-      "name": "HTTP - MercadoPago Preferencia Reconciliada",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4,
-      "position": [
-        1050,
-        17350
-      ],
-      "onError": "continueRegularOutput",
-      "alwaysOutputData": true
-    },
-    {
-      "parameters": {
-        "jsCode": "// Idéntico criterio que `Code - Resolver Link de Pago` de la rama de aceptación:\n// con MercadoPago configurado el enlace es el checkout real; sin credenciales\n// (o si MP no respondió) cae al enlace del modo de desarrollo. Así la factura\n// reconciliada no es una factura de segunda: entra al circuito de recordatorios\n// con el mismo enlace de pago que habría tenido de haberse emitido a tiempo.\nconst l = $('Code - Preparar Factura Reconciliada').first().json;\nconst r = $input.first().json || {};\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\nconst BASE = leerEnv('N8N_PUBLIC_URL', 'http://localhost:5678/').replace(/\\/+$/, '');\nconst linkDesarrollo = BASE + '/webhook/pago-confirmado?factura_id=' + l.factura_id + '&pago_token=' + l.pago_token + '&lead_id=' + l.lead_id;\nconst initPoint = r.init_point || r.sandbox_init_point || '';\nreturn [{ json: Object.assign({}, l, {\n  payUrl: initPoint || linkDesarrollo,\n  mp_preference_id: r.id ? String(r.id) : null\n}) }];"
+        "jsCode": "// Mismo enlace propio que la rama de aceptación (Code - Resolver Link de\n// Pago): la factura reconciliada entra al circuito de cobro y de\n// recordatorios igual que si se hubiera emitido a tiempo.\nconst l = $('Code - Preparar Factura Reconciliada').first().json;\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\nconst BASE = leerEnv('N8N_PUBLIC_URL', 'http://localhost:5678/').replace(/\\/+$/, '');\nconst payUrl = BASE + '/webhook/pagar?f=' + encodeURIComponent(l.factura_id) + '&t=' + encodeURIComponent(l.pago_token);\nreturn [{ json: Object.assign({}, l, { payUrl }) }];"
       },
       "id": "s5coderesolverlinkrecon00000001",
       "name": "Code - Resolver Link Reconciliado",
@@ -4577,9 +4481,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO facturas (factura_id, lead_id, cliente, email, servicio, monto, moneda, fecha_emision, fecha_vencimiento, mp_preference_id, comision_plataforma, pay_url, pago_token) SELECT $1::text, $2::text, $3::text, $4::text, $5::servicio_tipo, $6::numeric, $7::text, $8::timestamptz, $9::timestamptz, $10::text, $11::numeric, $12::text, $13::uuid WHERE NOT EXISTS (SELECT 1 FROM facturas f WHERE f.lead_id = $2::text) ON CONFLICT (factura_id) DO NOTHING RETURNING *;",
+        "query": "INSERT INTO facturas (factura_id, lead_id, cliente, email, servicio, monto, moneda, fecha_emision, fecha_vencimiento, comision_plataforma, pay_url, pago_token) SELECT $1::text, $2::text, $3::text, $4::text, $5::servicio_tipo, $6::numeric, $7::text, $8::timestamptz, $9::timestamptz, $10::numeric, $11::text, $12::uuid WHERE NOT EXISTS (SELECT 1 FROM facturas f WHERE f.lead_id = $2::text) ON CONFLICT (factura_id) DO NOTHING RETURNING *;",
         "options": {
-          "queryReplacement": "={{ [$json.factura_id, $json.lead_id, $json.nombre, $json.email, $json.servicio, $json.monto, $json.moneda, $json.fecha_emision_iso, $json.fecha_vencimiento_iso, $json.mp_preference_id, $json.comision_plataforma, $json.payUrl, $json.pago_token] }}"
+          "queryReplacement": "={{ [$json.factura_id, $json.lead_id, $json.nombre, $json.email, $json.servicio, $json.monto, $json.moneda, $json.fecha_emision_iso, $json.fecha_vencimiento_iso, $json.comision_plataforma, $json.payUrl, $json.pago_token] }}"
         }
       },
       "id": "s5pginsertfacturarecon00000001",
@@ -5788,9 +5692,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT factura_id, estado_pago, mp_payment_id, cliente, monto, moneda FROM facturas WHERE factura_id = $1;",
+        "query": "SELECT factura_id, estado_pago, stripe_pago_id, cliente, monto, moneda FROM facturas WHERE factura_id = $1;",
         "options": {
-          "queryReplacement": "={{ [$('Code - Procesar Pago MP').item.json.factura_id] }}"
+          "queryReplacement": "={{ [$('Code - Verificar Evento Stripe').item.json.factura_id] }}"
         }
       },
       "id": "mp-12-0000-4000-8000-aaaaaaaaaaaa",
@@ -5811,7 +5715,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Llega acá toda notificación que no marcó la factura como cobrada. La\n// mayoría es ruido esperable (pago pendiente o rechazado, firma inválida,\n// reintento de MercadoPago sobre un pago ya registrado). Lo que no puede\n// pasar en silencio es un pago APROBADO que no se registró: la plata ya entró.\nconst pago = $('Code - Procesar Pago MP').first().json;\nif (!pago.factura_id) return [];\nconst f = $input.first().json || {};\nlet motivo;\nif (!f.factura_id) {\n  motivo = 'no existe una factura con ese identificador';\n} else if (f.estado_pago === 'COBRADO' && String(f.mp_payment_id || '') === pago.mp_payment_id) {\n  return [];\n} else if (f.estado_pago === 'COBRADO') {\n  motivo = f.mp_payment_id\n    ? 'la factura ya estaba cobrada con otro pago (' + f.mp_payment_id + '): es un pago doble'\n    : 'la factura ya figuraba cobrada sin pago de MercadoPago (cierre del proyecto)';\n} else if (f.estado_pago === 'ANULADA') {\n  motivo = 'la factura está ANULADA';\n} else if (Number(f.monto) !== Number(pago.monto_pagado) || f.moneda !== pago.moneda_pagada) {\n  motivo = 'se pagaron ' + pago.monto_pagado + ' ' + pago.moneda_pagada + ' y la factura es por ' + f.monto + ' ' + f.moneda;\n} else {\n  motivo = 'la factura está en estado ' + f.estado_pago;\n}\nreturn [{ json: {\n  factura_id: pago.factura_id,\n  mp_payment_id: pago.mp_payment_id,\n  cliente: f.cliente || '',\n  motivo,\n  detalle: 'factura=' + pago.factura_id + ' pago_mp=' + pago.mp_payment_id + ' motivo=' + motivo,\n} }];"
+        "jsCode": "// Llega acá todo pago confirmado por Stripe que no marcó la factura como\n// cobrada. Un reintento de Stripe sobre un pago ya registrado es ruido\n// esperable; lo que no puede pasar en silencio es un pago que no se registró:\n// la plata ya entró.\nconst pago = $('Code - Verificar Evento Stripe').first().json;\nif (!pago.factura_id) return [];\nconst f = $input.first().json || {};\nlet motivo;\nif (!f.factura_id) {\n  motivo = 'no existe una factura con ese identificador';\n} else if (f.estado_pago === 'COBRADO' && String(f.stripe_pago_id || '') === pago.stripe_pago_id) {\n  return [];\n} else if (f.estado_pago === 'COBRADO') {\n  motivo = f.stripe_pago_id\n    ? 'la factura ya estaba cobrada con otro pago (' + f.stripe_pago_id + '): es un pago doble'\n    : 'la factura ya figuraba cobrada sin un pago de Stripe (cierre del proyecto)';\n} else if (f.estado_pago === 'ANULADA') {\n  motivo = 'la factura está ANULADA';\n} else if (Number(f.monto) !== Number(pago.monto_pagado) || f.moneda !== pago.moneda_pagada) {\n  motivo = 'se pagaron ' + pago.monto_pagado + ' ' + pago.moneda_pagada + ' y la factura es por ' + f.monto + ' ' + f.moneda;\n} else {\n  motivo = 'la factura está en estado ' + f.estado_pago;\n}\nreturn [{ json: {\n  factura_id: pago.factura_id,\n  stripe_pago_id: pago.stripe_pago_id,\n  cliente: f.cliente || '',\n  motivo,\n  detalle: 'factura=' + pago.factura_id + ' pago_stripe=' + pago.stripe_pago_id + ' motivo=' + motivo,\n} }];"
       },
       "id": "mp-13-0000-4000-8000-aaaaaaaaaaaa",
       "name": "Code - Clasificar Pago No Aplicado",
@@ -5825,7 +5729,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO logs (workflow, evento, nivel, detalle)\nVALUES ('cobro_mp', 'pago_no_aplicado', 'ERROR', $1);",
+        "query": "INSERT INTO logs (workflow, evento, nivel, detalle)\nVALUES ('cobro_stripe', 'pago_no_aplicado', 'ERROR', $1);",
         "options": {
           "queryReplacement": "={{ [$json.detalle] }}"
         }
@@ -5859,7 +5763,7 @@
           "value": {
             "tipo": "pago_no_aplicado",
             "nivel": "critico",
-            "mensaje": "=⚠️ <b>Pago recibido que no se pudo registrar</b>\nFactura: {{ $json.factura_id }}\nCliente: {{ String($json.cliente || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nPago MercadoPago: {{ $json.mp_payment_id }}\nMotivo: {{ String($json.motivo || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\n\nLa plata entró a MercadoPago pero la factura no cambió de estado. Revisalo: puede corresponder un reembolso.",
+            "mensaje": "=⚠️ <b>Pago recibido que no se pudo registrar</b>\nFactura: {{ $json.factura_id }}\nCliente: {{ String($json.cliente || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nPago Stripe: {{ $json.stripe_pago_id }}\nMotivo: {{ String($json.motivo || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\n\nLa plata entró por Stripe pero la factura no cambió de estado. Revisalo: puede corresponder un reembolso.",
             "lead_id": "",
             "factura_id": "={{ $json.factura_id || '' }}",
             "espacio_id": ""
@@ -5946,7 +5850,7 @@
           },
           "conditions": [
             {
-              "leftValue": "={{ $json.mp_preference_id }}",
+              "leftValue": "={{ $json.stripe_checkout_id }}",
               "rightValue": "",
               "operator": {
                 "type": "string",
@@ -5960,7 +5864,7 @@
         "options": {}
       },
       "id": "mp-16-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "IF - Tiene Preferencia MP?",
+      "name": "IF - Tiene Checkout Stripe?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2,
       "position": [
@@ -5970,24 +5874,21 @@
     },
     {
       "parameters": {
-        "method": "PUT",
-        "url": "={{ $env.MP_API_BASE || 'https://api.mercadopago.com' }}/checkout/preferences/{{ $json.mp_preference_id }}",
+        "method": "POST",
+        "url": "={{ $env.STRIPE_API_BASE || 'https://api.stripe.com' }}/v1/checkout/sessions/{{ $json.stripe_checkout_id }}/expire",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $env.MP_ACCESS_TOKEN || '' }}"
+              "value": "=Bearer {{ $env.STRIPE_SECRET_KEY || '' }}"
             }
           ]
         },
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ expires: true, expiration_date_to: new Date().toISOString() }) }}",
         "options": {}
       },
       "id": "mp-17-0000-4000-8000-aaaaaaaaaaaa",
-      "name": "HTTP - MercadoPago Expirar Preferencia",
+      "name": "HTTP - Stripe Expirar Checkout",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
@@ -6032,6 +5933,628 @@
         }
       },
       "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "pagar",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "name": "💳 Webhook - Pagar Factura",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        4600,
+        11000
+      ],
+      "webhookId": "e6340000-28b2-486b-bff8-c761e3711a55",
+      "id": "eb7d53c7-87ba-4052-8897-ba52067b9ee4"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Enlace de pago de la factura (?f=<factura_id>&t=<pago_token>). Los dos\n// datos van en el enlace que recibe el cliente; se validan acá sólo por forma\n// y contra la base en el próximo nodo.\nconst q = $input.first().json.query || {};\nconst facturaId = String(q.f || '').trim();\nconst token = String(q.t || '').trim().toLowerCase();\nconst valido = /^FAC-[A-Z0-9-]{4,40}$/.test(facturaId) && /^[0-9a-f-]{36}$/.test(token);\nreturn [{ json: { factura_id: valido ? facturaId : '', pago_token: valido ? token : '' } }];"
+      },
+      "name": "Code - Leer Pagar Factura",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4900,
+        11000
+      ],
+      "id": "bbc698b5-fa5e-4175-b703-e0655bb23c87"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT f.factura_id, f.lead_id, f.cliente, f.email, f.servicio, f.monto, f.moneda, f.comision_plataforma, f.estado_pago, f.pago_token, e.nombre AS espacio_nombre, e.stripe_account_id, e.stripe_cobros_activos FROM facturas f JOIN espacios e ON e.id = f.espacio_id WHERE f.factura_id = $1 AND f.pago_token::text = $2;",
+        "options": {
+          "queryReplacement": "={{ [$json.factura_id, $json.pago_token] }}"
+        }
+      },
+      "name": "Postgres - Buscar Factura a Pagar",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5200,
+        11000
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true,
+      "id": "619b5d64-d43f-4db0-8235-dd929ae465ec"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Qué hacer con el enlace de pago:\n//  - 'stripe': crear la sesión de pago (destination charge a la cuenta del\n//    desarrollador, con la comisión de la plataforma como application fee);\n//  - 'redirigir': sin Stripe configurado, al modo de desarrollo (pago simulado);\n//  - 'pagina': una explicación (enlace inválido, ya pagada, anulada, o el\n//    desarrollador todavía no habilitó los cobros).\nconst esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;');\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\nconst f = $input.first().json || {};\nconst BASE = leerEnv('N8N_PUBLIC_URL', 'http://localhost:5678/').replace(/\\/+$/, '');\nconst FRONT = leerEnv('FRONTEND_URL', 'http://localhost:3000').replace(/\\/+$/, '');\nconst pagina = (status, titulo, texto) => ({ accion: 'pagina', status, location: '', html:\n  \"<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>\" + esc(titulo) + \"</title></head>\" +\n  \"<body style='font-family:Arial,Helvetica,sans-serif;background:#f5f2ea;color:#27272a;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0'>\" +\n  \"<div style='background:#fff;border:1px solid #e4e0d4;padding:40px;max-width:440px;margin:16px'><h1 style='font-size:22px;margin:0 0 12px'>\" + esc(titulo) + \"</h1>\" +\n  \"<p style='font-size:15px;line-height:1.6;color:#52525b;margin:0'>\" + texto + \"</p></div></body></html>\" });\nlet salida;\nif (!f.factura_id) {\n  salida = pagina(404, 'Enlace inválido', 'Este enlace de pago no es válido. Usá el del correo de la factura.');\n} else if (f.estado_pago === 'COBRADO') {\n  salida = pagina(200, 'Factura pagada', 'La factura ' + esc(f.factura_id) + ' ya está pagada. ¡Gracias!');\n} else if (f.estado_pago === 'ANULADA') {\n  salida = pagina(410, 'Factura anulada', 'La factura ' + esc(f.factura_id) + ' fue anulada y no se puede pagar.');\n} else if (!leerEnv('STRIPE_SECRET_KEY', '')) {\n  salida = { accion: 'redirigir', status: 303, html: '', location: BASE + '/webhook/pago-confirmado?factura_id=' + encodeURIComponent(f.factura_id) + '&pago_token=' + encodeURIComponent(f.pago_token) + '&lead_id=' + encodeURIComponent(f.lead_id || '') };\n} else if (!f.stripe_account_id || !f.stripe_cobros_activos) {\n  salida = pagina(200, 'Pago online no disponible', esc(f.espacio_nombre || 'Quien te emitió la factura') + ' todavía no habilitó los pagos online. Respondé el correo de la factura para coordinar el pago.');\n} else {\n  const centavos = Math.round(Number(f.monto) * 100);\n  const comision = Math.round(Number(f.comision_plataforma || 0) * 100);\n  const svc = String(f.servicio || 'servicio').replace(/_/g, ' ');\n  const campos = {\n    mode: 'payment',\n    'line_items[0][quantity]': '1',\n    'line_items[0][price_data][currency]': String(f.moneda || 'USD').toLowerCase(),\n    'line_items[0][price_data][unit_amount]': String(centavos),\n    'line_items[0][price_data][product_data][name]': 'Factura ' + f.factura_id + ' — ' + svc,\n    'payment_intent_data[application_fee_amount]': String(comision),\n    'payment_intent_data[transfer_data][destination]': f.stripe_account_id,\n    'payment_intent_data[metadata][factura_id]': f.factura_id,\n    'metadata[factura_id]': f.factura_id,\n    client_reference_id: f.factura_id,\n    customer_email: String(f.email || ''),\n    success_url: FRONT + '/pago-exitoso?factura=' + encodeURIComponent(f.factura_id),\n    cancel_url: FRONT + '/pago-fallido?factura=' + encodeURIComponent(f.factura_id),\n  };\n  const form = Object.entries(campos).filter(([, v]) => v !== '').map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');\n  salida = { accion: 'stripe', status: 303, html: '', location: '', stripe_form: form, factura_id: f.factura_id };\n}\nreturn [{ json: salida }];"
+      },
+      "name": "Code - Decidir Pago",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5500,
+        11000
+      ],
+      "id": "73439d9a-cb2a-456f-92ce-2e1063d37010"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.accion }}",
+              "rightValue": "stripe",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "IF - Pagar con Stripe?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5800,
+        11000
+      ],
+      "id": "b7dd67b9-8189-4550-a072-8712e64ee22d"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.STRIPE_API_BASE || 'https://api.stripe.com' }}/v1/checkout/sessions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.STRIPE_SECRET_KEY || '' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/x-www-form-urlencoded",
+        "body": "={{ $json.stripe_form }}",
+        "options": {}
+      },
+      "name": "HTTP - Stripe Crear Checkout",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6100,
+        10900
+      ],
+      "onError": "continueRegularOutput",
+      "id": "84a36521-09aa-46c8-ac4e-26c9f65270c0"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE facturas SET stripe_checkout_id = $2 WHERE factura_id = $1 AND $2 <> '' RETURNING factura_id;",
+        "options": {
+          "queryReplacement": "={{ [$('Code - Decidir Pago').item.json.factura_id, $json.id || ''] }}"
+        }
+      },
+      "name": "Postgres - Guardar Checkout",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        6400,
+        10900
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true,
+      "id": "49e96df2-a992-4125-9c32-6c1647ac3c33"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $('HTTP - Stripe Crear Checkout').item.json.url ? '' : \"<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'></head><body style='font-family:Arial,sans-serif;padding:40px'><h1>No pudimos abrir el pago</h1><p>Probá de nuevo en unos minutos. Si sigue fallando, respondé el correo de la factura.</p></body></html>\" }}",
+        "options": {
+          "responseCode": "={{ $('HTTP - Stripe Crear Checkout').item.json.url ? 303 : 502 }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Location",
+                "value": "={{ $('HTTP - Stripe Crear Checkout').item.json.url || '' }}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Respond - Ir a Stripe",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        6700,
+        10900
+      ],
+      "id": "b2282c29-48f6-4c78-97da-f15ce85ff435"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseCode": "={{ $json.status }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Location",
+                "value": "={{ $json.location || '' }}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Respond - Pago Pagina",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        6100,
+        11120
+      ],
+      "id": "105148e7-3752-4a2e-a9c8-41d96c2a5ed7"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.accion }}",
+              "rightValue": "aplicar",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "IF - Evento de Pago?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2600,
+        11600
+      ],
+      "id": "61e94ad8-71a2-4c5d-9cdc-c1b3dee23bd5"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: $json.accion !== 'rechazar', motivo: $json.motivo || $json.tipo || '' }) }}",
+        "options": {
+          "responseCode": "={{ $json.status }}"
+        }
+      },
+      "name": "Respond - Evento Stripe Ignorado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2900,
+        11800
+      ],
+      "id": "b00282e4-c606-4209-abbe-6eba52674fef"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "stripe-conectar",
+        "responseMode": "responseNode",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "name": "🏦 Webhook - Stripe Conectar",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        4600,
+        12000
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "CRM - Header Auth (panel)"
+        }
+      },
+      "webhookId": "0387c5d3-9052-4ac7-aeb2-cea79423403e",
+      "id": "69c975c2-0246-47c6-bed8-2111582264ee"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lo llama sólo el panel (/api/crm), con la credencial del panel y el\n// espacio de la sesión de quien lo pide: el cuerpo no lo elige el navegador.\nconst b = $input.first().json.body || {};\nconst espacioId = String(b.espacio_id || '');\nif (!/^[0-9a-f-]{36}$/i.test(espacioId)) throw new Error('espacio_id inválido');\nreturn [{ json: { espacio_id: espacioId } }];"
+      },
+      "name": "Code - Leer Stripe Conectar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4900,
+        12000
+      ],
+      "id": "1f35ca40-cc36-4e0f-9414-2ada14df6cdb"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id AS espacio_id, nombre, email_contacto, stripe_account_id FROM espacios WHERE id = $1::uuid;",
+        "options": {
+          "queryReplacement": "={{ [$json.espacio_id] }}"
+        }
+      },
+      "name": "Postgres - Espacio para Stripe",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5200,
+        12000
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      },
+      "id": "9b055d65-fe79-4d3a-b1c7-383747444eb8"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.stripe_account_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "IF - Tiene Cuenta Stripe?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5500,
+        12000
+      ],
+      "id": "4f228ae0-08d4-4a79-9f5a-12a87ffb86f0"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.STRIPE_API_BASE || 'https://api.stripe.com' }}/v1/accounts",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.STRIPE_SECRET_KEY || '' }}"
+            },
+            {
+              "name": "Idempotency-Key",
+              "value": "=crear-cuenta-{{ $json.espacio_id }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/x-www-form-urlencoded",
+        "body": "={{ 'type=express&capabilities[card_payments][requested]=true&capabilities[transfers][requested]=true&metadata[espacio_id]=' + encodeURIComponent($json.espacio_id) + ($json.email_contacto ? '&email=' + encodeURIComponent($json.email_contacto) : '') + '&business_profile[name]=' + encodeURIComponent($json.nombre || '') }}",
+        "options": {}
+      },
+      "name": "HTTP - Stripe Crear Cuenta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5800,
+        12120
+      ],
+      "id": "9603e16b-cfed-4358-9e40-f0225583a8f3"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE espacios SET stripe_account_id = COALESCE(stripe_account_id, $2) WHERE id = $1::uuid RETURNING id AS espacio_id, stripe_account_id;",
+        "options": {
+          "queryReplacement": "={{ [$('Postgres - Espacio para Stripe').item.json.espacio_id, $json.id] }}"
+        }
+      },
+      "name": "Postgres - Guardar Cuenta Stripe",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        6100,
+        12120
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      },
+      "id": "a5b6e191-a833-4a41-aaf1-5a19f69cbd86"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.STRIPE_API_BASE || 'https://api.stripe.com' }}/v1/account_links",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.STRIPE_SECRET_KEY || '' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/x-www-form-urlencoded",
+        "body": "={{ 'type=account_onboarding&account=' + encodeURIComponent($json.stripe_account_id) + '&refresh_url=' + encodeURIComponent(($env.FRONTEND_URL || 'http://localhost:3000').replace(/\\/+$/, '') + '/dashboard/espacio?stripe=reintentar') + '&return_url=' + encodeURIComponent(($env.FRONTEND_URL || 'http://localhost:3000').replace(/\\/+$/, '') + '/dashboard/espacio?stripe=volvio') }}",
+        "options": {}
+      },
+      "name": "HTTP - Stripe Link Onboarding",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6400,
+        12000
+      ],
+      "id": "e4a1ba9b-c6a2-4cff-a801-3170e951bb5e"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, url: $json.url }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "name": "Respond - Stripe Conectar",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        6700,
+        12000
+      ],
+      "id": "0d2e96ab-000b-4402-9790-122fa489e56e"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "stripe-estado",
+        "responseMode": "responseNode",
+        "authentication": "headerAuth",
+        "options": {}
+      },
+      "name": "🏦 Webhook - Stripe Estado",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        4600,
+        12450
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REEMPLAZAR_AL_IMPORTAR",
+          "name": "CRM - Header Auth (panel)"
+        }
+      },
+      "webhookId": "665336d0-cfc3-4646-a8ca-a9d0a69d0dc2",
+      "id": "d0a5c8ef-11be-429d-b176-1d9f3d3e0b8a"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Lo llama sólo el panel (/api/crm), con la credencial del panel y el\n// espacio de la sesión de quien lo pide: el cuerpo no lo elige el navegador.\nconst b = $input.first().json.body || {};\nconst espacioId = String(b.espacio_id || '');\nif (!/^[0-9a-f-]{36}$/i.test(espacioId)) throw new Error('espacio_id inválido');\nreturn [{ json: { espacio_id: espacioId } }];"
+      },
+      "name": "Code - Leer Stripe Estado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4900,
+        12450
+      ],
+      "id": "5cac0949-dccf-471e-a404-cb49a15a8105"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT id AS espacio_id, stripe_account_id FROM espacios WHERE id = $1::uuid;",
+        "options": {
+          "queryReplacement": "={{ [$json.espacio_id] }}"
+        }
+      },
+      "name": "Postgres - Cuenta Stripe del Espacio",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5200,
+        12450
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      },
+      "id": "940304be-8ac8-4e9b-923a-8cd7649a6342"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.stripe_account_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "IF - Hay Cuenta Stripe?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5500,
+        12450
+      ],
+      "id": "def29f1b-9d44-40b4-8035-a72621b88ca0"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.STRIPE_API_BASE || 'https://api.stripe.com' }}/v1/accounts/{{ $json.stripe_account_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.STRIPE_SECRET_KEY || '' }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "name": "HTTP - Stripe Leer Cuenta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5800,
+        12350
+      ],
+      "id": "453b2184-9575-4e57-b7e0-13cd38a39708"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE espacios SET stripe_cobros_activos = $2::boolean WHERE id = $1::uuid RETURNING stripe_cobros_activos;",
+        "options": {
+          "queryReplacement": "={{ [$('Postgres - Cuenta Stripe del Espacio').item.json.espacio_id, Boolean($json.charges_enabled)] }}"
+        }
+      },
+      "name": "Postgres - Guardar Estado Stripe",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        6100,
+        12350
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      },
+      "id": "170eca4c-ffcc-4f9e-81dc-1c923b970cfa"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true, conectada: true, activo: Boolean($json.stripe_cobros_activos) }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "name": "Respond - Stripe Estado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        6400,
+        12350
+      ],
+      "id": "116ebba1-1d96-432b-8133-b9a85d1a511c"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"ok\": true, \"conectada\": false, \"activo\": false }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "name": "Respond - Stripe Sin Cuenta",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        5800,
+        12570
+      ],
+      "id": "8e8aeb27-cf22-4ff3-a180-802cf174b9c9"
     }
   ],
   "connections": {
@@ -7175,17 +7698,6 @@
       "main": [
         [
           {
-            "node": "HTTP - MercadoPago Crear Preferencia",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "HTTP - MercadoPago Crear Preferencia": {
-      "main": [
-        [
-          {
             "node": "Code - Resolver Link de Pago",
             "type": "main",
             "index": 0
@@ -7198,89 +7710,6 @@
         [
           {
             "node": "Code - Generar Factura HTML",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "🟣 Webhook - Notificacion MercadoPago": {
-      "main": [
-        [
-          {
-            "node": "Code - Leer Notificacion MP",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code - Leer Notificacion MP": {
-      "main": [
-        [
-          {
-            "node": "HTTP - MercadoPago Obtener Pago",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "HTTP - MercadoPago Obtener Pago": {
-      "main": [
-        [
-          {
-            "node": "Code - Procesar Pago MP",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Code - Procesar Pago MP": {
-      "main": [
-        [
-          {
-            "node": "Postgres - Marcar Cobrado MP",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Postgres - Marcar Cobrado MP": {
-      "main": [
-        [
-          {
-            "node": "IF - Actualizacion Aplico MP?",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "IF - Actualizacion Aplico MP?": {
-      "main": [
-        [
-          {
-            "node": "Respond - Notificacion MP OK",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Telegram - Pago Recibido",
-            "type": "main",
-            "index": 0
-          }
-        ],
-        [
-          {
-            "node": "Respond - Notificacion MP Ignorada",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Postgres - Buscar Pago No Aplicado",
             "type": "main",
             "index": 0
           }
@@ -7384,17 +7813,6 @@
       ]
     },
     "Code - Preparar Factura Reconciliada": {
-      "main": [
-        [
-          {
-            "node": "HTTP - MercadoPago Preferencia Reconciliada",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "HTTP - MercadoPago Preferencia Reconciliada": {
       "main": [
         [
           {
@@ -7536,7 +7954,7 @@
             "index": 0
           },
           {
-            "node": "IF - Tiene Preferencia MP?",
+            "node": "IF - Tiene Checkout Stripe?",
             "type": "main",
             "index": 0
           }
@@ -7832,22 +8250,342 @@
         ]
       ]
     },
-    "IF - Tiene Preferencia MP?": {
+    "Code - Recuperar HTML Factura": {
       "main": [
         [
           {
-            "node": "HTTP - MercadoPago Expirar Preferencia",
+            "node": "HTTP - Gotenberg PDF",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Code - Recuperar HTML Factura": {
+    "💳 Webhook - Pagar Factura": {
       "main": [
         [
           {
-            "node": "HTTP - Gotenberg PDF",
+            "node": "Code - Leer Pagar Factura",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Leer Pagar Factura": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Buscar Factura a Pagar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Buscar Factura a Pagar": {
+      "main": [
+        [
+          {
+            "node": "Code - Decidir Pago",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Decidir Pago": {
+      "main": [
+        [
+          {
+            "node": "IF - Pagar con Stripe?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Pagar con Stripe?": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Stripe Crear Checkout",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Pago Pagina",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Stripe Crear Checkout": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Guardar Checkout",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Guardar Checkout": {
+      "main": [
+        [
+          {
+            "node": "Respond - Ir a Stripe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "💳 Webhook - Stripe": {
+      "main": [
+        [
+          {
+            "node": "Code - Verificar Evento Stripe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Verificar Evento Stripe": {
+      "main": [
+        [
+          {
+            "node": "IF - Evento de Pago?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Marcar Cobrado Stripe": {
+      "main": [
+        [
+          {
+            "node": "IF - Pago Aplicado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Evento de Pago?": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Marcar Cobrado Stripe",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Evento Stripe Ignorado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Pago Aplicado?": {
+      "main": [
+        [
+          {
+            "node": "Respond - Stripe OK",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram - Pago Recibido",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Stripe Pago No Aplicado",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Postgres - Buscar Pago No Aplicado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Tiene Checkout Stripe?": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Stripe Expirar Checkout",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🏦 Webhook - Stripe Conectar": {
+      "main": [
+        [
+          {
+            "node": "Code - Leer Stripe Conectar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Leer Stripe Conectar": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Espacio para Stripe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Espacio para Stripe": {
+      "main": [
+        [
+          {
+            "node": "IF - Tiene Cuenta Stripe?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Tiene Cuenta Stripe?": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Stripe Link Onboarding",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HTTP - Stripe Crear Cuenta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Stripe Crear Cuenta": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Guardar Cuenta Stripe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Guardar Cuenta Stripe": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Stripe Link Onboarding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Stripe Link Onboarding": {
+      "main": [
+        [
+          {
+            "node": "Respond - Stripe Conectar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "🏦 Webhook - Stripe Estado": {
+      "main": [
+        [
+          {
+            "node": "Code - Leer Stripe Estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Leer Stripe Estado": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Cuenta Stripe del Espacio",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Cuenta Stripe del Espacio": {
+      "main": [
+        [
+          {
+            "node": "IF - Hay Cuenta Stripe?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Hay Cuenta Stripe?": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Stripe Leer Cuenta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Stripe Sin Cuenta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Stripe Leer Cuenta": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Guardar Estado Stripe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Guardar Estado Stripe": {
+      "main": [
+        [
+          {
+            "node": "Respond - Stripe Estado",
             "type": "main",
             "index": 0
           }

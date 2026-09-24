@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import CobrosStripe from "./cobros-stripe";
 import EspacioForm from "./espacio-form";
 import TelegramVinculo from "./telegram-vinculo";
 
@@ -29,6 +30,15 @@ export default async function EspacioPage() {
       </div>
 
       <EspacioForm bienvenida={bienvenida} espacio={espacio} />
+
+      {!bienvenida && (
+        <CobrosStripe
+          inicial={{
+            conectada: Boolean(espacio.stripe_account_id),
+            activo: espacio.stripe_cobros_activos,
+          }}
+        />
+      )}
 
       {!bienvenida && <TelegramVinculo vinculado={Boolean(espacio.telegram_chat_id)} />}
 

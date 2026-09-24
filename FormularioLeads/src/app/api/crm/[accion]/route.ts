@@ -2,7 +2,7 @@ import type {NextRequest} from "next/server";
 
 import {NextResponse} from "next/server";
 
-import {requirePanel} from "@/lib/auth";
+import {getPanelStatus, requirePanel} from "@/lib/auth";
 import {createClient} from "@/lib/supabase/server";
 
 // Proxy server-side de las acciones del panel interno hacia n8n.
@@ -34,7 +34,15 @@ const ACCIONES: Record<string, string> = {
   cerrar: "proyecto-cerrado",
   "propuesta-enviar": "propuesta-enviar",
   "factura-anular": "factura-anular",
+  "stripe-conectar": "stripe-conectar",
+  "stripe-estado": "stripe-estado",
 };
+
+// Acciones sobre el espacio mismo (el alta de cobros con Stripe), no sobre un
+// pedido: el espacio lo pone este handler con la sesión, y lo que mande el
+// navegador se ignora. Si no, bastaría con cambiar el id en el cuerpo para
+// conectar o consultar la cuenta de otro desarrollador.
+const ACCIONES_DE_ESPACIO = new Set(["stripe-conectar", "stripe-estado"]);
 
 // Las acciones del panel mandan un lead_id, un factura_id, o los dos. `null` =
 // no vino ninguno, o vino uno que no es texto.
@@ -104,24 +112,33 @@ export async function POST(request: NextRequest, {params}: {params: Promise<{acc
 
   let body: unknown;
 
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ok: false, error: "Body inválido."}, {status: 400});
+  if (ACCIONES_DE_ESPACIO.has(accion)) {
+    const {espacio} = await getPanelStatus();
+
+    if (!espacio) {
+      return NextResponse.json({ok: false, error: "La cuenta no tiene un espacio."}, {status: 403});
+    }
+    body = {espacio_id: espacio.id};
+  } else {
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ok: false, error: "Body inválido."}, {status: 400});
+    }
+
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return NextResponse.json({ok: false, error: "Body inválido."}, {status: 400});
+    }
+
+    const propio = await esDeMiEspacio(body as Record<string, unknown>);
+
+    if (propio === null) {
+      return NextResponse.json({ok: false, error: "Falta lead_id o factura_id."}, {status: 400});
+    }
+
+    // 404 y no 403: no se confirma que exista algo en otro espacio.
+    if (!propio) return NextResponse.json({ok: false, error: "No encontrado."}, {status: 404});
   }
-
-  if (!body || typeof body !== "object" || Array.isArray(body)) {
-    return NextResponse.json({ok: false, error: "Body inválido."}, {status: 400});
-  }
-
-  const propio = await esDeMiEspacio(body as Record<string, unknown>);
-
-  if (propio === null) {
-    return NextResponse.json({ok: false, error: "Falta lead_id o factura_id."}, {status: 400});
-  }
-
-  // 404 y no 403: no se confirma que exista algo en otro espacio.
-  if (!propio) return NextResponse.json({ok: false, error: "No encontrado."}, {status: 404});
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",

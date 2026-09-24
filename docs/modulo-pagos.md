@@ -1,206 +1,147 @@
-# Cobro con MercadoPago (RAMA 8)
+# Cobro con Stripe Connect (RAMA 8)
 
-El pago dejó de ser simulado. El link de la factura es ahora una **preferencia
-real de MercadoPago** (Checkout Pro): el cliente paga con tarjeta o los medios
-que habilite su cuenta, y una **notificación de MercadoPago** —no el navegador
-del cliente— es lo que marca la factura como cobrada.
+Desde el 24-sep-2026 la plataforma es compartida: cada desarrollador cobra sus
+propias facturas. El cobro pasó de MercadoPago a **Stripe Connect**, en dólares:
 
-Sin `MP_ACCESS_TOKEN` configurado, el sistema sigue funcionando exactamente
-como antes (modo de desarrollo): el link marca la factura cobrada a mano. En
-cuanto se completan las credenciales reales, el link pasa a ser el checkout
-real sin tocar código ni reimportar nada.
+- cada desarrollador conecta **su** cuenta de Stripe (Express) desde el panel;
+- lo que paga su cliente va a esa cuenta;
+- la plataforma se queda con su comisión (`COMISION_PLATAFORMA_PORCENTAJE`, 1%
+  por defecto), que Stripe separa sola en el momento del cobro
+  (`application_fee_amount`).
+
+Con MercadoPago la comisión era sólo contable (quedaba anotada para liquidar
+aparte) y todo cobraba una única cuenta. MercadoPago Argentina, además, cobra
+sólo en pesos.
+
+Sin `STRIPE_SECRET_KEY`, el sistema funciona igual que antes en desarrollo: el
+enlace de la factura lleva al pago simulado.
 
 ---
 
 ## 1. Cómo funciona
 
-### Al aceptar la propuesta (RAMA 2)
+### Alta de cobros del desarrollador
 
-1. `Code - Generar ID Factura` arma el `factura_id`, calcula la
-   `comision_plataforma` (`MP_COMISION_PORCENTAJE` % del monto) y arma el
-   cuerpo de la preferencia de MercadoPago.
-2. `HTTP - MercadoPago Crear Preferencia` la crea contra
-   `POST /checkout/preferences` con `MP_ACCESS_TOKEN`. Si falla (token
-   vacío, inválido, o MercadoPago no responde) el nodo sigue con
-   `onError: continuar` — la aceptación de la propuesta **nunca** se cae por
-   esto.
-3. `Code - Resolver Link de Pago` usa el `init_point` que devolvió MP como
-   link de pago. Si no hay `init_point` (paso 2 falló o no hay token), cae al
-   link de desarrollo (`/webhook/pago-confirmado?factura_id=...`), el mismo
-   que existía antes de este cambio.
-4. La factura PDF y el email salen igual que siempre; sólo cambia a dónde
-   apunta el botón **Pagar ahora**.
-5. `Postgres - Insert Factura` guarda `mp_preference_id`, `comision_plataforma`
-   y la `moneda` real del cobro (`MP_CURRENCY`) junto con el resto de la
-   factura.
+Desde **Tu espacio → Cobros online**, el panel llama a `/api/crm/stripe-conectar`.
+El route handler le pone el espacio de la sesión (lo que mande el navegador se
+ignora) y lo reenvía a n8n con la credencial del panel:
 
-### Al confirmarse el pago (nuevo webhook)
+1. `🏦 Webhook - Stripe Conectar` busca el espacio. Si todavía no tiene cuenta,
+   la crea (`POST /v1/accounts`, `type=express`, con `Idempotency-Key` por
+   espacio: dos clics no crean dos cuentas) y la guarda en
+   `espacios.stripe_account_id`.
+2. Pide un enlace de onboarding (`POST /v1/account_links`) y el panel redirige
+   al desarrollador a Stripe.
+3. Stripe lo devuelve a `/dashboard/espacio?stripe=volvio`. El panel llama a
+   `stripe-estado`, que lee la cuenta (`GET /v1/accounts/{id}`) y guarda
+   `stripe_cobros_activos` (= `charges_enabled`).
 
-MercadoPago llama a `POST /webhook/mp/notificacion` cuando el estado de un
-pago cambia:
+El desarrollador no puede escribir `stripe_account_id` ni
+`stripe_cobros_activos` (GRANT por columna): si pudiera, cobraría en la cuenta
+de otro.
 
-1. `Code - Leer Notificacion MP` saca el `payment_id` del body (Webhooks v2:
-   `{type:"payment", data:{id}}`) o de la query (IPN vieja: `?topic=payment&id=`).
-   Valida la firma (`x-signature`) contra `MP_WEBHOOK_SECRET` antes de
-   seguir; la firma es obligatoria (S8): sin secreto configurado, o con
-   firma inválida, el `payment_id` queda vacío y la notificación se descarta.
-2. `HTTP - MercadoPago Obtener Pago` consulta `GET /v1/payments/{id}` — la
-   fuente de verdad es la API de MercadoPago, nunca lo que mande el body de
-   la notificación (que no está firmado punto a punto).
-3. `Code - Procesar Pago MP` sólo deja pasar el pago si `status = approved` y
-   trae un `external_reference` (el `factura_id`). También toma el monto y la
-   moneda que MercadoPago dice haber cobrado (`transaction_amount`,
-   `currency_id`).
-4. `Postgres - Marcar Cobrado MP` hace un `UPDATE ... WHERE estado_pago IN
-   ('PENDIENTE','VENCIDA') AND monto = $3 AND moneda = $4` idempotente — una
-   notificación repetida (MercadoPago reintenta) no vuelve a disparar el
-   Telegram ni la sincronización con Notion, y un pago por otro importe no da
-   la factura por cobrada. El modo de desarrollo (`Postgres - Marcar Cobrado`)
-   acepta los mismos dos estados.
-5. Si aplicó, reusa los mismos nodos de siempre: `Telegram - Pago Recibido`
-   y `Postgres - Buscar Card Pago` → `Notion - Estado Pagado`.
-6. Responde `200 {"ok":true|false}` siempre — MercadoPago reintenta si no
-   recibe 2xx, así que un pago `pending` o una firma inválida responden OK
-   igual (sin marcar nada) para no generar reintentos infinitos.
+### Emisión de la factura
 
-### 1.1 Ningún pago aprobado se pierde en silencio (23-sep-2026)
+`Code - Generar ID Factura` arma la factura en USD con su comisión, y
+`Code - Resolver Link de Pago` le pone un **enlace propio**:
+`<N8N_PUBLIC_URL>webhook/pagar?f=<factura_id>&t=<pago_token>`.
 
-Antes, un pago aprobado que el `UPDATE` no aplicaba terminaba en `Respond -
-Notificacion MP Ignorada`, sin registro ni aviso. Eso pasaba en casos reales:
+Al emitir no se crea nada en Stripe. Una sesión de Checkout dura como mucho 24
+horas y la factura vence en días: si se creara al emitir, el enlace del correo
+se vencería antes que la factura.
 
-- **Factura VENCIDA.** El cron (RAMA 4) la marca a los
-  `FACTURA_VENCIDA_DIAS_GRACIA` días, pero la preferencia de MercadoPago no
-  vence: el cliente que pagaba tarde quedaba con la plata acreditada y la
-  factura sin cambiar. Ahora el cobro se registra (VENCIDA → COBRADO).
-- **Factura ANULADA.** Su link seguía cobrando. Ahora `IF - Tiene Preferencia
-  MP?` → `HTTP - MercadoPago Expirar Preferencia` hace `PUT
-  /checkout/preferences/{id}` con `expires: true` y `expiration_date_to` en
-  el momento de anular. Si falla (sin credenciales o sin red) la anulación
-  sigue igual, y queda la alerta de abajo como red de contención.
+### El cliente abre el enlace (`💳 Webhook - Pagar Factura`)
 
-Para todo lo que igual no se aplique, la salida negativa de `IF -
-Actualizacion Aplico MP?` además de responder pasa por `Postgres - Buscar Pago
-No Aplicado` → `Code - Clasificar Pago No Aplicado`. Descarta el ruido
-esperable (pago no aprobado, firma inválida, reintento del mismo pago ya
-registrado) y, para un pago aprobado, deja una fila `ERROR` en `logs`
-(`evento = 'pago_no_aplicado'`) y avisa por `Telegram - Pago No Aplicado` con
-el motivo:
+`Code - Decidir Pago` resuelve, con la factura y el espacio de la base:
 
-| Motivo | Qué hacer |
+| Caso | Respuesta |
 |---|---|
-| La factura está ANULADA | Reembolsar desde MercadoPago o reactivar la factura |
-| Ya estaba cobrada con otro pago | Pago doble: reembolsar uno |
-| Ya figuraba cobrada sin pago de MercadoPago | Se cerró el proyecto antes de que entrara el pago: conciliar a mano |
-| Se pagó otro monto u otra moneda | Revisar el pago en MercadoPago |
-| No existe la factura | Revisar el `external_reference` del pago |
+| factura y token no coinciden | 404 "Enlace inválido" |
+| ya COBRADO | "Factura pagada" |
+| ANULADA | 410 "Factura anulada" |
+| sin `STRIPE_SECRET_KEY` | 303 al pago simulado (modo de desarrollo) |
+| el desarrollador no habilitó los cobros | "Pago online no disponible", con la indicación de responder el correo |
+| todo en orden | crea la sesión de Checkout y redirige (303) |
 
-Cubierto por `tests/idempotencia.mjs`, que ejecuta el SQL y el nodo Code del
-workflow contra un PostgreSQL real con el rol `n8n_writer`. Sin verificar
-contra la API real de MercadoPago: el formato de `expiration_date_to` y la
-respuesta del `PUT` salen de la documentación pública, y `tests/mp-doble.mjs`
-los reproduce.
+La sesión es un *destination charge*: `transfer_data[destination]` es la cuenta
+del desarrollador y `application_fee_amount` la comisión. El importe sale de la
+base, nunca del enlace. `Postgres - Guardar Checkout` guarda la sesión en
+`facturas.stripe_checkout_id`.
 
+### Stripe confirma el pago (`💳 Webhook - Stripe`)
 
-### 1.2 Cómo se cobró cada factura (`metodo_cobro`, 23-sep-2026)
+Stripe manda `checkout.session.completed` al webhook de la **plataforma** (con
+destination charges, la sesión es de la cuenta de la plataforma).
+`Code - Verificar Evento Stripe`:
 
-Tres caminos dan una factura por COBRADO, y cada uno lo deja anotado:
+- verifica `Stripe-Signature` (HMAC SHA-256 de `<t>.<cuerpo crudo>` con
+  `STRIPE_WEBHOOK_SECRET`, comparación en tiempo constante). El webhook tiene
+  `rawBody` porque la firma es sobre el cuerpo tal cual llegó;
+- rechaza con 400 si no hay secreto configurado, si la firma no coincide o si
+  tiene más de 5 minutos (un evento viejo reenviado no sirve);
+- ignora con 200 lo que no es un pago acreditado, para que Stripe no reintente.
 
-| `metodo_cobro` | Quién | Hay un pago detrás |
-|---|---|---|
-| `MERCADOPAGO` | `Postgres - Marcar Cobrado MP` | Sí, verificado contra la API |
-| `DESARROLLO` | `Postgres - Marcar Cobrado` (link con `pago_token`) | No: modo sin credenciales |
-| `CIERRE_MANUAL` | `Postgres - Factura Cobrada`, al cerrar el proyecto | No: se asume cobrada por fuera |
+`Postgres - Marcar Cobrado Stripe` marca COBRADO sólo desde PENDIENTE o VENCIDA,
+y sólo si el monto y la moneda coinciden con la factura (`metodo_cobro =
+'STRIPE'`, `stripe_pago_id` = el PaymentIntent). Es idempotente: el reintento
+de un pago ya registrado no hace nada.
 
-`metrics_mensuales.cobrado_cierre_manual` separa la última parte, y el tablero
-la muestra debajo de «Cobrado» cuando no es cero.
+### Un pago confirmado que no se pudo aplicar
 
----
+Si el pago no marcó la factura, `Code - Clasificar Pago No Aplicado` distingue
+el reintento esperable (mismo PaymentIntent, ya registrado: no se avisa) de lo
+que no puede pasar en silencio: factura ANULADA, inexistente, ya cobrada con
+otro pago (pago doble) o un importe distinto. Esos casos quedan en `logs` y
+generan un aviso **crítico**, que le llega al desarrollador y a la plataforma:
+la plata ya entró y puede corresponder un reembolso.
 
-## 2. La comisión de la plataforma
+### Anulación
 
-`comision_plataforma` = `monto × MP_COMISION_PORCENTAJE / 100` (1% por
-defecto), calculada al facturar y guardada en `facturas.comision_plataforma`.
-
-**Es contable, no una transferencia real.** MercadoPago no separa el cobro
-entre dos cuentas: todo el monto entra a la cuenta configurada en
-`MP_ACCESS_TOKEN`. La comisión queda anotada para liquidarla aparte —
-visible por factura (`facturas.comision_plataforma`) y agregada por mes en
-`metrics_mensuales.comision_cobrada` (suma sólo sobre lo efectivamente
-`COBRADO`).
-
-> Split real (que MercadoPago separe el cobro solo entre dos cuentas
-> distintas) existe vía su API de Marketplace, pero requiere que la cuenta
-> que cobra autorice por OAuth a una aplicación de MercadoPago aparte —
-> bastante más superficie para poco beneficio mientras el sistema sea de un
-> solo freelance. Si en algún momento hay varios freelances cobrando cada
-> uno a su propia cuenta (ver `roadmap-mejoras.md` #4, multi-usuario), ahí sí
-> vale la pena migrar a ese modelo.
-
----
-
-## 3. Configuración
-
-| Variable | Default | Qué hace |
-|---|---|---|
-| `MP_ACCESS_TOKEN` | *(vacía)* | Credencial de la cuenta de MercadoPago que cobra. Vacía = modo de desarrollo (sin MercadoPago real). |
-| `MP_CURRENCY` | `ARS` | `currency_id` de la preferencia; tiene que coincidir con el país de la cuenta. |
-| `MP_COMISION_PORCENTAJE` | `1` | % del monto que se anota como comisión de la plataforma. |
-| `MP_WEBHOOK_SECRET` | *(vacía)* | Firma secreta para validar `POST /webhook/mp/notificacion`. Obligatoria (S8): vacía = la notificación siempre se descarta, no solo "sin validar". En dev, `docker-compose.yml` la completa con `dev-secret-cambiar-en-produccion`. |
-
-`MP_WEBHOOK_SECRET` valida la firma con `require('crypto')` dentro de un nodo
-`Code`; hace falta `NODE_FUNCTION_ALLOW_BUILTIN=crypto` en el entorno de n8n
-(ya está en `docker-compose.yml`).
-
-Las credenciales salen del panel de developers de MercadoPago
-(`https://www.mercadopago.com.ar/developers` → Tus integraciones → tu
-aplicación → Credenciales). Las de **prueba** alcanzan para validar el flujo
-de punta a punta con una tarjeta de test antes de pasar a las de producción.
+Al anular una factura, si tiene una sesión de Checkout guardada,
+`HTTP - Stripe Expirar Checkout` la expira (`POST
+/v1/checkout/sessions/{id}/expire`). Así un cliente que había abierto el enlace
+antes no puede pagar la factura anulada. Si la sesión ya no estaba abierta,
+Stripe responde error y el nodo sigue.
 
 ---
 
-## 4. Puesta en marcha
+## 2. Configuración
 
-1. Crear una aplicación en el panel de developers de MercadoPago.
-2. Copiar el Access Token (de prueba primero) a `MP_ACCESS_TOKEN` en el
-   `.env` junto al `docker-compose.yml`.
-3. `docker compose up -d` (o reiniciar si ya estaba arriba) para que n8n
-   tome la variable.
-4. Reimportar `workflow/crm_postgres.json` (o sincronizar si n8n está
-   conectado a git) y publicar.
-5. `db/schema.sql` es idempotente: correrlo de nuevo agrega
-   `mp_preference_id`, `mp_payment_id` y `comision_plataforma` a una base ya
-   existente sin tocar los datos.
-6. Aceptar una propuesta de prueba: el link de la factura tiene que ser un
-   checkout de MercadoPago, no el webhook de desarrollo.
+| Variable | Para qué |
+|---|---|
+| `STRIPE_SECRET_KEY` | Clave de la cuenta de Stripe de la plataforma, con Connect activado. Vacía = pago simulado. |
+| `STRIPE_WEBHOOK_SECRET` | Secreto del endpoint `<N8N_PUBLIC_URL>webhook/stripe` (evento `checkout.session.completed`). Obligatorio. |
+| `STRIPE_API_BASE` | Vacía = `https://api.stripe.com`. Sólo cambia para usar el doble local. |
+| `COMISION_PLATAFORMA_PORCENTAJE` | Comisión de la plataforma (1 por defecto). |
+| `NEXT_PUBLIC_COMISION_PORCENTAJE` | La misma, para mostrársela al desarrollador en el panel. |
+
+Pasos en Stripe: activar Connect en la cuenta de la plataforma, crear el
+endpoint del webhook y copiar su secreto.
 
 ---
 
-## 5. Pruebas
+## 3. Cómo se verificó
 
-`tests/smoke_code_nodes.mjs` ejecuta el JavaScript real de los nodos `Code`
-nuevos (`Code - Generar ID Factura`, `Code - Resolver Link de Pago`, `Code -
-Leer Notificacion MP`, `Code - Procesar Pago MP`) con mocks de `$env`/`$input`.
-`tests/verificar_sql.mjs` compila la consulta de `Postgres - Marcar Cobrado
-MP` contra el esquema real. Ninguno de los dos necesita credenciales de
-MercadoPago: validan que el código corre y que el SQL es válido, no que un
-pago real se apruebe.
+- `tests/firmas.mjs`: el nodo real de verificación con firmas válidas, falsas,
+  truncadas, viejas y ausentes, y con eventos que no son un pago.
+- `tests/idempotencia.mjs`: la consulta real de cobro (PENDIENTE, VENCIDA,
+  ANULADA, monto o moneda distintos, pago doble, reintento) y la
+  clasificación de lo que no se aplicó.
+- `tests/stripe-doble.mjs`: un doble de la API de Stripe (cuentas, onboarding,
+  Checkout, expiración y el evento firmado) con el que se probó el circuito de
+  punta a punta contra n8n y la base: alta de la cuenta, factura, pago,
+  confirmación, avisos, enlace ya pagado, firma falsa, espacio sin cobros y
+  anulación con una sesión abierta.
 
-El escenario `pago-idempotente` de `tests/escenarios.mjs` sigue probando el
-modo de desarrollo (`GET /webhook/pago-confirmado`), que no cambió: es lo que
-permite validar la idempotencia end-to-end sin depender de una cuenta de
-MercadoPago en CI.
+**Pendiente:** la prueba con una cuenta de Stripe real en modo de prueba. El
+doble reproduce el contrato documentado, pero no reemplaza a Stripe.
 
-**Escenario E14 (rama de cobro), dos instrumentos.** `tests/e14-cobro-mp.mjs`
-ejercita los nodos reales de esta sección de punta a punta contra dos
-backends intercambiables (`MP_API_BASE` apunta a uno u otro, sin tocar el
-flujo): `tests/mp-doble.mjs` fabrica el desenlace del pago (`status:
-'approved'` fijo) y no necesita ninguna credencial; `tests/adaptador-stripe-
-e14.mjs` habla el mismo contrato hacia n8n pero por dentro llama a la API
-real de Stripe en modo de prueba, de modo que el pago ocurre de verdad
-(tarjeta de prueba oficial, PaymentIntent real) en vez de fabricarse. Ninguno
-de los dos prueba el servicio real de MercadoPago —eso sigue exigiendo la
-tarjeta de prueba desde el navegador con una cuenta real, hoy bloqueada por
-la falla de activación del proveedor (§5.3)—, pero el adaptador de Stripe sí
-prueba que la lógica de cobro del artefacto sostiene un ciclo de vida de pago
-real y no sólo el que el doble le fabrica. Ver `tests/fixtures-e14/README.md`
-para la receta de cada uno.
+---
+
+## 4. Historia
+
+Hasta el 24-sep-2026 el cobro era con MercadoPago (Checkout Pro): la
+preferencia se creaba al emitir la factura, la notificación se verificaba
+consultando el pago en la API de MercadoPago y la comisión era sólo contable.
+Las columnas `mp_preference_id` y `mp_payment_id` quedan en `facturas` por las
+facturas emitidas en esa etapa, que están en ARS.

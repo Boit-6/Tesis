@@ -220,8 +220,10 @@ function medirCualitativas() {
 
   const conAuth = webhooks.filter((n) => (n.parameters || {}).authentication === 'headerAuth')
     .map((n) => n.parameters.path).sort();
+  // stripe-conectar y stripe-estado desde el 24-sep-2026: el alta de cobros de
+  // cada desarrollador, que también pasa por /api/crm con la credencial.
   const panelEsperado = ['cambio-aceptar', 'cambio-rechazar', 'factura-anular', 'lead-cancelar',
-    'propuesta-enviar', 'proyecto-cerrado', 'trabajo-estado'].sort();
+    'propuesta-enviar', 'proyecto-cerrado', 'trabajo-estado', 'stripe-conectar', 'stripe-estado'].sort();
 
   return [
     {
@@ -288,7 +290,7 @@ function medirCualitativas() {
     {
       id: 'webhooks-del-panel-autenticados',
       seccion: '§4.5, Tabla 10 y Tabla 11 (S1)',
-      afirma: 'los seis webhooks invocados desde el tablero exigen Header Auth y ningún otro lo hace',
+      afirma: 'los webhooks invocados desde el tablero exigen Header Auth y ningún otro lo hace',
       ok: JSON.stringify(conAuth) === JSON.stringify(panelEsperado),
       detalle: 'con headerAuth: ' + conAuth.join(', '),
     },

@@ -84,6 +84,11 @@ CREATE TABLE IF NOT EXISTS espacios (
   telegram_chat_id      TEXT,
   telegram_codigo       TEXT UNIQUE,
   telegram_codigo_vence TIMESTAMPTZ,
+  -- Cobros: la cuenta conectada de Stripe (Express) del desarrollador, a la
+  -- que va lo que pagan sus clientes menos la comisión de la plataforma. La
+  -- crea y la consulta n8n (workflow/crm_postgres.json, RAMA de cobros).
+  stripe_account_id     TEXT UNIQUE,
+  stripe_cobros_activos BOOLEAN NOT NULL DEFAULT false,
   -- NULL hasta que el dueño elige el nombre y la dirección por primera vez:
   -- mientras tanto, el panel lo manda a completar su alta. Lo fija el
   -- trigger trg_espacios_configurado, no quien edita.
@@ -138,20 +143,23 @@ CREATE TABLE IF NOT EXISTS facturas (
   email                  TEXT NOT NULL,
   servicio               servicio_tipo,
   monto                  NUMERIC(12,2) NOT NULL CHECK (monto >= 0),
-  -- 'ARS', no 'USD': el workflow (MP_CURRENCY) siempre factura en pesos por
-  -- defecto. El default anterior no coincidía con lo que de hecho se escribe.
-  moneda                 TEXT NOT NULL DEFAULT 'ARS' CHECK (moneda IN ('ARS','USD')),
+  -- 'USD' desde el 24-sep-2026: la plataforma cobra en dólares con Stripe.
+  -- 'ARS' queda admitido por las facturas emitidas con MercadoPago.
+  moneda                 TEXT NOT NULL DEFAULT 'USD' CHECK (moneda IN ('ARS','USD')),
   estado_pago            pago_estado NOT NULL DEFAULT 'PENDIENTE',
   recordatorios_enviados INT NOT NULL DEFAULT 0,
   fecha_emision          TIMESTAMPTZ NOT NULL DEFAULT now(),
   fecha_vencimiento      TIMESTAMPTZ NOT NULL,
   fecha_cobro            TIMESTAMPTZ,
-  -- Cobro real con MercadoPago (RAMA 8). `mp_preference_id` se guarda al
-  -- generarse la factura; `mp_payment_id` recién al confirmarse el pago vía
-  -- notificación. `comision_plataforma` es lo que se reserva la plataforma
-  -- sobre `monto` (MP_COMISION_PORCENTAJE, 1% por defecto) — se calcula al
-  -- facturar y es contable: no se transfiere sola, queda anotada para
-  -- liquidar aparte (ver docs/modulo-pagos.md).
+  -- Cobro con Stripe Connect (24-sep-2026). La sesión de pago se crea recién
+  -- cuando el cliente abre el enlace de la factura: `stripe_checkout_id` es
+  -- la última (para expirarla si se anula) y `stripe_pago_id` el PaymentIntent
+  -- que la pagó. `comision_plataforma` es lo que se queda la plataforma
+  -- (COMISION_PLATAFORMA_PORCENTAJE, 1% por defecto): Stripe la separa sola
+  -- como application fee y el resto va a la cuenta del desarrollador.
+  -- `mp_*` quedan por las facturas cobradas con MercadoPago.
+  stripe_checkout_id     TEXT,
+  stripe_pago_id         TEXT,
   mp_preference_id       TEXT,
   mp_payment_id          TEXT,
   comision_plataforma    NUMERIC(12,2) NOT NULL DEFAULT 0,
@@ -366,10 +374,11 @@ ALTER TABLE facturas ADD COLUMN IF NOT EXISTS pago_token UUID NOT NULL DEFAULT g
 -- `cobrado` y `tasa_cobro_pct`. NULL = cobrada antes de la columna, o no
 -- cobrada todavía.
 ALTER TABLE facturas ADD COLUMN IF NOT EXISTS metodo_cobro TEXT;
-DO $$ BEGIN
-  ALTER TABLE facturas ADD CONSTRAINT chk_facturas_metodo_cobro
-    CHECK (metodo_cobro IS NULL OR metodo_cobro IN ('MERCADOPAGO','DESARROLLO','CIERRE_MANUAL')) NOT VALID;
-EXCEPTION WHEN duplicate_object THEN null; END $$;
+-- 'STRIPE' desde el 24-sep-2026. Se recrea en cada pasada para que una base
+-- vieja tome la lista nueva; 'MERCADOPAGO' queda por las facturas anteriores.
+ALTER TABLE facturas DROP CONSTRAINT IF EXISTS chk_facturas_metodo_cobro;
+ALTER TABLE facturas ADD CONSTRAINT chk_facturas_metodo_cobro
+  CHECK (metodo_cobro IS NULL OR metodo_cobro IN ('STRIPE','MERCADOPAGO','DESARROLLO','CIERRE_MANUAL')) NOT VALID;
 
 -- Términos que fija el profesional antes de enviar la propuesta (para bases ya
 -- creadas). Hasta su incorporación, el precio de la propuesta y el monto de la
@@ -397,10 +406,13 @@ ALTER TABLE facturas DROP CONSTRAINT IF EXISTS facturas_lead_id_fkey;
 ALTER TABLE facturas ADD CONSTRAINT facturas_lead_id_fkey
   FOREIGN KEY (lead_id) REFERENCES leads(lead_id) ON DELETE RESTRICT;
 
--- facturas.moneda pasa de default 'USD' a 'ARS' (para bases ya creadas), con
--- el CHECK como NOT VALID para no exigirle a las filas existentes que ya lo
--- cumplan (mismo criterio que chk_facturas_fechas y chk_facturas_comision).
-ALTER TABLE facturas ALTER COLUMN moneda SET DEFAULT 'ARS';
+-- facturas.moneda: 'ARS' mientras se cobró con MercadoPago y 'USD' desde el
+-- 24-sep-2026, con Stripe (para bases ya creadas). El CHECK va NOT VALID para
+-- no exigirle a las filas existentes que ya lo cumplan (mismo criterio que
+-- chk_facturas_fechas y chk_facturas_comision).
+ALTER TABLE facturas ALTER COLUMN moneda SET DEFAULT 'USD';
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS stripe_checkout_id TEXT;
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS stripe_pago_id TEXT;
 DO $$ BEGIN
   ALTER TABLE facturas ADD CONSTRAINT chk_facturas_moneda
     CHECK (moneda IN ('ARS','USD')) NOT VALID;
@@ -457,6 +469,11 @@ ALTER TABLE espacios ADD COLUMN IF NOT EXISTS email_contacto TEXT;
 ALTER TABLE espacios ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT;
 ALTER TABLE espacios ADD COLUMN IF NOT EXISTS telegram_codigo TEXT;
 ALTER TABLE espacios ADD COLUMN IF NOT EXISTS telegram_codigo_vence TIMESTAMPTZ;
+ALTER TABLE espacios ADD COLUMN IF NOT EXISTS stripe_account_id TEXT;
+ALTER TABLE espacios ADD COLUMN IF NOT EXISTS stripe_cobros_activos BOOLEAN NOT NULL DEFAULT false;
+DO $$ BEGIN
+  ALTER TABLE espacios ADD CONSTRAINT espacios_stripe_account_id_key UNIQUE (stripe_account_id);
+EXCEPTION WHEN duplicate_table OR duplicate_object THEN null; END $$;
 DO $$ BEGIN
   ALTER TABLE espacios ADD CONSTRAINT espacios_telegram_codigo_key UNIQUE (telegram_codigo);
 EXCEPTION WHEN duplicate_table OR duplicate_object THEN null; END $$;
@@ -1159,7 +1176,13 @@ REVOKE ALL ON admin_emails FROM n8n_writer;
 -- (por la dirección, /f/<slug>) y con qué marca y Reply-To escribirle al
 -- cliente. Sólo esas columnas; el dueño no lo necesita.
 REVOKE ALL ON espacios FROM n8n_writer;
-GRANT SELECT (id, slug, nombre, email_contacto, telegram_chat_id) ON espacios TO n8n_writer;
+GRANT SELECT (id, slug, nombre, email_contacto, telegram_chat_id, stripe_account_id, stripe_cobros_activos) ON espacios TO n8n_writer;
+-- Cobros: n8n guarda la cuenta de Stripe que crea para el espacio y si ya
+-- puede cobrar. Nada más de la fila.
+GRANT UPDATE (stripe_account_id, stripe_cobros_activos) ON espacios TO n8n_writer;
+DROP POLICY IF EXISTS espacios_update_n8n_writer ON espacios;
+CREATE POLICY espacios_update_n8n_writer ON espacios
+  FOR UPDATE TO n8n_writer USING (true) WITH CHECK (true);
 DROP POLICY IF EXISTS espacios_select_n8n_writer ON espacios;
 CREATE POLICY espacios_select_n8n_writer ON espacios
   FOR SELECT TO n8n_writer USING (true);

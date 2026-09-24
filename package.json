@@ -24,7 +24,6 @@
     "test:escenarios": "node tests/escenarios.mjs",
     "test:trazabilidad": "node tests/trazabilidad.mjs",
     "test:exposicion": "node tests/exposicion-webhooks.mjs",
-    "test:e14-stripe": "node tests/adaptador-stripe-e14.mjs",
     "lint:front": "npm run lint --prefix FormularioLeads",
     "typecheck:front": "npm run typecheck --prefix FormularioLeads",
     "test:front": "npm test --prefix FormularioLeads",
@@ -33,11 +32,11 @@
     "dev:infra": "docker compose up -d",
     "prepare": "husky",
     "test:marca": "node tests/marca_espacio.mjs",
-    "test:avisos": "node tests/avisos.mjs"
+    "test:avisos": "node tests/avisos.mjs",
+    "doble:stripe": "node tests/stripe-doble.mjs"
   },
   "comentarioScripts": {
     "test": "Suite offline: no necesita n8n, ni base, ni credenciales. Es la que corre en CI.",
-    "test:e14-stripe": "Levanta el adaptador que habla el contrato de MercadoPago hacia n8n y llama a la API real de Stripe en modo de prueba (sk_test_...) hacia afuera. No corre solo: hay que apuntar MP_API_BASE del contenedor de n8n a su puerto y luego correr tests/e14-cobro-mp.mjs con MP_DOBLE_BASE apuntando ahí (ver tests/fixtures-e14/README.md, sección 'Modo con pasarela real (Stripe)'). No sustituye a tests/mp-doble.mjs: ese sigue siendo el camino sin credenciales para CI.",
     "test:autherrores": "Verifica el RNF5: que los 22 códigos de error que Supabase Auth puede devolver en los flujos de la aplicación (signUp, signInWithPassword y verifyOtp) tengan mensaje en español. El conjunto alcanzable se declara código por código, con la operación que lo origina.",
     "test:parametros": "Revisa cómo cada nodo Postgres le pasa los valores a su consulta: exige la forma de arreglo (n8n descarta los valores vacíos y parte los que traen comas cuando se usa la forma de texto), que la cantidad coincida con los $N del SQL y que ningún dato viaje concatenado dentro del texto de la consulta.",
     "test:edgecases": "Casos límite de Code - Normalizar Lead: el parser de presupuesto (parsearImporte, F1.9) con formatos de moneda, notación científica y basura, y la validación de email.",
@@ -49,7 +48,8 @@
     "test:idempotencia": "Ejecuta de verdad las consultas de deduplicación (S6) y reconciliación de facturas (S5) sobre un PostgreSQL desechable con el esquema real. El SQL se lee del propio workflow: si un nodo deja de ser idempotente, se pone en rojo.",
     "test:escenarios": "Validación funcional de punta a punta: necesita n8n publicado y la base configurada (ver .env.example).",
     "test:marca": "La plataforma es compartida: corre las plantillas de correo y de factura del workflow con un espacio cuyo nombre trae HTML y comprueba que cada una salga con esa marca escapada, que ningún nodo tenga una marca, un correo o un alias de pago escritos a mano, y que todo correo lleve el remitente y el Reply-To del espacio.",
-    "test:avisos": "Avisos al desarrollador: que todo punto de aviso del flujo principal y del de tickets pase por el subflujo workflow/avisos.json con un tipo, un nivel y un origen del que sacar el espacio; a qué chats y a qué casilla manda el subflujo cada aviso; y que el bot de Telegram no vincule nada sin el secreto del webhook."
+    "test:avisos": "Avisos al desarrollador: que todo punto de aviso del flujo principal y del de tickets pase por el subflujo workflow/avisos.json con un tipo, un nivel y un origen del que sacar el espacio; a qué chats y a qué casilla manda el subflujo cada aviso; y que el bot de Telegram no vincule nada sin el secreto del webhook.",
+    "doble:stripe": "Doble local de la API de Stripe (cuentas conectadas, onboarding, Checkout y el webhook firmado) para probar el cobro de punta a punta sin credenciales: se apunta STRIPE_API_BASE de n8n a su puerto. No sustituye la prueba con una cuenta de Stripe en modo de prueba."
   },
   "engines": {
     "node": ">=20"
