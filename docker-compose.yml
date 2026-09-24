@@ -44,7 +44,6 @@ services:
       # y es la base del enlace de pago que viaja en la factura.
       - N8N_PUBLIC_URL=${N8N_PUBLIC_URL:-http://localhost:5678/}
       - FRONTEND_URL=${FRONTEND_URL:-https://formulario-leads-psi.vercel.app}
-      - RESENAS_FORM_URL=${RESENAS_FORM_URL:-https://forms.gle/TU-FORMULARIO}
       - GOTENBERG_URL=${GOTENBERG_URL:-http://gotenberg:3000/forms/chromium/convert/html}
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,https://formulario-leads-psi.vercel.app}
       # ── Seguridad ─────────────────────────────────────────────────────────
