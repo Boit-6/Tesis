@@ -3,6 +3,7 @@
 import {usePathname} from "next/navigation";
 
 import {
+  EsqueletoBolsa,
   EsqueletoEncabezado,
   EsqueletoEspacio,
   EsqueletoFacturas,
@@ -18,6 +19,7 @@ const POR_SECCION = [
   {ruta: "/dashboard/facturas", esqueleto: <EsqueletoFacturas />},
   {ruta: "/dashboard/trabajos", esqueleto: <EsqueletoTrabajos />},
   {ruta: "/dashboard/tickets", esqueleto: <EsqueletoTickets />},
+  {ruta: "/dashboard/bolsa", esqueleto: <EsqueletoBolsa />},
 ];
 
 // Envuelve el layout del panel, que verifica la sesión antes de pintar nada:

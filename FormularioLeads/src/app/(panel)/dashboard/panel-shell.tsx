@@ -28,6 +28,11 @@ const SECCIONES = [
     icono: "M4 8h16v11H4zM9 8V5.5h6V8M4 13h16",
   },
   {
+    href: "/dashboard/bolsa",
+    etiqueta: "Bolsa",
+    icono: "M4 13.5 6.5 6h11l2.5 7.5M4 13.5V19h16v-5.5M4 13.5h4.5l1 2h5l1-2H20",
+  },
+  {
     href: "/dashboard/tickets",
     etiqueta: "Tickets",
     icono: "M4.5 5h4v14h-4zM10 5h4v9h-4zM15.5 5h4v6h-4z",
@@ -163,7 +168,7 @@ export default function PanelShell({
       {configurado && (
         <nav
           aria-label="Secciones del panel"
-          className="border-rule-soft bg-card fixed inset-x-0 bottom-0 z-20 grid grid-cols-5 border-t pb-[env(safe-area-inset-bottom)] lg:hidden"
+          className="border-rule-soft bg-card fixed inset-x-0 bottom-0 z-20 grid grid-cols-6 border-t pb-[env(safe-area-inset-bottom)] lg:hidden"
         >
           {SECCIONES.map((s) => {
             const activa = esActiva(pathname, s.href);

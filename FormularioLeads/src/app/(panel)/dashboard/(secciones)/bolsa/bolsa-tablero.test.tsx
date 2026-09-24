@@ -1,0 +1,146 @@
+import type {PedidoBolsa} from "./bolsa-tablero";
+
+import {render, screen, within} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import {beforeEach, describe, expect, it, vi} from "vitest";
+
+const rpc = vi.fn();
+
+vi.mock("@/lib/supabase/client", () => ({createClient: () => ({rpc})}));
+
+const {default: BolsaTablero} = await import("./bolsa-tablero");
+
+const HOY = new Date().toISOString();
+const EN_UNA_SEMANA = new Date(Date.now() + 7 * 86_400_000).toISOString();
+
+const pedido = (id: string, extra: Partial<PedidoBolsa> = {}): PedidoBolsa => ({
+  id,
+  resumen: `Resumen del pedido ${id} sin datos personales.`,
+  servicio: "desarrollo_web",
+  urgencia: "media",
+  presupuesto_rango: "1000_2000",
+  presupuesto: 1000,
+  estado: "ABIERTO",
+  postulaciones: 1,
+  tope_postulaciones: 5,
+  publicado_en: HOY,
+  vence_en: EN_UNA_SEMANA,
+  propio: false,
+  me_postule: false,
+  asignado_a_mi: false,
+  ...extra,
+});
+
+describe("BolsaTablero", () => {
+  beforeEach(() => {
+    rpc.mockReset();
+  });
+
+  it("separa los abiertos, las postulaciones propias y los publicados por uno", async () => {
+    rpc.mockResolvedValue({
+      data: [
+        pedido("a"),
+        pedido("b", {me_postule: true}),
+        pedido("c", {propio: true}),
+        pedido("d", {
+          me_postule: true,
+          estado: "ASIGNADO",
+          asignado_a_mi: true,
+        }),
+      ],
+      error: null,
+    });
+
+    const user = userEvent.setup();
+
+    render(<BolsaTablero />);
+
+    expect(await screen.findByRole("tab", {name: "Abiertos · 1"})).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByText("Resumen del pedido a sin datos personales.")).toBeInTheDocument();
+    expect(screen.getByText("US$ 1.000 – 2.000")).toBeInTheDocument();
+    expect(screen.getByText("1/5 postulaciones", {exact: false})).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", {name: "Mis postulaciones · 2"}));
+    expect(screen.getByText("¡Te eligieron!")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", {name: "Publicados por mí · 1"}));
+    expect(screen.getByText("Lo publicaste vos")).toBeInTheDocument();
+    // A lo propio no se puede postular.
+    expect(screen.queryByRole("button", {name: "Postularme"})).not.toBeInTheDocument();
+  });
+
+  it("postularse llama a postularme() y pasa a «Mis postulaciones»", async () => {
+    rpc.mockImplementation(async (fn: string) => {
+      if (fn === "postularme") return {data: null, error: null};
+
+      const postulado = rpc.mock.calls.some(([f]) => f === "postularme");
+
+      return {
+        data: [
+          pedido("a", {
+            me_postule: postulado,
+            postulaciones: postulado ? 2 : 1,
+          }),
+        ],
+        error: null,
+      };
+    });
+
+    const user = userEvent.setup();
+
+    render(<BolsaTablero />);
+    await user.click(await screen.findByRole("button", {name: "Postularme"}));
+
+    const tarjeta = screen.getByText("Resumen del pedido a sin datos personales.").closest("li")!;
+
+    await user.type(
+      within(tarjeta).getByRole("textbox", {name: "Mensaje para el cliente"}),
+      "Hice varios sitios parecidos, lo tengo listo en tres semanas.",
+    );
+    await user.type(within(tarjeta).getByRole("textbox", {name: /Precio estimado/}), "1500");
+    await user.type(within(tarjeta).getByRole("textbox", {name: "Plazo"}), "3 semanas");
+    await user.click(within(tarjeta).getByRole("button", {name: "Enviar postulación"}));
+
+    expect(rpc).toHaveBeenCalledWith("postularme", {
+      p_pedido: "a",
+      p_mensaje: "Hice varios sitios parecidos, lo tengo listo en tres semanas.",
+      p_precio: 1500,
+      p_plazo: "3 semanas",
+    });
+    expect(await screen.findByRole("tab", {name: "Mis postulaciones · 1"})).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+    expect(screen.getByText("Te postulaste")).toBeInTheDocument();
+  });
+
+  it("si la base rechaza la postulación, muestra su mensaje", async () => {
+    rpc.mockImplementation(async (fn: string) =>
+      fn === "postularme"
+        ? {
+            data: null,
+            error: {message: "El pedido ya no recibe postulaciones"},
+          }
+        : {data: [pedido("a")], error: null},
+    );
+
+    const user = userEvent.setup();
+
+    render(<BolsaTablero />);
+    await user.click(await screen.findByRole("button", {name: "Postularme"}));
+    await user.type(
+      screen.getByRole("textbox", {name: "Mensaje para el cliente"}),
+      "Lo puedo hacer sin problema.",
+    );
+    await user.type(screen.getByRole("textbox", {name: /Precio estimado/}), "900");
+    await user.type(screen.getByRole("textbox", {name: "Plazo"}), "2 semanas");
+    await user.click(screen.getByRole("button", {name: "Enviar postulación"}));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "El pedido ya no recibe postulaciones",
+    );
+  });
+});

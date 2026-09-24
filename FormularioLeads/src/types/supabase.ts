@@ -23,6 +23,8 @@ export type ServicioTipo =
   | "marketing"
   | "seo";
 
+export type BolsaEstado = "ABIERTO" | "EN_ELECCION" | "ASIGNADO" | "VENCIDO";
+
 export type TierTipo = "HOT" | "WARM" | "COLD";
 
 export type LeadEstadoDb =
@@ -483,6 +485,36 @@ export interface Database {
       // Vinculación de Telegram desde "Tu espacio".
       generar_codigo_telegram: {Args: Record<string, never>; Returns: string};
       desvincular_telegram: {Args: Record<string, never>; Returns: undefined};
+      // Bolsa de proyectos: lo que ve un desarrollador (sin datos personales)
+      // y su postulación. Las dos validan todo del lado de la base.
+      bolsa_abierta: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          resumen: string;
+          servicio: ServicioTipo;
+          urgencia: UrgenciaTipo;
+          presupuesto_rango: string | null;
+          presupuesto: number;
+          estado: BolsaEstado;
+          postulaciones: number;
+          tope_postulaciones: number;
+          publicado_en: string;
+          vence_en: string;
+          propio: boolean;
+          me_postule: boolean;
+          asignado_a_mi: boolean;
+        }[];
+      };
+      postularme: {
+        Args: {
+          p_pedido: string;
+          p_mensaje: string;
+          p_precio: number;
+          p_plazo: string;
+        };
+        Returns: undefined;
+      };
     };
     Enums: {
       urgencia_tipo: UrgenciaTipo;
@@ -494,6 +526,7 @@ export interface Database {
       trabajo_estado: TrabajoEstadoDb;
       ticket_estado: TicketEstadoDb;
       ticket_prioridad: TicketPrioridadDb;
+      bolsa_estado: BolsaEstado;
     };
     CompositeTypes: Record<string, never>;
   };

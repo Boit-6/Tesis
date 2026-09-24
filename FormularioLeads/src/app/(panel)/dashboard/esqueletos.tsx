@@ -197,6 +197,39 @@ export function EsqueletoTickets() {
   );
 }
 
+export function EsqueletoBolsa() {
+  return (
+    <Cargando className="flex flex-col gap-6" etiqueta="Cargando la bolsa…">
+      <div className="border-rule grid grid-cols-3 border-b pb-3 sm:flex sm:gap-4">
+        {["w-24", "w-36", "w-32"].map((ancho) => (
+          <div key={ancho} className="flex flex-col items-center gap-1.5 sm:block">
+            <Esqueleto className={`h-3 max-w-full ${ancho}`} />
+            <Esqueleto className="h-4 w-4 sm:hidden" />
+          </div>
+        ))}
+      </div>
+      <div className="grid gap-4 lg:grid-cols-2">
+        {Array.from({length: 4}, (_, i) => (
+          <div key={i} className={`${tarjetaClass} flex flex-col gap-3 px-5 py-4`}>
+            <div className="flex justify-between gap-4">
+              <Esqueleto className="h-6 w-40" />
+              <Esqueleto className="h-4 w-28" />
+            </div>
+            <Esqueleto className="h-2.5 w-32" />
+            <Esqueleto className="mt-1 h-4 w-full" />
+            <Esqueleto className="h-4 w-11/12" />
+            <Esqueleto className="h-4 w-3/5" />
+            <div className="mt-2 flex items-center justify-between gap-4">
+              <Esqueleto className="h-3 w-56" />
+              <Esqueleto className="h-8 w-28" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </Cargando>
+  );
+}
+
 export function EsqueletoLeadDetalle() {
   return (
     <Cargando className="flex flex-col gap-8 px-6 py-7" etiqueta="Cargando el lead…">
@@ -259,7 +292,7 @@ export function EsqueletoPanel({contenido}: {contenido: ReactNode}) {
           <Esqueleto className="h-2.5 w-12" />
         </div>
         <div className="flex flex-col gap-5">
-          {Array.from({length: 5}, (_, i) => (
+          {Array.from({length: 6}, (_, i) => (
             <div key={i} className="flex items-center gap-3">
               <Esqueleto className="h-5 w-5" />
               <Esqueleto className="h-3.5 w-20" />
@@ -276,8 +309,8 @@ export function EsqueletoPanel({contenido}: {contenido: ReactNode}) {
           {contenido}
         </div>
       </div>
-      <div className="border-rule-soft bg-card fixed inset-x-0 bottom-0 grid grid-cols-5 border-t py-3 lg:hidden">
-        {Array.from({length: 5}, (_, i) => (
+      <div className="border-rule-soft bg-card fixed inset-x-0 bottom-0 grid grid-cols-6 border-t py-3 lg:hidden">
+        {Array.from({length: 6}, (_, i) => (
           <div key={i} className="flex flex-col items-center gap-1.5">
             <Esqueleto className="h-5 w-5" />
             <Esqueleto className="h-2 w-10" />
