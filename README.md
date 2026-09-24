@@ -180,7 +180,7 @@ npm run test:docker
 | Prueba | Qué verifica |
 |---|---|
 | `test:sql` | Compila con `PREPARE` las **28 consultas SQL** de los workflows contra el esquema real. Una columna mal escrita en un nodo Postgres se detecta acá y no en producción |
-| `test:rls` | Aplica `db/schema.sql` **tal cual está en el repositorio** y ejecuta **98 casos** de RLS rol por rol: que `anon` no acceda a nada, que cada desarrollador vea sólo lo de su espacio y no pueda tocar lo de otro, que lo que cuelga de un lead siga siempre a su espacio, que la auditoría esté cerrada, que nadie pueda escribir desde el navegador ni auto-ascenderse a admin, y que la whitelist de admins exija un email confirmado |
+| `test:rls` | Aplica `db/schema.sql` **tal cual está en el repositorio** y ejecuta **102 casos** de RLS rol por rol: que `anon` no acceda a nada, que cada desarrollador vea sólo lo de su espacio y no pueda tocar lo de otro, que lo que cuelga de un lead siga siempre a su espacio, que la auditoría esté cerrada, que nadie pueda escribir desde el navegador ni auto-ascenderse a admin, y que la whitelist de admins exija un email confirmado |
 | `test:idempotencia` | Ejecuta de verdad las consultas de deduplicación (S6) y de reconciliación de facturas (S5) sobre el esquema real, leyendo el SQL del propio workflow: si un nodo deja de ser idempotente, se pone en rojo |
 
 Ambas levantan un PostgreSQL desechable: no tocan ninguna instancia real.

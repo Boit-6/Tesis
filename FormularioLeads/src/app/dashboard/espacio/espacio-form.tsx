@@ -6,6 +6,7 @@ import {useRouter} from "next/navigation";
 import {useEffect, useState} from "react";
 
 import {
+  errorDeEmail,
   errorDeNombre,
   errorDeSlug,
   esSlugProvisorio,
@@ -31,6 +32,7 @@ export default function EspacioForm({
 }) {
   const router = useRouter();
   const [nombre, setNombre] = useState(bienvenida ? "" : espacio.nombre);
+  const [email, setEmail] = useState(espacio.email_contacto ?? "");
   const [slug, setSlug] = useState(esSlugProvisorio(espacio.slug) ? "" : espacio.slug);
   // Mientras no toque la dirección a mano, se propone a partir del nombre.
   const [slugTocado, setSlugTocado] = useState(!esSlugProvisorio(espacio.slug) && !bienvenida);
@@ -48,7 +50,7 @@ export default function EspacioForm({
     setError(null);
     setGuardado(false);
 
-    const invalido = errorDeNombre(nombre) ?? errorDeSlug(slug);
+    const invalido = errorDeNombre(nombre) ?? errorDeSlug(slug) ?? errorDeEmail(email);
 
     if (invalido) {
       setError(invalido);
@@ -68,7 +70,7 @@ export default function EspacioForm({
     try {
       const {data, error: dbError} = await supabase
         .from("espacios")
-        .update({nombre: nombre.trim(), slug})
+        .update({nombre: nombre.trim(), slug, email_contacto: email.trim()})
         .eq("id", espacio.id)
         .select("id");
 
@@ -163,6 +165,28 @@ export default function EspacioForm({
         </div>
         <p className="text-faint mt-2 text-[12.5px] leading-relaxed break-all" id="slug-ayuda">
           Tus clientes van a entrar por <span className="text-ink-soft">{link}</span>
+        </p>
+      </div>
+
+      <div>
+        <label className={labelClass} htmlFor="email">
+          Correo para tus clientes
+        </label>
+        <input
+          required
+          aria-describedby="email-ayuda"
+          autoComplete="email"
+          className={inputClass}
+          id="email"
+          name="email"
+          placeholder="hola@tuestudio.com"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+        />
+        <p className="text-faint mt-2 text-[12.5px] leading-relaxed" id="email-ayuda">
+          Los correos a tus clientes salen con tu nombre, y cuando te responden, la respuesta llega
+          acá.
         </p>
       </div>
 

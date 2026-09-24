@@ -1,6 +1,7 @@
 import {describe, expect, it} from "vitest";
 
 import {
+  errorDeEmail,
   errorDeNombre,
   errorDeSlug,
   esSlugProvisorio,
@@ -45,6 +46,14 @@ describe("errorDeNombre", () => {
     expect(errorDeNombre("   ")).not.toBeNull();
     expect(errorDeNombre("x".repeat(81))).not.toBeNull();
     expect(errorDeNombre("  Estudio Ana ")).toBeNull();
+  });
+});
+
+describe("errorDeEmail", () => {
+  it("pide un correo con formato válido, como el CHECK de la base", () => {
+    expect(errorDeEmail("ana@estudio.com")).toBeNull();
+    expect(errorDeEmail("ana@estudio")).not.toBeNull();
+    expect(errorDeEmail("ana estudio@x.com")).not.toBeNull();
   });
 });
 

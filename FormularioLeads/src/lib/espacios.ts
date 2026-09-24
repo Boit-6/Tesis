@@ -44,10 +44,18 @@ export function errorDeNombre(nombre: string): string | null {
   return null;
 }
 
+const EMAIL_REGEX = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+export function errorDeEmail(email: string): string | null {
+  if (!EMAIL_REGEX.test(email.trim())) return "El correo no tiene un formato válido.";
+
+  return null;
+}
+
 // Errores de Postgres que puede devolver el UPDATE del alta.
 export function mensajeDeErrorDb(codigo: string | undefined): string {
   if (codigo === "23505") return "Esa dirección ya la usa otro espacio. Probá con otra.";
-  if (codigo === "23514") return "La dirección o el nombre no tienen un formato válido.";
+  if (codigo === "23514") return "La dirección, el nombre o el correo no tienen un formato válido.";
 
   return "No se pudo guardar. Probá de nuevo en un rato.";
 }

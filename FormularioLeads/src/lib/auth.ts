@@ -11,6 +11,8 @@ export interface Espacio {
   id: string;
   slug: string;
   nombre: string;
+  // A dónde le llegan las respuestas de los clientes (Reply-To).
+  email_contacto: string | null;
   // NULL hasta que el dueño elige nombre y dirección (alta).
   configurado_en: string | null;
 }
@@ -39,7 +41,7 @@ export async function getPanelStatus(): Promise<EstadoPanel> {
 
   const {data: espacio} = await supabase
     .from("espacios")
-    .select("id, slug, nombre, configurado_en")
+    .select("id, slug, nombre, email_contacto, configurado_en")
     .eq("dueno_id", user.id)
     .maybeSingle();
 

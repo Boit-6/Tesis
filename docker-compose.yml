@@ -33,6 +33,7 @@ services:
       # Así el chatId de Telegram NO se hardcodea en cada nodo y sobrevive a los
       # re-imports del workflow.
       - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
+      - PLATAFORMA_NOMBRE=${PLATAFORMA_NOMBRE:-FormularioLeads}
       # Permite leer $env dentro de los nodos Code (configuración del workflow)
       - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
       # ── URLs del CRM ──────────────────────────────────────────────────────

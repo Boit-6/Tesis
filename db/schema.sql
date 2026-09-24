@@ -75,6 +75,9 @@ CREATE TABLE IF NOT EXISTS espacios (
   -- La marca que ve el cliente en el formulario, los correos y la factura.
   nombre     TEXT NOT NULL CHECK (length(btrim(nombre)) BETWEEN 1 AND 80),
   dueno_id   UUID UNIQUE REFERENCES auth.users(id) ON DELETE SET NULL,
+  -- A dónde van las respuestas de los clientes (Reply-To de los correos, que
+  -- salen de la casilla de la plataforma). Arranca con el correo de la cuenta.
+  email_contacto TEXT CHECK (email_contacto IS NULL OR email_contacto ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$'),
   -- NULL hasta que el dueño elige el nombre y la dirección por primera vez:
   -- mientras tanto, el panel lo manda a completar su alta. Lo fija el
   -- trigger trg_espacios_configurado, no quien edita.
@@ -424,6 +427,15 @@ UPDATE tickets t      SET espacio_id = l.espacio_id FROM leads l WHERE t.lead_id
 UPDATE logs g         SET espacio_id = l.espacio_id FROM leads l WHERE g.lead_id = l.lead_id AND g.espacio_id IS NULL;
 
 ALTER TABLE espacios ADD COLUMN IF NOT EXISTS configurado_en TIMESTAMPTZ;
+ALTER TABLE espacios ADD COLUMN IF NOT EXISTS email_contacto TEXT;
+DO $$ BEGIN
+  ALTER TABLE espacios ADD CONSTRAINT espacios_email_contacto_check
+    CHECK (email_contacto IS NULL OR email_contacto ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+-- Los espacios ya creados arrancan con el correo de su cuenta.
+UPDATE espacios e SET email_contacto = u.email
+FROM auth.users u
+WHERE u.id = e.dueno_id AND e.email_contacto IS NULL AND u.email IS NOT NULL;
 
 ALTER TABLE leads        ALTER COLUMN espacio_id SET NOT NULL;
 ALTER TABLE facturas     ALTER COLUMN espacio_id SET NOT NULL;
@@ -699,10 +711,10 @@ CREATE TRIGGER trg_leads_propagar_espacio
 -- la migración le dio el "principal") no recibe otro.
 CREATE OR REPLACE FUNCTION public.crear_espacio_propio(uid uuid, correo text) RETURNS void
 LANGUAGE sql SECURITY DEFINER SET search_path = public AS $$
-  INSERT INTO espacios (slug, nombre, dueno_id)
+  INSERT INTO espacios (slug, nombre, dueno_id, email_contacto)
   VALUES ('e-' || replace(uid::text, '-', ''),
           coalesce(nullif(left(split_part(correo, '@', 1), 80), ''), 'Mi espacio'),
-          uid)
+          uid, correo)
   ON CONFLICT DO NOTHING;
 $$;
 REVOKE ALL ON FUNCTION public.crear_espacio_propio(uuid, text) FROM PUBLIC;
@@ -862,12 +874,17 @@ ORDER BY mes DESC;
 -- ANULADA sale de esta lista sin que haga falta agregar un WHERE: ambos son
 -- estados distintos de PENDIENTE. El conteo de vencidas para la Tabla 8 vive en
 -- `metrics_mensuales.facturas_vencidas`, no acá.
+-- `espacio_nombre` y `espacio_email`: el recordatorio de cobro sale con la
+-- marca del desarrollador y las respuestas le llegan a él.
 CREATE OR REPLACE VIEW facturas_pendientes
   WITH (security_invoker = true) AS
 SELECT
   f.*,
-  (f.fecha_vencimiento::date - now()::date) AS dias_al_vencimiento
+  (f.fecha_vencimiento::date - now()::date) AS dias_al_vencimiento,
+  e.nombre         AS espacio_nombre,
+  e.email_contacto AS espacio_email
 FROM facturas f
+LEFT JOIN espacios e ON e.id = f.espacio_id
 WHERE f.estado_pago = 'PENDIENTE';
 
 -- Lo que pinta el tablero: el ticket, el cliente del proyecto y los números
@@ -978,7 +995,7 @@ CREATE POLICY profiles_select_own ON profiles
 -- 4) Privilegios de tabla (GRANT). La RLS filtra filas, pero el rol
 --    igual necesita el privilegio SELECT sobre el objeto.
 GRANT SELECT ON leads, facturas, seguimientos, profiles, espacios TO authenticated;
-GRANT UPDATE (nombre, slug) ON espacios TO authenticated;
+GRANT UPDATE (nombre, slug, email_contacto) ON espacios TO authenticated;
 
 -- 4.1) Tickets: a diferencia del resto, el tablero SÍ escribe (crear y mover
 --      tickets desde /api/tickets, con la sesión del desarrollador), siempre
@@ -1044,10 +1061,10 @@ GRANT SELECT ON metrics_mensuales, facturas_pendientes TO n8n_writer;
 REVOKE ALL ON profiles FROM n8n_writer;
 REVOKE ALL ON admin_emails FROM n8n_writer;
 -- `espacios`: n8n la lee para saber a qué espacio va un pedido del formulario
--- (por la dirección, /f/<slug>) y, desde la etapa 3, con qué marca escribir.
--- Sólo esas columnas; el dueño no lo necesita.
+-- (por la dirección, /f/<slug>) y con qué marca y Reply-To escribirle al
+-- cliente. Sólo esas columnas; el dueño no lo necesita.
 REVOKE ALL ON espacios FROM n8n_writer;
-GRANT SELECT (id, slug, nombre) ON espacios TO n8n_writer;
+GRANT SELECT (id, slug, nombre, email_contacto) ON espacios TO n8n_writer;
 DROP POLICY IF EXISTS espacios_select_n8n_writer ON espacios;
 CREATE POLICY espacios_select_n8n_writer ON espacios
   FOR SELECT TO n8n_writer USING (true);

@@ -351,6 +351,16 @@ SELECT probar('una dirección con mayúsculas o espacios no se acepta',
   'authenticated', '11111111-1111-4111-8111-111111111111',
   'WITH x AS (UPDATE espacios SET slug = ''Mi Estudio'' RETURNING 1) SELECT count(*) FROM x',
   'error: new row for relation "espacios" violates check constraint "espacios_slug_check"');
+SELECT probar('el espacio arranca con el correo de la cuenta como contacto',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'SELECT count(*) FROM espacios WHERE email_contacto = ''pepe@gmail.com''', '1 filas');
+SELECT probar('el dueño cambia su correo de contacto',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (UPDATE espacios SET email_contacto = ''hola@estudiopepe.com'' RETURNING 1) SELECT count(*) FROM x', '1 filas');
+SELECT probar('un correo de contacto sin formato válido no se acepta',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (UPDATE espacios SET email_contacto = ''no es un correo'' RETURNING 1) SELECT count(*) FROM x',
+  'error: new row for relation "espacios" violates check constraint "espacios_email_contacto_check"');
 SELECT probar('anon NO puede editar espacios',
   'anon', NULL, 'WITH x AS (UPDATE espacios SET nombre = ''x'' RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
 
@@ -366,6 +376,8 @@ SELECT probar('una dirección que no existe no devuelve nada',
 -- 4: las dos cuentas del principio más las dos confirmadas de la sección 16.
 SELECT probar('n8n_writer lee id, dirección y nombre de todos los espacios',
   'n8n_writer', NULL, 'SELECT count(*) FROM (SELECT id, slug, nombre FROM espacios) e', '4 filas');
+SELECT probar('n8n_writer lee el correo de contacto (Reply-To de los correos)',
+  'n8n_writer', NULL, 'SELECT count(email_contacto) FROM espacios', '4 filas');
 SELECT probar('pero no el dueño',
   'n8n_writer', NULL, 'SELECT count(dueno_id) FROM espacios', 'permiso denegado');
 SELECT probar('n8n_writer NO puede editar espacios',

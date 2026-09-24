@@ -21,6 +21,7 @@ const ESPACIO = {
   id: "esp-1",
   slug: "mi-espacio",
   nombre: "Mi espacio",
+  email_contacto: null,
   configurado_en: null,
 };
 

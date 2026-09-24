@@ -56,6 +56,7 @@ export interface Database {
           slug: string;
           nombre: string;
           dueno_id: string | null;
+          email_contacto: string | null;
           configurado_en: string | null;
           creado_en: string;
         };
@@ -65,13 +66,15 @@ export interface Database {
           slug: string;
           nombre: string;
           dueno_id?: string | null;
+          email_contacto?: string | null;
           configurado_en?: string | null;
           creado_en?: string;
         };
-        // El dueño sólo puede cambiar estas dos (GRANT por columna).
+        // El dueño sólo puede cambiar estas (GRANT por columna).
         Update: {
           nombre?: string;
           slug?: string;
+          email_contacto?: string | null;
         };
         Relationships: [];
       };
@@ -431,6 +434,8 @@ export interface Database {
           pago_token: string | null;
           metodo_cobro: MetodoCobro | null;
           dias_al_vencimiento: number | null;
+          espacio_nombre: string | null;
+          espacio_email: string | null;
         };
         Relationships: [];
       };
