@@ -107,6 +107,27 @@ describe("LeadForm", () => {
     expect(body.presupuesto_rango).toBe("1000_2000");
     expect(body).not.toHaveProperty("presupuesto");
     expect(body.urgencia).toBe("media");
+    // La casilla de la bolsa es opcional y arranca sin marcar (ley 25.326).
+    expect(body.compartir_bolsa).toBe(false);
+  });
+
+  it("si el cliente marca la casilla de la bolsa, lo manda", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(null, {status: 200}));
+
+    vi.stubGlobal("fetch", fetchMock);
+
+    const user = userEvent.setup();
+
+    await renderForm();
+    await llenarValido(user);
+    await user.click(screen.getByLabelText(/compártanlo con otros desarrolladores/));
+    await user.click(screen.getByRole("button", {name: /Enviar consulta/i}));
+
+    expect(await screen.findByText("¡Gracias!")).toBeInTheDocument();
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+
+    expect(JSON.parse(init.body as string).compartir_bolsa).toBe(true);
   });
 
   it("si el campo trampa viene completo, muestra el éxito sin mandar nada", async () => {

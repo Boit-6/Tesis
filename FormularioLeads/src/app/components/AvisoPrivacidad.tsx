@@ -70,6 +70,15 @@ export default function AvisoPrivacidad() {
           </li>
         </ul>
         <p className="mt-2">
+          <strong>Opcional — bolsa de proyectos.</strong> Sólo si usted marca la casilla «Si no
+          pueden tomar mi proyecto, compártanlo con otros desarrolladores» y el desarrollador al que
+          escribió no puede tomarlo, se publica un resumen del proyecto (servicio, rango de
+          presupuesto, urgencia y una descripción sin sus datos de contacto) para que otros
+          desarrolladores registrados en la plataforma se postulen. Sus datos de contacto se
+          comparten únicamente con el desarrollador que usted elija, y recién cuando lo elija. Si no
+          marca la casilla, su consulta no se comparte con nadie más.
+        </p>
+        <p className="mt-2">
           Los datos no serán utilizados para fines distintos de los aquí enunciados, ni cedidos a
           terceros no mencionados en este aviso, salvo obligación legal o requerimiento de autoridad
           competente.

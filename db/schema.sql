@@ -1319,3 +1319,181 @@ BEGIN
     END LOOP;
   END IF;
 END $$;
+
+-- =====================================================================
+-- 8) Bolsa de proyectos (etapa 5, 24-sep-2026)
+-- =====================================================================
+-- Cuando un desarrollador no puede tomar un pedido, lo puede mandar a la
+-- bolsa: otros desarrolladores de la plataforma se postulan y el cliente
+-- elige a uno. El pedido se ve sin datos personales hasta la asignación.
+--
+-- Nadie del panel lee estas tablas directo: pasa por bolsa_abierta() y
+-- postularme(), que devuelven y validan sólo lo que corresponde. Publicar,
+-- asignar y vencer lo hace n8n (manda los correos).
+
+-- Consentimiento del cliente para que, si el desarrollador elegido no puede
+-- tomar el pedido, lo vean otros (ley 25.326: casilla aparte, opcional y sin
+-- marcar de antemano, porque es un uso distinto del que motivó la consulta).
+-- Sin él, el pedido no puede ir a la bolsa: lo exige trg_bolsa_publicar.
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS compartir_bolsa BOOLEAN NOT NULL DEFAULT false;
+
+DO $$ BEGIN CREATE TYPE bolsa_estado AS ENUM ('ABIERTO','EN_ELECCION','ASIGNADO','VENCIDO');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+CREATE TABLE IF NOT EXISTS bolsa_pedidos (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- Un pedido va a la bolsa una sola vez.
+  lead_id             TEXT UNIQUE NOT NULL REFERENCES leads(lead_id) ON DELETE RESTRICT,
+  -- Quien lo rechazó: no se puede postular a su propio pedido.
+  origen_espacio_id   UUID NOT NULL REFERENCES espacios(id),
+  -- Lo escribe (o revisa) quien lo rechaza, sin datos personales: es lo único
+  -- del pedido que se ve en texto libre antes de la asignación.
+  resumen             TEXT NOT NULL CHECK (length(btrim(resumen)) BETWEEN 20 AND 2000),
+  -- Copiados del lead por el trigger (no los elige quien publica).
+  servicio            servicio_tipo NOT NULL,
+  urgencia            urgencia_tipo NOT NULL,
+  presupuesto_rango   TEXT,
+  presupuesto         NUMERIC(12,2) NOT NULL,
+  estado              bolsa_estado NOT NULL DEFAULT 'ABIERTO',
+  -- Tope y vencimiento los fija n8n al publicar (BOLSA_TOPE, BOLSA_DIAS).
+  tope_postulaciones  INT NOT NULL DEFAULT 5 CHECK (tope_postulaciones > 0),
+  postulaciones       INT NOT NULL DEFAULT 0,
+  vence_en            TIMESTAMPTZ NOT NULL DEFAULT now() + interval '7 days',
+  -- Enlace de la página donde el cliente elige (/elegir/<token>).
+  eleccion_token      UUID NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+  publicado_en        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  asignado_espacio_id UUID REFERENCES espacios(id),
+  cerrado_en          TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS postulaciones (
+  id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  pedido_id       UUID NOT NULL REFERENCES bolsa_pedidos(id) ON DELETE CASCADE,
+  espacio_id      UUID NOT NULL REFERENCES espacios(id),
+  mensaje         TEXT NOT NULL CHECK (length(btrim(mensaje)) BETWEEN 10 AND 1000),
+  precio_estimado NUMERIC(12,2) NOT NULL CHECK (precio_estimado > 0),
+  plazo           TEXT NOT NULL CHECK (length(btrim(plazo)) BETWEEN 1 AND 80),
+  creado_en       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (pedido_id, espacio_id)
+);
+CREATE INDEX IF NOT EXISTS idx_bolsa_pedidos_estado ON bolsa_pedidos (estado, vence_en);
+
+-- Al publicar: exige el consentimiento y copia del lead los datos que se
+-- muestran, para que quien publica no pueda poner otros (ni personales).
+CREATE OR REPLACE FUNCTION public.bolsa_publicar() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  l leads%ROWTYPE;
+BEGIN
+  SELECT * INTO l FROM leads WHERE lead_id = NEW.lead_id;
+  IF NOT l.compartir_bolsa THEN
+    RAISE EXCEPTION 'El cliente no aceptó compartir el pedido con otros desarrolladores';
+  END IF;
+  NEW.origen_espacio_id := l.espacio_id;
+  NEW.servicio := l.servicio;
+  NEW.urgencia := l.urgencia;
+  NEW.presupuesto_rango := l.presupuesto_rango;
+  NEW.presupuesto := l.presupuesto;
+  NEW.estado := 'ABIERTO';
+  NEW.postulaciones := 0;
+  NEW.resumen := btrim(NEW.resumen);
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS trg_bolsa_publicar ON bolsa_pedidos;
+CREATE TRIGGER trg_bolsa_publicar
+  BEFORE INSERT ON bolsa_pedidos
+  FOR EACH ROW EXECUTE FUNCTION public.bolsa_publicar();
+
+-- Lo que ve un desarrollador en la bolsa: los pedidos abiertos y los que le
+-- tocan (los que rechazó, a los que se postuló o que le asignaron). Sin
+-- lead_id, sin token y sin quién lo rechazó: sólo si es propio.
+CREATE OR REPLACE FUNCTION public.bolsa_abierta()
+RETURNS TABLE (
+  id uuid, resumen text, servicio servicio_tipo, urgencia urgencia_tipo,
+  presupuesto_rango text, presupuesto numeric, estado bolsa_estado,
+  postulaciones int, tope_postulaciones int, publicado_en timestamptz,
+  vence_en timestamptz, propio boolean, me_postule boolean, asignado_a_mi boolean
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  WITH mio AS (
+    SELECT e.id FROM espacios e WHERE e.dueno_id = auth.uid() AND e.configurado_en IS NOT NULL
+  )
+  SELECT b.id, b.resumen, b.servicio, b.urgencia, b.presupuesto_rango, b.presupuesto, b.estado,
+         b.postulaciones, b.tope_postulaciones, b.publicado_en, b.vence_en,
+         b.origen_espacio_id = mio.id,
+         EXISTS (SELECT 1 FROM postulaciones p WHERE p.pedido_id = b.id AND p.espacio_id = mio.id),
+         b.asignado_espacio_id IS NOT DISTINCT FROM mio.id
+  FROM bolsa_pedidos b, mio
+  WHERE (b.estado = 'ABIERTO' AND b.vence_en > now())
+     OR b.origen_espacio_id = mio.id
+     OR b.asignado_espacio_id = mio.id
+     OR EXISTS (SELECT 1 FROM postulaciones p WHERE p.pedido_id = b.id AND p.espacio_id = mio.id)
+  ORDER BY b.publicado_en DESC
+$$;
+
+-- Postularse a un pedido. Toda la validación vive acá y no en el panel: el
+-- pedido tiene que estar abierto y sin vencer, no puede ser propio, una
+-- postulación por espacio, y al llegar al tope pasa a EN_ELECCION (n8n le
+-- avisa al cliente). El FOR UPDATE ordena dos postulaciones simultáneas
+-- para que la sexta no entre.
+CREATE OR REPLACE FUNCTION public.postularme(
+  p_pedido uuid, p_mensaje text, p_precio numeric, p_plazo text
+) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  mi_espacio uuid;
+  b bolsa_pedidos%ROWTYPE;
+BEGIN
+  SELECT e.id INTO mi_espacio FROM espacios e
+  WHERE e.dueno_id = auth.uid() AND e.configurado_en IS NOT NULL;
+  IF mi_espacio IS NULL THEN RAISE EXCEPTION 'La cuenta no tiene un espacio configurado'; END IF;
+
+  SELECT * INTO b FROM bolsa_pedidos WHERE id = p_pedido FOR UPDATE;
+  IF NOT FOUND OR b.estado <> 'ABIERTO' OR b.vence_en <= now() THEN
+    RAISE EXCEPTION 'El pedido ya no recibe postulaciones';
+  END IF;
+  IF b.origen_espacio_id = mi_espacio THEN
+    RAISE EXCEPTION 'No podés postularte a un pedido que rechazaste';
+  END IF;
+
+  INSERT INTO postulaciones (pedido_id, espacio_id, mensaje, precio_estimado, plazo)
+  VALUES (p_pedido, mi_espacio, btrim(p_mensaje), p_precio, btrim(p_plazo));
+
+  UPDATE bolsa_pedidos
+  SET postulaciones = postulaciones + 1,
+      estado = CASE WHEN postulaciones + 1 >= tope_postulaciones THEN 'EN_ELECCION'::bolsa_estado ELSE estado END
+  WHERE id = p_pedido;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.bolsa_abierta() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.postularme(uuid, text, numeric, text) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.bolsa_abierta() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.postularme(uuid, text, numeric, text) TO authenticated;
+
+-- RLS sin políticas para authenticated ni anon: denegado por defecto. n8n
+-- publica, lee las postulaciones para la página del cliente, asigna y vence.
+ALTER TABLE bolsa_pedidos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bolsa_pedidos FORCE ROW LEVEL SECURITY;
+ALTER TABLE postulaciones ENABLE ROW LEVEL SECURITY;
+ALTER TABLE postulaciones FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON bolsa_pedidos, postulaciones FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON bolsa_pedidos, postulaciones TO service_role;
+GRANT SELECT, INSERT, UPDATE ON bolsa_pedidos TO n8n_writer;
+GRANT SELECT ON postulaciones TO n8n_writer;
+-- Una política por operación, como el resto: FOR ALL también habilitaría un
+-- DELETE si algún día se otorgara por error.
+DROP POLICY IF EXISTS bolsa_pedidos_rw_n8n_writer ON bolsa_pedidos;
+DROP POLICY IF EXISTS bolsa_pedidos_select_n8n_writer ON bolsa_pedidos;
+CREATE POLICY bolsa_pedidos_select_n8n_writer ON bolsa_pedidos
+  FOR SELECT TO n8n_writer USING (true);
+DROP POLICY IF EXISTS bolsa_pedidos_insert_n8n_writer ON bolsa_pedidos;
+CREATE POLICY bolsa_pedidos_insert_n8n_writer ON bolsa_pedidos
+  FOR INSERT TO n8n_writer WITH CHECK (true);
+DROP POLICY IF EXISTS bolsa_pedidos_update_n8n_writer ON bolsa_pedidos;
+CREATE POLICY bolsa_pedidos_update_n8n_writer ON bolsa_pedidos
+  FOR UPDATE TO n8n_writer USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS postulaciones_select_n8n_writer ON postulaciones;
+CREATE POLICY postulaciones_select_n8n_writer ON postulaciones
+  FOR SELECT TO n8n_writer USING (true);

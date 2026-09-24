@@ -35,6 +35,9 @@ interface FormData {
   descripcion: string;
   urgencia: string;
   consentimiento: boolean;
+  // Opcional: si el desarrollador no puede tomar el pedido, que lo vean
+  // otros (bolsa de proyectos). Casilla aparte y sin marcar (ley 25.326).
+  compartir_bolsa: boolean;
   // Honeypot: el campo está escondido, así que una persona lo deja vacío.
   sitio_web: string;
 }
@@ -48,6 +51,7 @@ const INITIAL_FORM: FormData = {
   descripcion: "",
   urgencia: "media",
   consentimiento: false,
+  compartir_bolsa: false,
   sitio_web: "",
 };
 
@@ -480,6 +484,18 @@ export default function LeadForm({espacio}: {espacio: string}) {
             {errors.consentimiento.message}
           </p>
         )}
+        <label className="mt-4 flex cursor-pointer items-start gap-3 text-[13px] leading-relaxed">
+          <input
+            className="border-rule accent-ochre mt-0.5 size-4 shrink-0 cursor-pointer"
+            type="checkbox"
+            {...register("compartir_bolsa")}
+          />
+          <span className="text-ink-soft">
+            Si no pueden tomar mi proyecto, compártanlo con otros desarrolladores de la plataforma,
+            sin mis datos de contacto, para que me ofrezcan hacerlo.{" "}
+            <span className="text-mist">(Opcional)</span>
+          </span>
+        </label>
       </section>
 
       {/* Honeypot: fuera de la vista y del orden de tabulación. Los bots que

@@ -115,5 +115,12 @@ check('con el campo trampa completo se rechaza',
   conRango('mas_5000', {sitio_web: 'http://spam.test'}).error?.includes('honeypot') ?? false);
 check('con el campo trampa vacío pasa', conRango('mas_5000', {sitio_web: ''}).ok);
 
+// ── Bolsa de proyectos: consentimiento opcional ────────────────────────────
+// Sólo un true de verdad cuenta como consentimiento: ni un string ni la
+// ausencia del campo.
+check('sin la casilla, no hay consentimiento para la bolsa', conRango('mas_5000').lead?.compartir_bolsa === false);
+check('con la casilla marcada, sí', conRango('mas_5000', {compartir_bolsa: true}).lead?.compartir_bolsa === true);
+check('un "true" en texto no cuenta como consentimiento', conRango('mas_5000', {compartir_bolsa: 'true'}).lead?.compartir_bolsa === false);
+
 console.log('\nResultado: ' + ok + ' OK, ' + fail + ' FAIL');
 process.exit(fail ? 1 : 0);

@@ -111,6 +111,7 @@ export interface Database {
           telefono: string | null;
           presupuesto: number;
           presupuesto_rango: string | null;
+          compartir_bolsa: boolean;
           urgencia: UrgenciaTipo;
           servicio: ServicioTipo;
           descripcion: string | null;
@@ -146,6 +147,7 @@ export interface Database {
           telefono?: string | null;
           presupuesto?: number;
           presupuesto_rango?: string | null;
+          compartir_bolsa?: boolean;
           urgencia?: UrgenciaTipo;
           servicio?: ServicioTipo;
           descripcion?: string | null;

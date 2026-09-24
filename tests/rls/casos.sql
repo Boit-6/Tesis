@@ -178,15 +178,15 @@ SELECT probar('anon NO puede borrar un lead',
   'WITH x AS (DELETE FROM leads WHERE lead_id = ''LD-TEST-0001'' RETURNING 1) SELECT count(*) FROM x',
   'permiso denegado');
 
--- ── 13. La RLS está habilitada Y forzada en las 10 tablas de negocio ───────
+-- ── 13. La RLS está habilitada Y forzada en las 12 tablas de negocio ───────
 -- No alcanza con que cada caso de arriba dé el resultado esperado: si a una
 -- tabla nueva se le olvida `ENABLE`/`FORCE ROW LEVEL SECURITY`, este es el
 -- único caso que lo detecta directo contra el catálogo, sin depender de que
 -- alguien se acuerde de sumarle sus propios casos de permisos.
-SELECT probar('las 10 tablas de negocio tienen RLS habilitada y forzada',
+SELECT probar('las 12 tablas de negocio tienen RLS habilitada y forzada',
   'service_role', NULL,
-  'SELECT count(*) FROM pg_class WHERE relname IN (''leads'',''facturas'',''seguimientos'',''logs'',''profiles'',''rate_limit_log'',''admin_emails'',''tickets'',''espacios'',''avisos'') AND relrowsecurity AND relforcerowsecurity',
-  '10 filas');
+  'SELECT count(*) FROM pg_class WHERE relname IN (''leads'',''facturas'',''seguimientos'',''logs'',''profiles'',''rate_limit_log'',''admin_emails'',''tickets'',''espacios'',''avisos'',''bolsa_pedidos'',''postulaciones'') AND relrowsecurity AND relforcerowsecurity',
+  '12 filas');
 
 -- ── 14. seguimientos: mismo patrón de acceso que facturas ──────────────────
 SELECT probar('n8n_writer inserta un seguimiento',
@@ -493,6 +493,101 @@ SELECT probar('el dueño ve el estado de sus cobros',
 -- ── 22. Métricas: una fila por espacio y mes ───────────────────────────────
 SELECT probar('n8n ve las métricas separadas por espacio',
   'n8n_writer', NULL, 'SELECT count(DISTINCT espacio_id) FROM metrics_mensuales', '2 filas');
+
+-- ── 23. Bolsa de proyectos: sin datos personales y con las reglas en la base ─
+-- A esta altura los dos leads son del espacio de Pepe (la sección 19 movió
+-- LD-TEST-0001). El admin completa el alta para poder postularse; la cuenta
+-- 6666 tiene espacio pero sin configurar.
+UPDATE espacios SET nombre = 'Estudio Admin' WHERE dueno_id = '11111111-1111-4111-8111-111111111111';
+
+SELECT probar('sin el consentimiento del cliente, el pedido NO puede ir a la bolsa',
+  'n8n_writer', NULL,
+  'WITH x AS (INSERT INTO bolsa_pedidos (lead_id, origen_espacio_id, resumen) SELECT ''LD-PEPE-0001'', espacio_id, ''Sitio institucional con blog y formulario'' FROM leads WHERE lead_id = ''LD-PEPE-0001'' RETURNING 1) SELECT count(*) FROM x',
+  'error: El cliente no aceptó compartir el pedido con otros desarrolladores');
+UPDATE leads SET compartir_bolsa = true WHERE lead_id IN ('LD-PEPE-0001', 'LD-TEST-0001');
+-- n8n manda otro espacio y otro servicio a propósito: el trigger los pisa con
+-- los del lead, así nadie puede publicar datos que no son del pedido.
+SELECT probar('con el consentimiento, n8n publica el pedido (servicio y origen salen del lead)',
+  'n8n_writer', NULL,
+  format('WITH x AS (INSERT INTO bolsa_pedidos (lead_id, origen_espacio_id, resumen, servicio) VALUES (%L, %L, %L, %L) RETURNING origen_espacio_id, servicio) SELECT count(*) FROM x JOIN leads l ON l.espacio_id = x.origen_espacio_id AND l.servicio = x.servicio WHERE l.lead_id = %L',
+         'LD-PEPE-0001', (SELECT id FROM espacios WHERE dueno_id = '11111111-1111-4111-8111-111111111111'),
+         'Sitio institucional con blog y formulario', 'soporte', 'LD-PEPE-0001'),
+  '1 filas');
+SELECT probar('un pedido va a la bolsa una sola vez',
+  'n8n_writer', NULL,
+  'WITH x AS (INSERT INTO bolsa_pedidos (lead_id, origen_espacio_id, resumen) SELECT ''LD-PEPE-0001'', espacio_id, ''Otra vez el mismo pedido de antes'' FROM leads WHERE lead_id = ''LD-PEPE-0001'' RETURNING 1) SELECT count(*) FROM x',
+  'error: duplicate key value violates unique constraint "bolsa_pedidos_lead_id_key"');
+SELECT probar('anon NO puede leer la bolsa', 'anon', NULL, 'SELECT count(*) FROM bolsa_pedidos', 'permiso denegado');
+SELECT probar('anon NO puede usar bolsa_abierta()', 'anon', NULL, 'SELECT count(*) FROM bolsa_abierta()', 'permiso denegado');
+SELECT probar('un desarrollador NO lee la tabla de la bolsa directo',
+  'authenticated', '11111111-1111-4111-8111-111111111111', 'SELECT count(*) FROM bolsa_pedidos', 'permiso denegado');
+SELECT probar('ni las postulaciones',
+  'authenticated', '11111111-1111-4111-8111-111111111111', 'SELECT count(*) FROM postulaciones', 'permiso denegado');
+SELECT probar('el admin ve el pedido abierto por bolsa_abierta()',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  'SELECT count(*) FROM bolsa_abierta() WHERE NOT propio AND NOT me_postule', '1 filas');
+SELECT probar('y aunque vea el pedido, NO puede leer el lead (datos personales)',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  'SELECT count(*) FROM leads WHERE lead_id = ''LD-PEPE-0001''', '0 filas');
+SELECT probar('quien lo rechazó lo ve marcado como propio',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'SELECT count(*) FROM bolsa_abierta() WHERE propio', '1 filas');
+SELECT probar('una cuenta sin el alta completa no ve la bolsa',
+  'authenticated', '66666666-6666-4666-8666-666666666666', 'SELECT count(*) FROM bolsa_abierta()', '0 filas');
+SELECT probar('quien lo rechazó NO puede postularse',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'SELECT count(*) FROM (SELECT postularme(id, ''Lo puedo hacer en dos semanas'', 900, ''2 semanas'') FROM bolsa_abierta()) x',
+  'error: No podés postularte a un pedido que rechazaste');
+SELECT probar('una cuenta sin el alta completa NO puede postularse',
+  'authenticated', '66666666-6666-4666-8666-666666666666',
+  format('SELECT count(*) FROM (SELECT postularme(%L, %L, 900, %L)) x',
+         (SELECT id FROM bolsa_pedidos WHERE lead_id = 'LD-PEPE-0001'), 'Lo puedo hacer en dos semanas', '2 semanas'),
+  'error: La cuenta no tiene un espacio configurado');
+SELECT probar('un desarrollador NO puede insertar la postulación a mano (saltearía las reglas)',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  format('WITH x AS (INSERT INTO postulaciones (pedido_id, espacio_id, mensaje, precio_estimado, plazo) VALUES (%L, %L, %L, 1, %L) RETURNING 1) SELECT count(*) FROM x',
+         (SELECT id FROM bolsa_pedidos WHERE lead_id = 'LD-PEPE-0001'),
+         (SELECT id FROM espacios WHERE dueno_id = '11111111-1111-4111-8111-111111111111'),
+         'Me postulo sin pasar por la función', '1 día'),
+  'permiso denegado');
+SELECT probar('el admin se postula',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  'SELECT count(*) FROM (SELECT postularme(id, ''Lo puedo hacer en dos semanas'', 900, ''2 semanas'') FROM bolsa_abierta()) x',
+  '1 filas');
+SELECT probar('y ya figura como postulado',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  'SELECT count(*) FROM bolsa_abierta() WHERE me_postule AND postulaciones = 1', '1 filas');
+SELECT probar('una sola postulación por espacio',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  'SELECT count(*) FROM (SELECT postularme(id, ''Me postulo de nuevo por las dudas'', 800, ''1 semana'') FROM bolsa_abierta()) x',
+  'error: duplicate key value violates unique constraint "postulaciones_pedido_id_espacio_id_key"');
+SELECT probar('n8n lee las postulaciones (para la página del cliente)',
+  'n8n_writer', NULL, 'SELECT count(*) FROM postulaciones', '1 filas');
+SELECT probar('n8n NO borra pedidos de la bolsa',
+  'n8n_writer', NULL, 'WITH x AS (DELETE FROM bolsa_pedidos RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
+
+-- Tope: un pedido con tope 1 pasa a EN_ELECCION con la primera postulación.
+INSERT INTO bolsa_pedidos (lead_id, origen_espacio_id, resumen, tope_postulaciones)
+SELECT 'LD-TEST-0001', espacio_id, 'Tienda online con pasarela de pagos', 1 FROM leads WHERE lead_id = 'LD-TEST-0001';
+SELECT probar('el admin se postula al pedido con tope 1',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  format('SELECT count(*) FROM (SELECT postularme(%L, %L, 2500, %L)) x',
+         (SELECT id FROM bolsa_pedidos WHERE lead_id = 'LD-TEST-0001'), 'Tengo experiencia en tiendas online', '1 mes'),
+  '1 filas');
+SELECT probar('al llegar al tope, el pedido pasa a elección',
+  'n8n_writer', NULL,
+  'SELECT count(*) FROM bolsa_pedidos WHERE lead_id = ''LD-TEST-0001'' AND estado = ''EN_ELECCION'' AND postulaciones = 1', '1 filas');
+SELECT probar('y ya no recibe más postulaciones',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  format('SELECT count(*) FROM (SELECT postularme(%L, %L, 2000, %L)) x',
+         (SELECT id FROM bolsa_pedidos WHERE lead_id = 'LD-TEST-0001'), 'Otra postulación más al mismo pedido', '1 mes'),
+  'error: El pedido ya no recibe postulaciones');
+UPDATE bolsa_pedidos SET vence_en = now() - interval '1 second' WHERE lead_id = 'LD-PEPE-0001';
+SELECT probar('un pedido vencido tampoco recibe postulaciones',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  format('SELECT count(*) FROM (SELECT postularme(%L, %L, 900, %L)) x',
+         (SELECT id FROM bolsa_pedidos WHERE lead_id = 'LD-PEPE-0001'), 'Me postulo después del vencimiento', '2 semanas'),
+  'error: El pedido ya no recibe postulaciones');
 
 -- ── Reporte ────────────────────────────────────────────────────────────────
 \o
