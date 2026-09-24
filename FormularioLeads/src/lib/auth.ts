@@ -20,6 +20,10 @@ export interface Espacio {
   stripe_cobros_activos: boolean;
   // NULL hasta que el dueño elige nombre y dirección (alta).
   configurado_en: string | null;
+  // Perfil público (/d/<slug>).
+  presentacion: string | null;
+  habilidades: string[];
+  portfolio_urls: string[];
 }
 
 export interface EstadoPanel {
@@ -47,7 +51,7 @@ export async function getPanelStatus(): Promise<EstadoPanel> {
   const {data: espacio} = await supabase
     .from("espacios")
     .select(
-      "id, slug, nombre, email_contacto, telegram_chat_id, stripe_account_id, stripe_cobros_activos, configurado_en",
+      "id, slug, nombre, email_contacto, telegram_chat_id, stripe_account_id, stripe_cobros_activos, configurado_en, presentacion, habilidades, portfolio_urls",
     )
     .eq("dueno_id", user.id)
     .maybeSingle();
