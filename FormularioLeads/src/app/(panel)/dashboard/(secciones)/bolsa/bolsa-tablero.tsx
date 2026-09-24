@@ -9,6 +9,8 @@ import {EsqueletoBolsa} from "../../esqueletos";
 
 import FormPostulacion from "./form-postulacion";
 
+import Conversacion from "@/app/components/conversacion";
+import {BotonMensajes} from "@/app/components/postulaciones";
 import {presupuestoDeclarado} from "@/lib/presupuesto";
 import {SERVICIO_LEGIBLE, URGENCIA_LEGIBLE} from "@/lib/servicios";
 import {createClient} from "@/lib/supabase/client";
@@ -60,10 +62,14 @@ function TarjetaPedido({
   pedido,
   ahora,
   onPostular,
+  sinLeer,
+  onMensajes,
 }: {
   pedido: PedidoBolsa;
   ahora: number;
   onPostular: (mensaje: string, precio: number, plazo: string) => Promise<void>;
+  sinLeer?: number;
+  onMensajes: (postulacionId: string) => void;
 }) {
   const [postulando, setPostulando] = useState(false);
   const estado = situacion(pedido);
@@ -102,6 +108,9 @@ function TarjetaPedido({
           {pedido.estado === "ABIERTO" && ` · ${textoVence(pedido.vence_en, ahora)}`} ·{" "}
           {pedido.postulaciones}/{pedido.tope_postulaciones} postulaciones
         </span>
+        {pedido.mi_postulacion && (
+          <BotonMensajes sinLeer={sinLeer} onClick={() => onMensajes(pedido.mi_postulacion!)} />
+        )}
         {puedePostularse && !postulando && (
           <button
             className="ease border-ink text-ink hover:border-ochre hover:text-ochre border px-3.5 py-2 text-[11px] tracking-[0.12em] uppercase transition duration-200"
@@ -142,6 +151,9 @@ export default function BolsaTablero() {
 
   // Se incrementa para volver a cargar (después de postularse).
   const [version, setVersion] = useState(0);
+  const [sinLeer, setSinLeer] = useState<Record<string, number>>({});
+  // Conversación abierta con el cliente de una postulación propia.
+  const [charla, setCharla] = useState<{id: string; con: string} | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -157,6 +169,11 @@ export default function BolsaTablero() {
           error: err ? err.message : null,
           ahora: Date.now(),
         });
+      }
+    });
+    supabase.rpc("mensajes_sin_leer").then(({data}) => {
+      if (vigente) {
+        setSinLeer(Object.fromEntries((data ?? []).map((f) => [f.postulacion_id, f.cantidad])));
       }
     });
 
@@ -272,10 +289,28 @@ export default function BolsaTablero() {
               key={p.id}
               ahora={ahora}
               pedido={p}
+              sinLeer={p.mi_postulacion ? sinLeer[p.mi_postulacion] : undefined}
+              onMensajes={(id) =>
+                setCharla({
+                  id,
+                  con: `Cliente · ${p.titulo ?? SERVICIO_LEGIBLE[p.servicio]}`,
+                })
+              }
               onPostular={(mensaje, precio, plazo) => postular(p.id, mensaje, precio, plazo)}
             />
           ))}
         </ul>
+      )}
+
+      {charla && (
+        <Conversacion
+          con={charla.con}
+          postulacionId={charla.id}
+          onCerrar={() => {
+            setCharla(null);
+            setVersion((v) => v + 1);
+          }}
+        />
       )}
     </div>
   );

@@ -26,6 +26,26 @@ export interface Postulacion {
   slug: string;
   promedio: number | null;
   calificaciones: number;
+  // Es la que eligió el cliente (la conversación sigue con ella).
+  elegida?: boolean;
+}
+
+// Botón para abrir la conversación con un postulante, con los no leídos.
+export function BotonMensajes({sinLeer = 0, onClick}: {sinLeer?: number; onClick: () => void}) {
+  return (
+    <button
+      className="ease text-ink-soft hover:text-ochre inline-flex items-center gap-2 text-[12.5px] underline underline-offset-2 transition duration-200"
+      type="button"
+      onClick={onClick}
+    >
+      Mensajes
+      {sinLeer > 0 && (
+        <span className="bg-ochre text-paper px-1.5 py-0.5 text-[10.5px] no-underline">
+          {sinLeer} {sinLeer === 1 ? "nuevo" : "nuevos"}
+        </span>
+      )}
+    </button>
+  );
 }
 
 export const tarjetaClass =
@@ -67,9 +87,14 @@ async function pedirEleccion(cuerpo: Record<string, unknown>): Promise<string> {
 export function TarjetaPostulacion({
   postulacion,
   onElegir,
+  onMensajes,
+  sinLeer,
 }: {
   postulacion: Postulacion;
   onElegir: () => Promise<void>;
+  // Abre la conversación con este postulante (etapa 9).
+  onMensajes?: () => void;
+  sinLeer?: number;
 }) {
   const [confirmando, setConfirmando] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -92,6 +117,7 @@ export function TarjetaPostulacion({
         >
           Ver perfil ↗
         </Link>
+        {onMensajes && <BotonMensajes sinLeer={sinLeer} onClick={onMensajes} />}
       </div>
       <p className="text-ochre text-[10.5px] tracking-[0.14em] uppercase">
         Plazo estimado: {postulacion.plazo}

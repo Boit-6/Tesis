@@ -5,8 +5,10 @@ import type {Database} from "@/types/supabase";
 import {useEffect, useState} from "react";
 
 import {Cargando, Esqueleto} from "@/app/components/esqueleto";
+import Conversacion from "@/app/components/conversacion";
 import {
   BotonAlAzar,
+  BotonMensajes,
   TarjetaPostulacion,
   elegirAlAzar,
   elegirPostulacion,
@@ -57,11 +59,16 @@ function TarjetaProyecto({
   proyecto,
   ahora,
   onElegido,
+  sinLeer,
+  onMensajes,
 }: {
   proyecto: Proyecto;
   ahora: number;
   onElegido: () => void;
+  sinLeer: Record<string, number>;
+  onMensajes: (postulacionId: string, con: string) => void;
 }) {
+  const elegida = proyecto.detalle.find((p) => p.elegida);
   const estado = situacion(proyecto, ahora);
   const puedeElegir = proyecto.estado === "ABIERTO" || proyecto.estado === "EN_ELECCION";
 
@@ -94,13 +101,24 @@ function TarjetaProyecto({
             <TarjetaPostulacion
               key={p.id}
               postulacion={p}
+              sinLeer={sinLeer[p.id]}
               onElegir={async () => {
                 await elegirPostulacion(proyecto.eleccion_token, p.id);
                 onElegido();
               }}
+              onMensajes={() => onMensajes(p.id, p.espacio)}
             />
           ))}
         </ul>
+      )}
+
+      {proyecto.estado === "ASIGNADO" && elegida && (
+        <div>
+          <BotonMensajes
+            sinLeer={sinLeer[elegida.id]}
+            onClick={() => onMensajes(elegida.id, elegida.espacio)}
+          />
+        </div>
       )}
 
       {puedeElegir && (
@@ -127,6 +145,8 @@ export default function MisProyectos() {
   } | null>(null);
   // Se incrementa para volver a cargar (después de elegir).
   const [version, setVersion] = useState(0);
+  const [sinLeer, setSinLeer] = useState<Record<string, number>>({});
+  const [charla, setCharla] = useState<{id: string; con: string} | null>(null);
 
   useEffect(() => {
     if (!supabase) return;
@@ -140,6 +160,11 @@ export default function MisProyectos() {
           error: error ? error.message : null,
           ahora: Date.now(),
         });
+      }
+    });
+    supabase.rpc("mensajes_sin_leer").then(({data}) => {
+      if (vigente) {
+        setSinLeer(Object.fromEntries((data ?? []).map((f) => [f.postulacion_id, f.cantidad])));
       }
     });
 
@@ -182,9 +207,22 @@ export default function MisProyectos() {
           key={p.id}
           ahora={carga.ahora}
           proyecto={p}
+          sinLeer={sinLeer}
           onElegido={() => setVersion((v) => v + 1)}
+          onMensajes={(id, con) => setCharla({id, con})}
         />
       ))}
+      {charla && (
+        <Conversacion
+          con={charla.con}
+          postulacionId={charla.id}
+          onCerrar={() => {
+            setCharla(null);
+            // Al cerrar, se actualizan los contadores de no leídos.
+            setVersion((v) => v + 1);
+          }}
+        />
+      )}
     </ul>
   );
 }

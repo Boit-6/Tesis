@@ -36,6 +36,8 @@ export interface Mensaje {
 export interface Conversacion {
   rol: "cliente" | "desarrollador";
   abierta: boolean;
+  // Todavía no se eligió a este postulante: los datos de contacto se ocultan.
+  ocultar: boolean;
   mensajes: Mensaje[];
 }
 
@@ -530,6 +532,8 @@ export interface Database {
           // Proyectos publicados directo por un cliente (etapa 6).
           titulo: string | null;
           directo: boolean;
+          // La postulación propia (para abrir la conversación con el cliente).
+          mi_postulacion: string | null;
         }[];
       };
       postularme: {
@@ -638,6 +642,8 @@ export interface Database {
             slug: string;
             promedio: number | null;
             calificaciones: number;
+            // La que eligió el cliente.
+            elegida: boolean;
           }[];
           // El token del propio proyecto: con él elige por el webhook bolsa-elegir.
           eleccion_token: string;

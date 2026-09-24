@@ -4,12 +4,14 @@ import type {ServicioTipo} from "@/types/supabase";
 
 import {useEffect, useState} from "react";
 
+import Conversacion from "@/app/components/conversacion";
 import {Cargando, Esqueleto} from "@/app/components/esqueleto";
 import {
   HEADERS,
   N8N_BASE,
   type Postulacion,
   BotonAlAzar,
+  BotonMensajes,
   TarjetaPostulacion,
   elegirAlAzar,
   elegirPostulacion,
@@ -76,6 +78,16 @@ function EsqueletoEleccion() {
 export default function ElegirPostulacion({token}: {token: string}) {
   const tokenValido = UUID.test(token) && Boolean(N8N_BASE);
   const [vista, setVista] = useState<Vista>({tipo: "cargando"});
+  // Conversación abierta con un postulante (por el token del enlace).
+  const [charla, setCharla] = useState<{id: string; con: string} | null>(null);
+  const panelCharla = charla && (
+    <Conversacion
+      con={charla.con}
+      postulacionId={charla.id}
+      token={token}
+      onCerrar={() => setCharla(null)}
+    />
+  );
 
   useEffect(() => {
     if (!tokenValido) return;
@@ -126,11 +138,21 @@ export default function ElegirPostulacion({token}: {token: string}) {
   const {pedido} = vista;
 
   if (pedido.estado === "ASIGNADO") {
+    const elegida = pedido.postulaciones.find((p) => p.elegida);
+
     return (
-      <Aviso titulo="Ya elegiste.">
-        Este pedido quedó con <b className="text-ink">{pedido.elegido_nombre}</b>, que te va a
-        escribir con la propuesta.
-      </Aviso>
+      <>
+        <Aviso titulo="Ya elegiste.">
+          Este pedido quedó con <b className="text-ink">{pedido.elegido_nombre}</b>, que te va a
+          escribir con la propuesta.
+        </Aviso>
+        {elegida && (
+          <div className="mt-6">
+            <BotonMensajes onClick={() => setCharla({id: elegida.id, con: elegida.espacio})} />
+          </div>
+        )}
+        {panelCharla}
+      </>
     );
   }
 
@@ -175,13 +197,19 @@ export default function ElegirPostulacion({token}: {token: string}) {
           </p>
           <ul className="flex flex-col gap-4">
             {pedido.postulaciones.map((p) => (
-              <TarjetaPostulacion key={p.id} postulacion={p} onElegir={() => elegir(p.id)} />
+              <TarjetaPostulacion
+                key={p.id}
+                postulacion={p}
+                onElegir={() => elegir(p.id)}
+                onMensajes={() => setCharla({id: p.id, con: p.espacio})}
+              />
             ))}
           </ul>
           <BotonAlAzar
             cantidad={pedido.postulaciones.length}
             onElegir={async () => setVista({tipo: "elegido", espacio: await elegirAlAzar(token)})}
           />
+          {panelCharla}
         </>
       )}
     </div>

@@ -4,6 +4,9 @@ import type {ReactNode} from "react";
 
 import Link from "next/link";
 import {usePathname} from "next/navigation";
+import {useEffect, useState} from "react";
+
+import {createClient} from "@/lib/supabase/client";
 
 const SECCIONES = [
   {
@@ -58,6 +61,64 @@ function Icono({d}: {d: string}) {
   );
 }
 
+// Mensajes sin leer de los clientes (etapa 9), para el contador de «Bolsa».
+// Se recuenta al cambiar de página y cuando llega un mensaje por el tiempo
+// real (la RLS sólo manda los de las conversaciones propias).
+function useMensajesSinLeer(pathname: string) {
+  const [supabase] = useState(() => createClient());
+  const [total, setTotal] = useState(0);
+  const [version, setVersion] = useState(0);
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    let vigente = true;
+
+    supabase.rpc("mensajes_sin_leer").then(({data}) => {
+      if (vigente) setTotal((data ?? []).reduce((suma, f) => suma + f.cantidad, 0));
+    });
+
+    return () => {
+      vigente = false;
+    };
+  }, [supabase, pathname, version]);
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    const client = supabase;
+    let espera: ReturnType<typeof setTimeout> | null = null;
+    // Se recuenta con un poco de demora: si la conversación está abierta, la
+    // marca como leída al recargarse, y el contador no queda en 1 de más.
+    const recontar = () => {
+      if (espera) clearTimeout(espera);
+      espera = setTimeout(() => setVersion((v) => v + 1), 1500);
+    };
+    const canal = client
+      .channel("mensajes-panel")
+      .on("postgres_changes", {event: "INSERT", schema: "public", table: "mensajes"}, recontar)
+      .subscribe();
+
+    return () => {
+      if (espera) clearTimeout(espera);
+      client.removeChannel(canal);
+    };
+  }, [supabase]);
+
+  return total;
+}
+
+function Contador({cantidad}: {cantidad: number}) {
+  if (!cantidad) return null;
+
+  return (
+    <span className="bg-ochre text-paper ml-auto min-w-5 px-1.5 text-center text-[10.5px] leading-5">
+      <span className="sr-only">, mensajes sin leer: </span>
+      {cantidad}
+    </span>
+  );
+}
+
 function esActiva(pathname: string, href: string) {
   return href === "/dashboard" ? pathname === href : pathname.startsWith(href);
 }
@@ -100,6 +161,7 @@ export default function PanelShell({
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  const sinLeer = useMensajesSinLeer(pathname);
 
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[232px_minmax(0,1fr)]">
@@ -127,6 +189,7 @@ export default function PanelShell({
                 >
                   <Icono d={s.icono} />
                   {s.etiqueta}
+                  {s.href === "/dashboard/bolsa" && <Contador cantidad={sinLeer} />}
                 </Link>
               );
             })}
@@ -183,7 +246,14 @@ export default function PanelShell({
                 href={s.href}
               >
                 <Icono d={s.icono} />
-                {s.etiqueta}
+                <span className="relative">
+                  {s.etiqueta}
+                  {s.href === "/dashboard/bolsa" && sinLeer > 0 && (
+                    <span className="bg-ochre absolute -top-6 -right-3 size-2 rounded-full">
+                      <span className="sr-only">(mensajes sin leer)</span>
+                    </span>
+                  )}
+                </span>
               </Link>
             );
           })}

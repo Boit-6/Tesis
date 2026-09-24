@@ -1461,7 +1461,7 @@ RETURNS TABLE (
   presupuesto_rango text, presupuesto numeric, estado bolsa_estado,
   postulaciones int, tope_postulaciones int, publicado_en timestamptz,
   vence_en timestamptz, propio boolean, me_postule boolean, asignado_a_mi boolean,
-  titulo text, directo boolean
+  titulo text, directo boolean, mi_postulacion uuid
 )
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
   WITH mio AS (
@@ -1472,7 +1472,9 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
          b.origen_espacio_id IS NOT DISTINCT FROM mio.id,
          EXISTS (SELECT 1 FROM postulaciones p WHERE p.pedido_id = b.id AND p.espacio_id = mio.id),
          b.asignado_espacio_id IS NOT DISTINCT FROM mio.id,
-         b.titulo, b.cliente_id IS NOT NULL
+         b.titulo, b.cliente_id IS NOT NULL,
+         -- La postulación propia: con ella se abre la conversación (etapa 9).
+         (SELECT p.id FROM postulaciones p WHERE p.pedido_id = b.id AND p.espacio_id = mio.id)
   FROM bolsa_pedidos b, mio
   WHERE (b.estado = 'ABIERTO' AND b.vence_en > now())
      OR b.origen_espacio_id = mio.id
@@ -1802,7 +1804,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
            SELECT json_agg(json_build_object(
                     'id', p.id, 'espacio', e.nombre, 'mensaje', p.mensaje,
                     'precio', p.precio_estimado, 'plazo', p.plazo,
-                    'slug', e.slug, 'promedio', r.promedio, 'calificaciones', r.cantidad)
+                    'slug', e.slug, 'promedio', r.promedio, 'calificaciones', r.cantidad,
+                    'elegida', p.espacio_id IS NOT DISTINCT FROM b.asignado_espacio_id)
                   ORDER BY p.creado_en)
            FROM postulaciones p JOIN espacios e ON e.id = p.espacio_id
            CROSS JOIN LATERAL reputacion(e.id) r
@@ -1901,6 +1904,7 @@ BEGIN
   RETURN json_build_object(
     'rol', c.rol,
     'abierta', c.abierta,
+    'ocultar', c.ocultar,
     'mensajes', COALESCE((
       SELECT json_agg(json_build_object(
                'id', m.id, 'autor', m.autor, 'texto', m.texto,
