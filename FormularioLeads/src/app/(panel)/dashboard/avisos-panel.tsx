@@ -83,20 +83,33 @@ export default function AvisosPanel() {
   if (!avisos.length) return null;
 
   return (
-    <section aria-label="Avisos" className="mb-14">
-      <SectionHeader num="!" title={`Avisos sin leer (${avisos.length})`} />
+    <section aria-label="Novedades">
+      <SectionHeader num="II" title={`Novedades (${avisos.length})`} />
       <ul className="border-rule-soft bg-card divide-rule-soft divide-y border">
-        {avisos.map((a) => (
-          <li
-            key={a.id}
-            className={`px-6 py-4 text-[13.5px] leading-relaxed whitespace-pre-line ${
-              a.nivel === "atencion" || a.nivel === "critico" ? "border-l-ochre border-l-2" : ""
-            }`}
-          >
-            <span className="text-faint mr-3 text-[11px]">{formatDate(a.creado_en)}</span>
-            {textoDeAviso(a.mensaje)}
-          </li>
-        ))}
+        {avisos.map((a) => {
+          // El mensaje es el de Telegram, de varias líneas. En el panel alcanza
+          // con el título y la primera línea de datos (el cliente): lo que
+          // pide una acción ya está arriba, en «Requiere tu atención».
+          const [titulo, ...resto] = textoDeAviso(a.mensaje)
+            .split("\n")
+            .map((linea) => linea.trim())
+            .filter(Boolean);
+
+          return (
+            <li
+              key={a.id}
+              className={`flex flex-col gap-0.5 px-5 py-3 sm:flex-row sm:items-baseline sm:gap-4 ${
+                a.nivel === "atencion" || a.nivel === "critico" ? "border-l-ochre border-l-2" : ""
+              }`}
+            >
+              <span className="text-faint w-20 shrink-0 text-[11px]">
+                {formatDate(a.creado_en)}
+              </span>
+              <span className="text-ink text-[13.5px]">{titulo}</span>
+              {resto[0] && <span className="text-muted truncate text-[13px]">{resto[0]}</span>}
+            </li>
+          );
+        })}
       </ul>
       <button
         className="ease text-muted hover:text-ochre mt-4 text-[11px] tracking-[0.14em] uppercase transition duration-200 disabled:opacity-40"

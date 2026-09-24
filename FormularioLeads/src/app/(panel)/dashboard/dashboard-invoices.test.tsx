@@ -42,6 +42,9 @@ describe("DashboardInvoices", () => {
     expect(within(filaVencida).getByText("Vencida")).toBeInTheDocument();
     expect(within(filaVencida).getByText("12 vencida")).toBeInTheDocument();
     expect(within(filaPendiente).queryByText("Vencida")).not.toBeInTheDocument();
+    // La tarjeta del celular dice lo mismo en palabras.
+    expect(screen.getByText(/vencida hace 12 días/)).toBeInTheDocument();
+    expect(screen.getByText(/vence en 5 días/)).toBeInTheDocument();
   });
 
   it("deja anular una factura vencida", async () => {
@@ -62,8 +65,14 @@ describe("DashboardInvoices", () => {
       />,
     );
 
-    await user.click(screen.getByRole("button", {name: "Anular"}));
+    // Hay dos: el de la tarjeta (celular) y el de la tabla (PC). jsdom no
+    // aplica el CSS que esconde uno u otro, así que se prueban los dos.
+    const botones = screen.getAllByRole("button", {name: "Anular"});
 
+    expect(botones).toHaveLength(2);
+    for (const boton of botones) await user.click(boton);
+
+    expect(onAnular).toHaveBeenCalledTimes(2);
     expect(onAnular).toHaveBeenCalledWith("FAC-VENC");
   });
 

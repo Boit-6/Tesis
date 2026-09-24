@@ -12,6 +12,7 @@ export default function TrabajosPage() {
       <EncabezadoPagina titulo="Trabajos" />
       <DashboardWork
         trabajos={d.trabajos}
+        onAbrir={d.abrirLead}
         onCancelar={d.cancelar}
         onCerrar={d.cerrarProyecto}
         onEstadoCambio={d.cambiarEstadoTrabajo}

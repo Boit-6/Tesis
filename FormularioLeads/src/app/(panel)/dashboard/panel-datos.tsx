@@ -14,6 +14,7 @@ import type {ReactNode} from "react";
 import {createContext, useCallback, useContext, useEffect, useState} from "react";
 
 import {LEADS_LIMITE} from "./dashboard-types";
+import LeadDetalle from "./lead-detalle";
 
 import {useConfirm} from "@/app/components/confirm-dialog";
 import {createClient} from "@/lib/supabase/client";
@@ -124,10 +125,12 @@ interface PanelDatos {
   ) => Promise<void>;
   cancelar: (leadId: string) => void;
   cerrarProyecto: (leadId: string) => void;
-  aceptarCambio: (leadId: string) => void;
-  rechazarCambio: (leadId: string) => void;
+  aceptarCambio: (leadId: string) => Promise<boolean>;
+  rechazarCambio: (leadId: string) => Promise<boolean>;
   anularFactura: (facturaId: string) => void;
   cambiarEstadoTrabajo: (leadId: string, estado: Trabajo["estado_trabajo"]) => void;
+  // Abre el detalle del lead en el panel lateral.
+  abrirLead: (leadId: string) => void;
 }
 
 const PanelDatosContext = createContext<PanelDatos | null>(null);
@@ -159,6 +162,7 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
   const [pedidos, setPedidos] = useState<PedidoCambio[]>([]);
   const [porEnviar, setPorEnviar] = useState<PorEnviar[]>([]);
   const [confirmar, ConfirmDialog] = useConfirm();
+  const [leadAbierto, setLeadAbierto] = useState<string | null>(null);
 
   const cargarDatos = useCallback(async () => {
     if (!supabase) {
@@ -359,6 +363,9 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "No se pudo enviar la propuesta.");
+      // El formulario está en el panel lateral, que tapa el aviso de error del
+      // tablero: se relanza para que también lo muestre ahí.
+      throw err;
     }
   }
 
@@ -390,17 +397,23 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
     accionPanel("cerrar", {lead_id: leadId}, "No se pudo cerrar el proyecto.");
   }
 
-  async function aceptarCambio(leadId: string) {
+  async function aceptarCambio(leadId: string): Promise<boolean> {
     const ok = await confirmar({
       descripcion: "¿Aceptar los cambios y reenviar la propuesta al cliente?",
       textoConfirmar: "Aceptar y reenviar",
     });
 
     if (ok)
-      accionPanel("cambio-aceptar", {lead_id: leadId}, "No se pudo procesar el pedido de cambio.");
+      await accionPanel(
+        "cambio-aceptar",
+        {lead_id: leadId},
+        "No se pudo procesar el pedido de cambio.",
+      );
+
+    return ok;
   }
 
-  async function rechazarCambio(leadId: string) {
+  async function rechazarCambio(leadId: string): Promise<boolean> {
     const ok = await confirmar({
       descripcion:
         "¿Rechazar los cambios? Se mantiene la propuesta original y se le avisa al cliente.",
@@ -409,8 +422,14 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
     });
 
     if (ok) {
-      accionPanel("cambio-rechazar", {lead_id: leadId}, "No se pudo procesar el pedido de cambio.");
+      await accionPanel(
+        "cambio-rechazar",
+        {lead_id: leadId},
+        "No se pudo procesar el pedido de cambio.",
+      );
     }
+
+    return ok;
   }
 
   // Cierra la transición ANULADA del enum `pago_estado` (§4.8 y Cap. 8, punto
@@ -448,6 +467,7 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
       setTrabajos((prev) =>
         prev.map((x) => (x.lead_id === leadId ? {...x, estado_trabajo: estado} : x)),
       ),
+    abrirLead: setLeadAbierto,
   };
 
   return (
@@ -465,6 +485,17 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
         <p className="text-faint text-[11px] tracking-[0.2em] uppercase">Cargando datos…</p>
       ) : (
         children
+      )}
+
+      {leadAbierto && (
+        <LeadDetalle
+          key={leadAbierto}
+          leadId={leadAbierto}
+          onAceptarCambio={aceptarCambio}
+          onCerrar={() => setLeadAbierto(null)}
+          onEnviarPropuesta={enviarPropuesta}
+          onRechazarCambio={rechazarCambio}
+        />
       )}
 
       <ConfirmDialog />

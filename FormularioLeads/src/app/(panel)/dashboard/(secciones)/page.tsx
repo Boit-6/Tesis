@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import AvisosPanel from "../avisos-panel";
 import EncabezadoPagina from "../encabezado-pagina";
 
@@ -12,22 +10,10 @@ export default async function InicioPage() {
 
   return (
     <>
-      <EncabezadoPagina
-        acciones={
-          !espacio.stripe_cobros_activos && (
-            <Link
-              className="text-ochre hover:text-ochre-deep text-[12.5px] transition duration-200"
-              href="/dashboard/espacio"
-            >
-              Activá los cobros online →
-            </Link>
-          )
-        }
-        titulo="Inicio"
-      />
-      <div className="flex flex-col gap-14">
+      <EncabezadoPagina titulo="Inicio" />
+      <InicioSecciones cobrosActivos={espacio.stripe_cobros_activos} />
+      <div className="mt-14">
         <AvisosPanel />
-        <InicioSecciones />
       </div>
     </>
   );

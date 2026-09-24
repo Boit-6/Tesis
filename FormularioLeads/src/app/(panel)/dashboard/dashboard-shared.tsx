@@ -68,8 +68,8 @@ export function FunnelBar({
   const percent = max > 0 ? (count / max) * 100 : 0;
 
   return (
-    <div className="flex items-center gap-5">
-      <span className="text-muted w-44 shrink-0 text-[11px] tracking-[0.12em] uppercase">
+    <div className="flex items-center gap-3 sm:gap-5">
+      <span className="text-muted w-32 shrink-0 text-[11px] tracking-[0.12em] uppercase sm:w-44">
         {label}
       </span>
       <div className="bg-rule-soft h-1.5 flex-1">
