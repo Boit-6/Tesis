@@ -2,7 +2,7 @@
 
 import type {Ticket, TicketsResponse} from "@/lib/tickets";
 
-import {useCallback, useEffect, useState} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 
 import {esEstado} from "@/lib/tickets";
 
@@ -10,6 +10,11 @@ import {esEstado} from "@/lib/tickets";
 // tickets_tablero y los cambios van por /api/tickets (sesión del admin + RLS).
 // La prioridad la sube sola el cron de envejecimiento: por eso cada card
 // muestra hace cuánto no se mueve y cuánto le falta para escalar.
+//
+// En la PC se ven las cuatro columnas y las tarjetas se arrastran. En el
+// celular (donde el arrastre nativo no anda con el dedo) hay una pestaña por
+// estado. En los dos, cada tarjeta tiene un selector «Mover a», que es
+// también el camino con el teclado.
 
 const ESTADOS_FALLBACK = ["BACKLOG", "EN_CURSO", "BLOQUEADO", "HECHO"];
 const PRIORIDADES_FALLBACK = ["BAJA", "MEDIA", "ALTA", "CRITICA"];
@@ -42,26 +47,32 @@ function TicketCard({
   prioridades,
   estados,
   moviendo,
+  arrastrando,
   onMover,
+  onArrastre,
 }: {
   ticket: Ticket;
   prioridades: string[];
   estados: string[];
   moviendo: boolean;
+  arrastrando: boolean;
   onMover: (ticketId: string, estado: string) => void;
+  onArrastre: (ticketId: string | null) => void;
 }) {
-  const idx = estados.indexOf(ticket.estado);
-  const anterior = idx > 0 ? estados[idx - 1] : null;
-  const siguiente = idx >= 0 && idx < estados.length - 1 ? estados[idx + 1] : null;
   const porEscalar = ticket.dias_para_escalar != null && ticket.dias_para_escalar <= 1;
 
   return (
     <article
       draggable
-      className={`ease bg-card border-l-2 p-3 shadow-[0_1px_2px_rgba(25,23,19,0.04)] transition duration-200 ${
-        moviendo ? "opacity-40" : ""
+      className={`ease bg-card border-l-2 p-3.5 shadow-[0_1px_2px_rgba(25,23,19,0.04)] transition duration-200 lg:cursor-grab lg:active:cursor-grabbing ${
+        moviendo || arrastrando ? "opacity-40" : ""
       } ${colorPrioridad(ticket.prioridad, prioridades).split(" ")[1]}`}
-      onDragStart={(e) => e.dataTransfer.setData("text/plain", ticket.ticket_id)}
+      onDragEnd={() => onArrastre(null)}
+      onDragStart={(e) => {
+        e.dataTransfer.setData("text/plain", ticket.ticket_id);
+        e.dataTransfer.effectAllowed = "move";
+        onArrastre(ticket.ticket_id);
+      }}
     >
       <div className="mb-2 flex items-center justify-between gap-2">
         <span
@@ -74,7 +85,7 @@ function TicketCard({
         <span className="text-faint text-[10px]">{ticket.score}</span>
       </div>
 
-      <p className="text-ink mb-2 text-[13px] leading-snug">{ticket.titulo}</p>
+      <p className="text-ink mb-2 text-[14px] leading-snug">{ticket.titulo}</p>
 
       {ticket.etiquetas.length > 0 && (
         <div className="mb-2 flex flex-wrap gap-2">
@@ -97,26 +108,21 @@ function TicketCard({
         )}
       </p>
 
-      <div className="flex items-center gap-3">
-        <button
-          aria-label={anterior ? `Mover a ${anterior}` : "Sin columna anterior"}
-          className="ease text-mist hover:text-ochre disabled:hover:text-mist text-[11px] transition duration-200 disabled:opacity-30"
-          disabled={!anterior || moviendo}
-          type="button"
-          onClick={() => anterior && onMover(ticket.ticket_id, anterior)}
+      <label className="flex items-center gap-2">
+        <span className="text-faint text-[10px] tracking-[0.14em] uppercase">Mover a</span>
+        <select
+          className="ease border-rule text-ink-soft hover:border-mist focus:border-ochre min-h-9 flex-1 cursor-pointer border bg-transparent px-2 text-[12px] transition duration-200 outline-none disabled:opacity-40"
+          disabled={moviendo}
+          value={ticket.estado}
+          onChange={(e) => onMover(ticket.ticket_id, e.target.value)}
         >
-          ←
-        </button>
-        <button
-          aria-label={siguiente ? `Mover a ${siguiente}` : "Sin columna siguiente"}
-          className="ease text-mist hover:text-ochre disabled:hover:text-mist text-[11px] transition duration-200 disabled:opacity-30"
-          disabled={!siguiente || moviendo}
-          type="button"
-          onClick={() => siguiente && onMover(ticket.ticket_id, siguiente)}
-        >
-          →
-        </button>
-      </div>
+          {estados.map((estado) => (
+            <option key={estado} className="bg-card text-ink" value={estado}>
+              {estado.replace(/_/g, " ")}
+            </option>
+          ))}
+        </select>
+      </label>
     </article>
   );
 }
@@ -127,6 +133,10 @@ export default function TicketsBoard() {
   const [error, setError] = useState<string | null>(null);
   const [moviendo, setMoviendo] = useState<string | null>(null);
   const [columnaActiva, setColumnaActiva] = useState<string | null>(null);
+  const [arrastrando, setArrastrando] = useState<string | null>(null);
+  // Estado que muestra el celular (una columna por vez).
+  const [pestana, setPestana] = useState<string>(ESTADOS_FALLBACK[0]!);
+  const dialogRef = useRef<HTMLDialogElement>(null);
   const [titulo, setTitulo] = useState("");
   const [prioridad, setPrioridad] = useState("MEDIA");
   const [etiquetas, setEtiquetas] = useState("");
@@ -228,6 +238,10 @@ export default function TicketsBoard() {
 
       setTitulo("");
       setEtiquetas("");
+      dialogRef.current?.close();
+      // Un ticket nuevo entra en la primera columna: en el celular se va a
+      // esa pestaña para que se vea.
+      setPestana(estados[0] ?? ESTADOS_FALLBACK[0]!);
       await cargar();
     } catch (err) {
       console.error(err);
@@ -242,7 +256,7 @@ export default function TicketsBoard() {
   }
 
   return (
-    <div className="flex flex-col gap-12">
+    <div className="flex flex-col gap-8">
       {error && (
         <div
           className="border-brick bg-brick/5 text-brick border-l-2 px-5 py-3.5 text-[13px]"
@@ -252,81 +266,84 @@ export default function TicketsBoard() {
         </div>
       )}
 
-      {/* Alta rápida */}
-      <form className="flex flex-wrap items-end gap-4" onSubmit={crear}>
-        <label className="flex min-w-[16rem] flex-1 flex-col gap-2">
-          <span className="text-faint text-[10px] tracking-[0.2em] uppercase">Nuevo ticket</span>
-          <input
-            required
-            className="ease border-rule text-ink placeholder-mist hover:border-mist focus:border-ochre w-full border-b bg-transparent pb-2 text-[13px] transition duration-200 outline-none"
-            placeholder="¿Qué hay pendiente?"
-            value={titulo}
-            onChange={(e) => setTitulo(e.target.value)}
-          />
-        </label>
-
-        <label className="flex flex-col gap-2">
-          <span className="text-faint text-[10px] tracking-[0.2em] uppercase">Prioridad</span>
-          <select
-            className="ease border-rule text-ink hover:border-mist focus:border-ochre cursor-pointer border-b bg-transparent pb-2 text-[12px] transition duration-200 outline-none"
-            value={prioridad}
-            onChange={(e) => setPrioridad(e.target.value)}
-          >
-            {prioridades.map((p) => (
-              <option key={p} className="bg-card text-ink" value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="flex flex-col gap-2">
-          <span className="text-faint text-[10px] tracking-[0.2em] uppercase">Etiquetas</span>
-          <input
-            className="ease border-rule text-ink placeholder-mist hover:border-mist focus:border-ochre border-b bg-transparent pb-2 text-[13px] transition duration-200 outline-none"
-            placeholder="facturacion, bug"
-            value={etiquetas}
-            onChange={(e) => setEtiquetas(e.target.value)}
-          />
-        </label>
-
+      <div className="flex justify-end max-lg:hidden">
         <button
-          className="ease border-ochre text-ochre hover:bg-ochre hover:text-paper border px-5 py-2 text-[11px] tracking-[0.2em] uppercase transition duration-200 disabled:opacity-40"
-          disabled={creando}
-          type="submit"
+          className="ease bg-ink text-paper hover:bg-ochre px-5 py-3 text-[11px] tracking-[0.16em] uppercase transition duration-200"
+          type="button"
+          onClick={() => dialogRef.current?.showModal()}
         >
-          {creando ? "Creando…" : "Crear"}
+          + Nuevo ticket
         </button>
-      </form>
+      </div>
+
+      {/* Celular: una pestaña por estado */}
+      <div
+        aria-label="Estado"
+        className="border-rule grid grid-cols-4 border-b lg:hidden"
+        role="tablist"
+      >
+        {estados.map((estado) => {
+          const activa = pestana === estado;
+
+          return (
+            <button
+              key={estado}
+              aria-selected={activa}
+              className={`-mb-px flex flex-col items-center gap-0.5 border-b-2 px-1 py-2.5 text-[10px] tracking-[0.08em] uppercase transition duration-200 ${
+                activa ? "border-ochre text-ochre-deep" : "text-muted border-transparent"
+              }`}
+              role="tab"
+              type="button"
+              onClick={() => setPestana(estado)}
+            >
+              <span className="truncate">{estado.replace(/_/g, " ")}</span>
+              <span className="font-serif text-[16px] tracking-normal normal-case">
+                {tickets.filter((t) => t.estado === estado).length}
+              </span>
+            </button>
+          );
+        })}
+      </div>
 
       {/* Tablero */}
-      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-5 lg:grid-cols-4">
         {estados.map((estado) => {
           const enColumna = tickets
             .filter((t) => t.estado === estado)
             .sort((a, b) => b.score - a.score);
+          const destino = columnaActiva === estado;
 
           return (
             <section
               key={estado}
-              className={`ease flex min-h-[12rem] flex-col gap-3 border-t-2 pt-4 transition duration-200 ${
-                columnaActiva === estado ? "border-ochre" : "border-rule"
-              }`}
-              onDragLeave={() => setColumnaActiva((c) => (c === estado ? null : c))}
+              aria-label={estado.replace(/_/g, " ")}
+              className={`ease min-h-[12rem] flex-col gap-3 transition duration-200 lg:border-t-2 lg:p-2 lg:pt-4 ${
+                pestana === estado ? "flex" : "hidden lg:flex"
+              } ${destino ? "lg:border-ochre lg:bg-ochre/5" : "lg:border-rule"}`}
+              onDragLeave={(e) => {
+                // dragleave también salta al pasar sobre una tarjeta de la
+                // misma columna: sólo cuenta si el puntero salió de verdad.
+                if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
+                  setColumnaActiva((c) => (c === estado ? null : c));
+                }
+              }}
               onDragOver={(e) => {
                 e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
                 setColumnaActiva(estado);
               }}
               onDrop={(e) => {
                 e.preventDefault();
                 setColumnaActiva(null);
+                setArrastrando(null);
 
                 const id = e.dataTransfer.getData("text/plain");
+                const actual = tickets.find((t) => t.ticket_id === id);
 
-                if (id) mover(id, estado);
+                if (actual && actual.estado !== estado) mover(id, estado);
               }}
             >
-              <div className="flex items-center justify-between">
+              <div className="hidden items-center justify-between px-1 lg:flex">
                 <h2 className="text-ink-soft text-[11px] tracking-[0.2em] uppercase">
                   {estado.replace(/_/g, " ")}
                 </h2>
@@ -334,15 +351,17 @@ export default function TicketsBoard() {
               </div>
 
               {enColumna.length === 0 ? (
-                <p className="text-mist text-[11px]">Vacío</p>
+                <p className="text-mist px-1 text-[12px]">{destino ? "Soltalo acá" : "Vacío"}</p>
               ) : (
                 enColumna.map((ticket) => (
                   <TicketCard
                     key={ticket.ticket_id}
+                    arrastrando={arrastrando === ticket.ticket_id}
                     estados={estados}
                     moviendo={moviendo === ticket.ticket_id}
                     prioridades={prioridades}
                     ticket={ticket}
+                    onArrastre={setArrastrando}
                     onMover={mover}
                   />
                 ))
@@ -351,6 +370,83 @@ export default function TicketsBoard() {
           );
         })}
       </div>
+
+      {/* Celular: botón flotante, arriba de la barra de pestañas del panel */}
+      <button
+        aria-label="Nuevo ticket"
+        className="bg-ink text-paper hover:bg-ochre fixed right-5 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-20 flex size-14 items-center justify-center rounded-full text-[26px] leading-none shadow-[0_8px_24px_-8px_rgba(25,23,19,0.5)] transition duration-200 lg:hidden"
+        type="button"
+        onClick={() => dialogRef.current?.showModal()}
+      >
+        +
+      </button>
+
+      <dialog
+        ref={dialogRef}
+        aria-labelledby="nuevo-ticket-titulo"
+        className="bg-paper text-ink backdrop:bg-ink/30 m-auto w-[calc(100%-2rem)] max-w-md p-0 shadow-[0_12px_40px_-16px_rgba(25,23,19,0.4)]"
+      >
+        <form className="flex flex-col gap-6 p-6" onSubmit={crear}>
+          <div className="flex items-center justify-between">
+            <h2 className="text-ink font-serif text-[24px]" id="nuevo-ticket-titulo">
+              Nuevo ticket
+            </h2>
+            <button
+              className="text-muted hover:text-ochre text-[11px] tracking-[0.16em] uppercase"
+              type="button"
+              onClick={() => dialogRef.current?.close()}
+            >
+              Cerrar ✕
+            </button>
+          </div>
+
+          <label className="flex flex-col gap-2">
+            <span className="text-faint text-[10px] tracking-[0.2em] uppercase">Título</span>
+            <input
+              required
+              className="ease border-rule text-ink placeholder-mist hover:border-mist focus:border-ochre w-full border-b bg-transparent pb-2 text-[15px] transition duration-200 outline-none"
+              placeholder="¿Qué hay pendiente?"
+              value={titulo}
+              onChange={(e) => setTitulo(e.target.value)}
+            />
+          </label>
+
+          <div className="grid grid-cols-2 gap-5">
+            <label className="flex flex-col gap-2">
+              <span className="text-faint text-[10px] tracking-[0.2em] uppercase">Prioridad</span>
+              <select
+                className="ease border-rule text-ink hover:border-mist focus:border-ochre min-h-9 cursor-pointer border-b bg-transparent pb-2 text-[14px] transition duration-200 outline-none"
+                value={prioridad}
+                onChange={(e) => setPrioridad(e.target.value)}
+              >
+                {prioridades.map((p) => (
+                  <option key={p} className="bg-card text-ink" value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="flex flex-col gap-2">
+              <span className="text-faint text-[10px] tracking-[0.2em] uppercase">Etiquetas</span>
+              <input
+                className="ease border-rule text-ink placeholder-mist hover:border-mist focus:border-ochre border-b bg-transparent pb-2 text-[14px] transition duration-200 outline-none"
+                placeholder="facturacion, bug"
+                value={etiquetas}
+                onChange={(e) => setEtiquetas(e.target.value)}
+              />
+            </label>
+          </div>
+
+          <button
+            className="ease bg-ink text-paper hover:bg-ochre py-3.5 text-[11px] tracking-[0.16em] uppercase transition duration-200 disabled:opacity-40"
+            disabled={creando}
+            type="submit"
+          >
+            {creando ? "Creando…" : "Crear ticket"}
+          </button>
+        </form>
+      </dialog>
 
       <p className="text-mist text-[11px]">
         {tickets.length} ticket{tickets.length === 1 ? "" : "s"}
