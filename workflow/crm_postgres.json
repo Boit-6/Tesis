@@ -7082,7 +7082,7 @@
     },
     {
       "parameters": {
-        "content": "## 📬 RAMA 11 · Bolsa de proyectos (cron cada 15 min)\nUna consulta resuelve los tres casos: **invitar** al cliente a elegir (llegó al tope `BOLSA_TOPE` o venció con postulaciones; se marca `eleccion_avisada_en` para no repetir), **vencido sin postulaciones** y **vencido sin elección** (`BOLSA_DIAS_ELECCION`, 7). Correo al cliente en los dos primeros; aviso a quien lo publicó en los tres.",
+        "content": "## 📬 RAMA 11 · Bolsa de proyectos (cron cada 15 min)\nUna consulta resuelve los tres casos: **invitar** al cliente a elegir (llegó al tope `BOLSA_TOPE` o venció con postulaciones; se marca `eleccion_avisada_en` para no repetir), **vencido sin postulaciones** y **vencido sin elección** (`BOLSA_DIAS_ELECCION`, 7). Correo al cliente en los dos primeros; aviso a quien lo publicó en los tres. También cubre los proyectos que publica un cliente (etapa 6): sin lead ni publicador, el nombre y el correo salen del contacto del proyecto y no hay aviso a un espacio.",
         "height": 700,
         "width": 1530,
         "color": 6
@@ -7119,7 +7119,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH invitar AS (\n  -- Llegó al tope (postularme() ya lo pasó a EN_ELECCION) o venció con al\n  -- menos una postulación: se le manda al cliente el enlace para elegir, una\n  -- sola vez.\n  UPDATE bolsa_pedidos\n  SET estado = 'EN_ELECCION', eleccion_avisada_en = now()\n  WHERE eleccion_avisada_en IS NULL AND postulaciones > 0\n    AND (estado = 'EN_ELECCION' OR (estado = 'ABIERTO' AND vence_en <= now()))\n  RETURNING id, lead_id, origen_espacio_id, postulaciones, eleccion_token, 'invitar'::text AS tipo\n), sin_postulaciones AS (\n  UPDATE bolsa_pedidos\n  SET estado = 'VENCIDO', cerrado_en = now()\n  WHERE estado = 'ABIERTO' AND vence_en <= now() AND postulaciones = 0\n  RETURNING id, lead_id, origen_espacio_id, postulaciones, eleccion_token, 'sin_postulaciones'::text AS tipo\n), sin_eleccion AS (\n  -- El cliente recibió el enlace y no eligió en BOLSA_DIAS_ELECCION días.\n  UPDATE bolsa_pedidos\n  SET estado = 'VENCIDO', cerrado_en = now()\n  WHERE estado = 'EN_ELECCION' AND eleccion_avisada_en <= now() - make_interval(days => $1::int)\n  RETURNING id, lead_id, origen_espacio_id, postulaciones, eleccion_token, 'sin_eleccion'::text AS tipo\n), todos AS (\n  SELECT * FROM invitar\n  UNION ALL SELECT * FROM sin_postulaciones\n  UNION ALL SELECT * FROM sin_eleccion\n)\nSELECT t.tipo, t.lead_id, t.postulaciones, t.eleccion_token, t.origen_espacio_id AS espacio_id,\n       l.nombre, l.email, l.servicio\nFROM todos t JOIN leads l ON l.lead_id = t.lead_id;",
+        "query": "WITH invitar AS (\n  -- Llegó al tope (postularme() ya lo pasó a EN_ELECCION) o venció con al\n  -- menos una postulación: se le manda al cliente el enlace para elegir, una\n  -- sola vez.\n  UPDATE bolsa_pedidos\n  SET estado = 'EN_ELECCION', eleccion_avisada_en = now()\n  WHERE eleccion_avisada_en IS NULL AND postulaciones > 0\n    AND (estado = 'EN_ELECCION' OR (estado = 'ABIERTO' AND vence_en <= now()))\n  RETURNING id, lead_id, origen_espacio_id, postulaciones, eleccion_token, cliente_id, contacto_nombre, contacto_email, servicio, 'invitar'::text AS tipo\n), sin_postulaciones AS (\n  UPDATE bolsa_pedidos\n  SET estado = 'VENCIDO', cerrado_en = now()\n  WHERE estado = 'ABIERTO' AND vence_en <= now() AND postulaciones = 0\n  RETURNING id, lead_id, origen_espacio_id, postulaciones, eleccion_token, cliente_id, contacto_nombre, contacto_email, servicio, 'sin_postulaciones'::text AS tipo\n), sin_eleccion AS (\n  -- El cliente recibió el enlace y no eligió en BOLSA_DIAS_ELECCION días.\n  UPDATE bolsa_pedidos\n  SET estado = 'VENCIDO', cerrado_en = now()\n  WHERE estado = 'EN_ELECCION' AND eleccion_avisada_en <= now() - make_interval(days => $1::int)\n  RETURNING id, lead_id, origen_espacio_id, postulaciones, eleccion_token, cliente_id, contacto_nombre, contacto_email, servicio, 'sin_eleccion'::text AS tipo\n), todos AS (\n  SELECT * FROM invitar\n  UNION ALL SELECT * FROM sin_postulaciones\n  UNION ALL SELECT * FROM sin_eleccion\n)\nSELECT t.tipo, t.lead_id, t.postulaciones, t.eleccion_token, t.origen_espacio_id AS espacio_id,\n       COALESCE(l.nombre, t.contacto_nombre) AS nombre, COALESCE(l.email, t.contacto_email) AS email,\n       t.servicio, t.cliente_id IS NOT NULL AS directo\nFROM todos t\n-- LEFT: un proyecto publicado por un cliente no tiene lead (ni publicador).\nLEFT JOIN leads l ON l.lead_id = t.lead_id;",
         "options": {
           "queryReplacement": "={{ [ parseInt($env.BOLSA_DIAS_ELECCION || '7', 10) || 7 ] }}"
         }
@@ -7141,7 +7141,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Correos al cliente del cron de la bolsa. Salen de la plataforma (no de un\n// espacio: todavía no eligió a nadie). Si el cliente no eligió a tiempo no se\n// le escribe: ya tenía el enlace.\nconst esc = (s) => String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');\nconst SERVICIO = {\n  desarrollo_web: 'desarrollo web', ecommerce: 'tienda online', app_movil: 'app móvil',\n  automatizacion: 'automatización', marketing: 'marketing digital', seo: 'SEO',\n  diseno_ui: 'diseño UX/UI', consultoria: 'consultoría', soporte: 'soporte',\n};\nlet plataforma = 'FormularioLeads';\nlet frontend = '';\ntry {\n  plataforma = ($env && $env.PLATAFORMA_NOMBRE) || plataforma;\n  frontend = String(($env && $env.FRONTEND_URL) || '').replace(/\\/+$/, '');\n} catch (e) {}\nconst salida = [];\nfor (const item of $input.all()) {\n  const l = item.json;\n  if (!l.email || l.tipo === 'sin_eleccion') continue;\n  const servicio = SERVICIO[l.servicio] || String(l.servicio || '').replaceAll('_', ' ');\n  let asunto, cuerpo;\n  if (l.tipo === 'invitar') {\n    const n = Number(l.postulaciones) || 0;\n    const url = `${frontend}/elegir/${encodeURIComponent(l.eleccion_token)}`;\n    asunto = `Tenés ${n} ${n === 1 ? 'propuesta' : 'propuestas'} para tu proyecto de ${servicio}`;\n    cuerpo = `<p>Hola ${esc(l.nombre)},</p>\n<p>${n === 1 ? 'Un desarrollador quiere' : `${n} desarrolladores quieren`} hacer tu proyecto de <b>${esc(servicio)}</b>. Ninguno tiene tus datos todavía.</p>\n<p><a href=\"${esc(url)}\">Mirá las propuestas y elegí</a>: al que elijas le pasamos tus datos para que te mande la propuesta formal.</p>\n<p>Saludos,<br><b>${esc(plataforma)}</b></p>`;\n  } else {\n    asunto = `Sobre tu proyecto de ${servicio}`;\n    cuerpo = `<p>Hola ${esc(l.nombre)},</p>\n<p>Compartimos tu proyecto de <b>${esc(servicio)}</b> con otros desarrolladores, pero esta vez ninguno pudo tomarlo. Tus datos no se compartieron con nadie.</p>\n<p>Gracias por escribirnos, y mucha suerte con el proyecto.</p>\n<p>Saludos,<br><b>${esc(plataforma)}</b></p>`;\n  }\n  salida.push({ json: { ...l, espacio_nombre: '', espacio_email: '', asunto, cuerpo_html: cuerpo } });\n}\nreturn salida;"
+        "jsCode": "// Correos al cliente del cron de la bolsa. Salen de la plataforma (no de un\n// espacio: todavía no eligió a nadie). Si el cliente no eligió a tiempo no se\n// le escribe: ya tenía el enlace.\nconst esc = (s) => String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');\nconst SERVICIO = {\n  desarrollo_web: 'desarrollo web', ecommerce: 'tienda online', app_movil: 'app móvil',\n  automatizacion: 'automatización', marketing: 'marketing digital', seo: 'SEO',\n  diseno_ui: 'diseño UX/UI', consultoria: 'consultoría', soporte: 'soporte',\n};\nlet plataforma = 'FormularioLeads';\nlet frontend = '';\ntry {\n  plataforma = ($env && $env.PLATAFORMA_NOMBRE) || plataforma;\n  frontend = String(($env && $env.FRONTEND_URL) || '').replace(/\\/+$/, '');\n} catch (e) {}\nconst salida = [];\nfor (const item of $input.all()) {\n  const l = item.json;\n  if (!l.email || l.tipo === 'sin_eleccion') continue;\n  const servicio = SERVICIO[l.servicio] || String(l.servicio || '').replaceAll('_', ' ');\n  let asunto, cuerpo;\n  if (l.tipo === 'invitar') {\n    const n = Number(l.postulaciones) || 0;\n    const url = `${frontend}/elegir/${encodeURIComponent(l.eleccion_token)}`;\n    asunto = `Tenés ${n} ${n === 1 ? 'propuesta' : 'propuestas'} para tu proyecto de ${servicio}`;\n    cuerpo = `<p>Hola ${esc(l.nombre)},</p>\n<p>${n === 1 ? 'Un desarrollador quiere' : `${n} desarrolladores quieren`} hacer tu proyecto de <b>${esc(servicio)}</b>. Ninguno tiene tus datos todavía.</p>\n<p><a href=\"${esc(url)}\">Mirá las propuestas y elegí</a>: al que elijas le pasamos tus datos para que te mande la propuesta formal.${l.directo ? ` También podés elegir desde <a href=\"${esc(frontend)}/cliente\">Mis proyectos</a>.` : ''}</p>\n<p>Saludos,<br><b>${esc(plataforma)}</b></p>`;\n  } else {\n    asunto = `Sobre tu proyecto de ${servicio}`;\n    cuerpo = `<p>Hola ${esc(l.nombre)},</p>\n<p>Compartimos tu proyecto de <b>${esc(servicio)}</b> con otros desarrolladores, pero esta vez ninguno pudo tomarlo. Tus datos no se compartieron con nadie.</p>\n<p>Gracias por escribirnos, y mucha suerte con el proyecto.</p>\n<p>Saludos,<br><b>${esc(plataforma)}</b></p>`;\n  }\n  salida.push({ json: { ...l, espacio_nombre: '', espacio_email: '', asunto, cuerpo_html: cuerpo } });\n}\nreturn salida;"
       },
       "id": "0d8de66e-1b8f-454d-8463-fb2a830d2ef9",
       "name": "Code - Emails Bolsa Cliente",
@@ -7265,7 +7265,7 @@
       "type": "n8n-nodes-base.executeWorkflow",
       "typeVersion": 1.2,
       "position": [
-        750,
+        1050,
         22170
       ],
       "onError": "continueRegularOutput"
@@ -7336,6 +7336,37 @@
           "name": "Postgres account"
         }
       }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.espacio_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6ec8d96b-4476-43cb-bb62-f3f8a309fd0b",
+      "name": "IF - Tiene Publicador?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        750,
+        22170
+      ]
     }
   ],
   "connections": {
@@ -9570,7 +9601,7 @@
             "index": 0
           },
           {
-            "node": "Aviso - Bolsa al Publicador",
+            "node": "IF - Tiene Publicador?",
             "type": "main",
             "index": 0
           }
@@ -9609,6 +9640,18 @@
             "index": 0
           }
         ]
+      ]
+    },
+    "IF - Tiene Publicador?": {
+      "main": [
+        [
+          {
+            "node": "Aviso - Bolsa al Publicador",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
       ]
     }
   },
