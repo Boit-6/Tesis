@@ -604,6 +604,9 @@ export interface Database {
             mensaje: string;
             precio: number;
             plazo: string;
+            slug: string;
+            promedio: number | null;
+            calificaciones: number;
           }[];
           // El token del propio proyecto: con él elige por el webhook bolsa-elegir.
           eleccion_token: string;

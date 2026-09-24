@@ -21,6 +21,9 @@ const pedido = (extra = {}) => ({
       mensaje: "Hice webs parecidas.",
       precio: 1200,
       plazo: "3 semanas",
+      slug: "lucia-estudio",
+      promedio: 4.5,
+      calificaciones: 3,
     },
   ],
   ...extra,
@@ -70,6 +73,12 @@ describe("ElegirPostulacion", () => {
 
     expect(await screen.findByText("Lucía Estudio")).toBeInTheDocument();
     expect(screen.getByText("Plazo estimado: 3 semanas")).toBeInTheDocument();
+    // Las estrellas y el perfil del postulante, para comparar antes de elegir.
+    expect(screen.getByRole("img", {name: "4,5 de 5 estrellas"})).toBeInTheDocument();
+    expect(screen.getByRole("link", {name: "Ver perfil ↗"})).toHaveAttribute(
+      "href",
+      "/d/lucia-estudio",
+    );
     expect(fetchMock).toHaveBeenCalledWith(
       `http://n8n.local/webhook/bolsa-postulaciones?t=${TOKEN}`,
       expect.anything(),

@@ -1,6 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import {useState} from "react";
+
+import {Reputacion} from "./estrellas";
 
 // Lo que comparten /elegir/<token> (el enlace del correo) y «Mis proyectos»
 // (el panel del cliente): cómo se muestra una postulación y cómo se elige.
@@ -19,6 +22,10 @@ export interface Postulacion {
   mensaje: string;
   precio: number;
   plazo: string;
+  // Perfil público y reputación del postulante.
+  slug: string;
+  promedio: number | null;
+  calificaciones: number;
 }
 
 export const tarjetaClass =
@@ -65,6 +72,16 @@ export function TarjetaPostulacion({
         <span className="text-ink font-serif text-[23px]">
           {formatoUsd.format(postulacion.precio)}
         </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+        <Reputacion cantidad={postulacion.calificaciones} promedio={postulacion.promedio} />
+        <Link
+          className="text-ochre hover:text-ochre-deep text-[12.5px] underline underline-offset-2"
+          href={`/d/${postulacion.slug}`}
+          target="_blank"
+        >
+          Ver perfil ↗
+        </Link>
       </div>
       <p className="text-ochre text-[10.5px] tracking-[0.14em] uppercase">
         Plazo estimado: {postulacion.plazo}

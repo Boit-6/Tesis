@@ -1571,39 +1571,9 @@ BEGIN
 END;
 $$;
 
--- Los proyectos del cliente con sesión, con sus postulaciones (lo mismo que
--- ve en /elegir: marca del espacio, mensaje, precio y plazo) y a quién eligió.
--- `eleccion_token` es el del propio cliente: con él elige desde su panel por
--- el mismo webhook que el enlace del correo.
-DROP FUNCTION IF EXISTS public.mis_proyectos();
-CREATE FUNCTION public.mis_proyectos()
-RETURNS TABLE (
-  id uuid, titulo text, resumen text, servicio servicio_tipo, urgencia urgencia_tipo,
-  presupuesto_rango text, estado bolsa_estado, postulaciones int, tope_postulaciones int,
-  publicado_en timestamptz, vence_en timestamptz, elegido_nombre text, detalle json,
-  eleccion_token uuid
-)
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT b.id, b.titulo, b.resumen, b.servicio, b.urgencia, b.presupuesto_rango, b.estado,
-         b.postulaciones, b.tope_postulaciones, b.publicado_en, b.vence_en,
-         (SELECT e.nombre FROM espacios e WHERE e.id = b.asignado_espacio_id),
-         COALESCE((
-           SELECT json_agg(json_build_object(
-                    'id', p.id, 'espacio', e.nombre, 'mensaje', p.mensaje,
-                    'precio', p.precio_estimado, 'plazo', p.plazo) ORDER BY p.creado_en)
-           FROM postulaciones p JOIN espacios e ON e.id = p.espacio_id
-           WHERE p.pedido_id = b.id
-         ), '[]'::json),
-         b.eleccion_token
-  FROM bolsa_pedidos b
-  WHERE b.cliente_id = auth.uid()
-  ORDER BY b.publicado_en DESC
-$$;
 
 REVOKE ALL ON FUNCTION public.publicar_proyecto(text, text, servicio_tipo, urgencia_tipo, text, text, text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.mis_proyectos() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.publicar_proyecto(text, text, servicio_tipo, urgencia_tipo, text, text, text) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.mis_proyectos() TO authenticated;
 
 -- RLS sin políticas para authenticated ni anon: denegado por defecto. n8n
 -- publica, lee las postulaciones para la página del cliente, asigna y vence.
@@ -1791,3 +1761,38 @@ GRANT EXECUTE ON FUNCTION public.calificacion_pendiente(uuid) TO anon, authentic
 GRANT EXECUTE ON FUNCTION public.calificar(uuid, int, text) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.perfil_publico(text) TO anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.resenas_publicas(text) TO anon, authenticated;
+
+-- (Va al final: usa reputacion(), que depende de la tabla calificaciones.)
+-- Los proyectos del cliente con sesión, con sus postulaciones (lo mismo que
+-- ve en /elegir: marca del espacio, mensaje, precio y plazo) y a quién eligió.
+-- `eleccion_token` es el del propio cliente: con él elige desde su panel por
+-- el mismo webhook que el enlace del correo.
+DROP FUNCTION IF EXISTS public.mis_proyectos();
+CREATE FUNCTION public.mis_proyectos()
+RETURNS TABLE (
+  id uuid, titulo text, resumen text, servicio servicio_tipo, urgencia urgencia_tipo,
+  presupuesto_rango text, estado bolsa_estado, postulaciones int, tope_postulaciones int,
+  publicado_en timestamptz, vence_en timestamptz, elegido_nombre text, detalle json,
+  eleccion_token uuid
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT b.id, b.titulo, b.resumen, b.servicio, b.urgencia, b.presupuesto_rango, b.estado,
+         b.postulaciones, b.tope_postulaciones, b.publicado_en, b.vence_en,
+         (SELECT e.nombre FROM espacios e WHERE e.id = b.asignado_espacio_id),
+         COALESCE((
+           SELECT json_agg(json_build_object(
+                    'id', p.id, 'espacio', e.nombre, 'mensaje', p.mensaje,
+                    'precio', p.precio_estimado, 'plazo', p.plazo,
+                    'slug', e.slug, 'promedio', r.promedio, 'calificaciones', r.cantidad)
+                  ORDER BY p.creado_en)
+           FROM postulaciones p JOIN espacios e ON e.id = p.espacio_id
+           CROSS JOIN LATERAL reputacion(e.id) r
+           WHERE p.pedido_id = b.id
+         ), '[]'::json),
+         b.eleccion_token
+  FROM bolsa_pedidos b
+  WHERE b.cliente_id = auth.uid()
+  ORDER BY b.publicado_en DESC
+$$;
+REVOKE ALL ON FUNCTION public.mis_proyectos() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.mis_proyectos() TO authenticated;

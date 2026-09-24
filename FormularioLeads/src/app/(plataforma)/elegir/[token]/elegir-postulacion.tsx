@@ -25,6 +25,8 @@ interface Pedido {
   presupuesto_rango: string | null;
   presupuesto: number;
   resumen: string;
+  // Sólo los proyectos que publicó el cliente directo tienen título.
+  titulo: string | null;
   cliente_nombre: string;
   elegido_nombre: string | null;
   postulaciones: Postulacion[];
@@ -143,7 +145,16 @@ export default function ElegirPostulacion({token}: {token: string}) {
     <div className="flex flex-col gap-8">
       <section className={`${tarjetaClass} flex flex-col gap-2 px-6 py-5`}>
         <p className="text-faint text-[10px] tracking-[0.16em] uppercase">Tu pedido</p>
-        <p className="text-ink font-serif text-[21px] leading-tight">
+        {pedido.titulo && (
+          <p className="text-ink font-serif text-[23px] leading-tight">{pedido.titulo}</p>
+        )}
+        <p
+          className={
+            pedido.titulo
+              ? "text-muted text-[13px]"
+              : "text-ink font-serif text-[21px] leading-tight"
+          }
+        >
           {SERVICIO_LEGIBLE[pedido.servicio]} ·{" "}
           {presupuestoDeclarado(pedido.presupuesto_rango, Number(pedido.presupuesto))}
         </p>

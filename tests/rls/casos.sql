@@ -762,6 +762,11 @@ SELECT probar('nadie edita el perfil de otro (0 filas)',
          (SELECT id FROM espacios WHERE dueno_id = '11111111-1111-4111-8111-111111111111')),
   '0 filas');
 
+SELECT probar('la clienta ve la reputación y el perfil de cada postulante (sin datos del espacio)',
+  'authenticated', '77777777-7777-4777-8777-777777777777',
+  'SELECT count(*) FROM mis_proyectos(), json_array_elements(detalle) d WHERE d->>''slug'' IS NOT NULL AND (d->>''calificaciones'')::int = 0 AND d->>''promedio'' IS NULL',
+  '1 filas');
+
 -- ── Reporte ────────────────────────────────────────────────────────────────
 \o
 \pset border 2
