@@ -1815,3 +1815,188 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
 $$;
 REVOKE ALL ON FUNCTION public.mis_proyectos() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.mis_proyectos() TO authenticated;
+
+-- =====================================================================
+-- 10) Mensajes (etapa 9, 24-sep-2026)
+-- =====================================================================
+-- Una conversación por postulación: el cliente y ese postulante. Pueden
+-- empezarla los dos. Antes de la elección se ocultan teléfonos, correos y
+-- enlaces de mensajería (los datos del cliente sólo le llegan a quien
+-- elija). Después de elegir, la conversación sigue con el elegido, ya sin
+-- ocultar nada, y se cierra para los demás. El cliente sin cuenta (pedidos
+-- de la bolsa por rechazo) escribe desde /elegir con el token del enlace.
+
+CREATE TABLE IF NOT EXISTS mensajes (
+  id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  postulacion_id UUID NOT NULL REFERENCES postulaciones(id) ON DELETE CASCADE,
+  autor          TEXT NOT NULL CHECK (autor IN ('cliente','desarrollador')),
+  texto          TEXT NOT NULL CHECK (length(btrim(texto)) BETWEEN 1 AND 2000),
+  creado_en      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  -- Lo leyó la otra parte.
+  leido_en       TIMESTAMPTZ,
+  -- Se le mandó el correo de «tenés mensajes sin leer» (cron de mensajes).
+  avisado_en     TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_mensajes_postulacion ON mensajes (postulacion_id, creado_en);
+CREATE INDEX IF NOT EXISTS idx_mensajes_sin_leer ON mensajes (creado_en) WHERE leido_en IS NULL;
+
+-- Tapa teléfonos, correos y enlaces de mensajería. Un teléfono son 8 dígitos
+-- o más separados por espacios, guiones o paréntesis; el punto no cuenta
+-- como separador porque en un precio es el de miles («2.000 - 5.000»).
+CREATE OR REPLACE FUNCTION public.ocultar_contacto(p_texto text) RETURNS text
+LANGUAGE plpgsql IMMUTABLE AS $$
+DECLARE
+  t text := p_texto;
+  m text[];
+BEGIN
+  t := regexp_replace(t, '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}', '[dato oculto]', 'g');
+  t := regexp_replace(t, '(https?://)?(www\.)?(wa\.me|api\.whatsapp\.com|chat\.whatsapp\.com|t\.me|telegram\.me|m\.me)/\S*', '[dato oculto]', 'gi');
+  FOR m IN SELECT regexp_matches(t, '[+(]?\d[\d\s()-]{6,}\d', 'g') LOOP
+    IF length(regexp_replace(m[1], '\D', '', 'g')) >= 8 THEN
+      t := replace(t, m[1], '[dato oculto]');
+    END IF;
+  END LOOP;
+  RETURN t;
+END;
+$$;
+
+-- Quién es el que llama en una conversación y en qué estado está. Interna:
+-- la usan las funciones de abajo.
+--   rol: 'desarrollador' (dueño del espacio que se postuló), 'cliente' (el
+--        de la cuenta que publicó, o quien trae el token del enlace) o NULL.
+--   abierta: el pedido todavía recibe elección, o se asignó a este postulante.
+--   ocultar: todavía no se eligió a este postulante.
+CREATE OR REPLACE FUNCTION public.conversacion_rol(p_postulacion uuid, p_token uuid)
+RETURNS TABLE (rol text, abierta boolean, ocultar boolean)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT CASE
+           WHEN EXISTS (SELECT 1 FROM espacios e WHERE e.id = po.espacio_id AND e.dueno_id = auth.uid())
+             THEN 'desarrollador'
+           WHEN (b.cliente_id IS NOT NULL AND b.cliente_id = auth.uid())
+             OR (p_token IS NOT NULL AND p_token = b.eleccion_token)
+             THEN 'cliente'
+         END,
+         b.estado IN ('ABIERTO','EN_ELECCION')
+           OR (b.estado = 'ASIGNADO' AND b.asignado_espacio_id = po.espacio_id),
+         NOT (b.estado = 'ASIGNADO' AND b.asignado_espacio_id = po.espacio_id)
+  FROM postulaciones po JOIN bolsa_pedidos b ON b.id = po.pedido_id
+  WHERE po.id = p_postulacion
+$$;
+REVOKE ALL ON FUNCTION public.conversacion_rol(uuid, uuid) FROM PUBLIC;
+
+-- Abre la conversación: devuelve el rol, si está abierta y los mensajes, y
+-- marca como leídos los de la otra parte.
+CREATE OR REPLACE FUNCTION public.abrir_conversacion(p_postulacion uuid, p_token uuid DEFAULT NULL)
+RETURNS json
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  c record;
+BEGIN
+  SELECT * INTO c FROM conversacion_rol(p_postulacion, p_token);
+  IF c.rol IS NULL THEN RAISE EXCEPTION 'No tenés acceso a esta conversación'; END IF;
+
+  UPDATE mensajes SET leido_en = now()
+  WHERE postulacion_id = p_postulacion AND autor <> c.rol AND leido_en IS NULL;
+
+  RETURN json_build_object(
+    'rol', c.rol,
+    'abierta', c.abierta,
+    'mensajes', COALESCE((
+      SELECT json_agg(json_build_object(
+               'id', m.id, 'autor', m.autor, 'texto', m.texto,
+               'creado_en', m.creado_en, 'leido_en', m.leido_en) ORDER BY m.creado_en)
+      FROM mensajes m WHERE m.postulacion_id = p_postulacion
+    ), '[]'::json)
+  );
+END;
+$$;
+
+-- Envía un mensaje. El autor lo decide la base según quién llama; antes de la
+-- elección se ocultan los datos de contacto.
+CREATE OR REPLACE FUNCTION public.enviar_mensaje(p_postulacion uuid, p_texto text, p_token uuid DEFAULT NULL)
+RETURNS json
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  c record;
+  nuevo mensajes%ROWTYPE;
+BEGIN
+  SELECT * INTO c FROM conversacion_rol(p_postulacion, p_token);
+  IF c.rol IS NULL THEN RAISE EXCEPTION 'No tenés acceso a esta conversación'; END IF;
+  IF NOT c.abierta THEN RAISE EXCEPTION 'La conversación está cerrada'; END IF;
+  IF length(btrim(coalesce(p_texto, ''))) NOT BETWEEN 1 AND 2000 THEN
+    RAISE EXCEPTION 'El mensaje tiene que tener entre 1 y 2000 caracteres';
+  END IF;
+
+  INSERT INTO mensajes (postulacion_id, autor, texto)
+  VALUES (p_postulacion, c.rol, CASE WHEN c.ocultar THEN ocultar_contacto(btrim(p_texto)) ELSE btrim(p_texto) END)
+  RETURNING * INTO nuevo;
+
+  RETURN json_build_object('id', nuevo.id, 'autor', nuevo.autor, 'texto', nuevo.texto,
+                           'creado_en', nuevo.creado_en, 'leido_en', nuevo.leido_en);
+END;
+$$;
+
+-- Mensajes sin leer de la cuenta con sesión, por postulación (para los
+-- contadores del panel del desarrollador y de «Mis proyectos»).
+CREATE OR REPLACE FUNCTION public.mensajes_sin_leer()
+RETURNS TABLE (postulacion_id uuid, cantidad int)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT m.postulacion_id, count(*)::int
+  FROM mensajes m
+  JOIN postulaciones po ON po.id = m.postulacion_id
+  JOIN bolsa_pedidos b ON b.id = po.pedido_id
+  WHERE m.leido_en IS NULL
+    AND ((m.autor = 'cliente' AND EXISTS (SELECT 1 FROM espacios e WHERE e.id = po.espacio_id AND e.dueno_id = auth.uid()))
+      OR (m.autor = 'desarrollador' AND b.cliente_id = auth.uid()))
+  GROUP BY m.postulacion_id
+$$;
+
+-- Para la política de lectura (tiempo real): ¿esta cuenta participa de la
+-- conversación? SECURITY DEFINER porque postulaciones y bolsa_pedidos no se
+-- leen directo.
+CREATE OR REPLACE FUNCTION public.participa_de(p_postulacion uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM postulaciones po JOIN bolsa_pedidos b ON b.id = po.pedido_id
+    WHERE po.id = p_postulacion
+      AND (EXISTS (SELECT 1 FROM espacios e WHERE e.id = po.espacio_id AND e.dueno_id = auth.uid())
+           OR b.cliente_id = auth.uid())
+  )
+$$;
+
+ALTER TABLE mensajes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE mensajes FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON mensajes FROM anon, authenticated;
+-- Sólo lectura directa, y sólo de las conversaciones propias: la usa el
+-- tiempo real de Supabase. Escribir, sólo por enviar_mensaje().
+GRANT SELECT ON mensajes TO authenticated;
+DROP POLICY IF EXISTS mensajes_select_participantes ON mensajes;
+CREATE POLICY mensajes_select_participantes ON mensajes
+  FOR SELECT TO authenticated USING (participa_de(postulacion_id));
+GRANT SELECT, INSERT, UPDATE, DELETE ON mensajes TO service_role;
+-- n8n: el cron de avisos lee los sin leer y marca avisado_en.
+GRANT SELECT, UPDATE (avisado_en) ON mensajes TO n8n_writer;
+DROP POLICY IF EXISTS mensajes_select_n8n_writer ON mensajes;
+CREATE POLICY mensajes_select_n8n_writer ON mensajes FOR SELECT TO n8n_writer USING (true);
+DROP POLICY IF EXISTS mensajes_update_n8n_writer ON mensajes;
+CREATE POLICY mensajes_update_n8n_writer ON mensajes FOR UPDATE TO n8n_writer USING (true) WITH CHECK (true);
+
+REVOKE ALL ON FUNCTION public.abrir_conversacion(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.enviar_mensaje(uuid, text, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.mensajes_sin_leer() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.participa_de(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.abrir_conversacion(uuid, uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.enviar_mensaje(uuid, text, uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.mensajes_sin_leer() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.participa_de(uuid) TO authenticated;
+
+-- Tiempo real: el panel y «Mis proyectos» reciben los mensajes nuevos al
+-- instante (la RLS filtra: cada uno recibe sólo los suyos).
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime')
+     AND NOT EXISTS (SELECT 1 FROM pg_publication_tables
+                     WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'mensajes') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.mensajes;
+  END IF;
+END $$;

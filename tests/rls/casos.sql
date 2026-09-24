@@ -178,15 +178,15 @@ SELECT probar('anon NO puede borrar un lead',
   'WITH x AS (DELETE FROM leads WHERE lead_id = ''LD-TEST-0001'' RETURNING 1) SELECT count(*) FROM x',
   'permiso denegado');
 
--- ── 13. La RLS está habilitada Y forzada en las 13 tablas de negocio ───────
+-- ── 13. La RLS está habilitada Y forzada en las 14 tablas de negocio ───────
 -- No alcanza con que cada caso de arriba dé el resultado esperado: si a una
 -- tabla nueva se le olvida `ENABLE`/`FORCE ROW LEVEL SECURITY`, este es el
 -- único caso que lo detecta directo contra el catálogo, sin depender de que
 -- alguien se acuerde de sumarle sus propios casos de permisos.
-SELECT probar('las 13 tablas de negocio tienen RLS habilitada y forzada',
+SELECT probar('las 14 tablas de negocio tienen RLS habilitada y forzada',
   'service_role', NULL,
-  'SELECT count(*) FROM pg_class WHERE relname IN (''leads'',''facturas'',''seguimientos'',''logs'',''profiles'',''rate_limit_log'',''admin_emails'',''tickets'',''espacios'',''avisos'',''bolsa_pedidos'',''postulaciones'',''calificaciones'') AND relrowsecurity AND relforcerowsecurity',
-  '13 filas');
+  'SELECT count(*) FROM pg_class WHERE relname IN (''leads'',''facturas'',''seguimientos'',''logs'',''profiles'',''rate_limit_log'',''admin_emails'',''tickets'',''espacios'',''avisos'',''bolsa_pedidos'',''postulaciones'',''calificaciones'',''mensajes'') AND relrowsecurity AND relforcerowsecurity',
+  '14 filas');
 
 -- ── 14. seguimientos: mismo patrón de acceso que facturas ──────────────────
 SELECT probar('n8n_writer inserta un seguimiento',
@@ -806,6 +806,89 @@ SELECT probar('el sorteo respeta las estrellas: 4 contra 1 sale cerca del 80%',
 SELECT probar('un pedido sin postulaciones no sortea a nadie',
   'n8n_writer', NULL,
   'SELECT count(*) FROM (SELECT sortear_postulacion(gen_random_uuid()) AS id) x WHERE id IS NOT NULL', '0 filas');
+
+-- ── 28. Mensajes: cada conversación es de su cliente y su postulante ──────
+-- El proyecto de Marta (7777) de la sección 25 tiene las postulaciones del
+-- admin (1111) y de Pepe (2222).
+CREATE TEMP TABLE conv AS
+SELECT b.id AS pedido, b.eleccion_token AS token,
+       (SELECT po.id FROM postulaciones po JOIN espacios e ON e.id = po.espacio_id
+        WHERE po.pedido_id = b.id AND e.slug = 'estudio-pepe') AS de_pepe,
+       (SELECT po.id FROM postulaciones po JOIN espacios e ON e.id = po.espacio_id
+        WHERE po.pedido_id = b.id AND e.dueno_id = '11111111-1111-4111-8111-111111111111') AS del_admin
+FROM bolsa_pedidos b WHERE b.titulo = 'Tienda online para mi marca';
+GRANT SELECT ON conv TO PUBLIC;
+
+SELECT probar('la clienta le escribe a un postulante',
+  'authenticated', '77777777-7777-4777-8777-777777777777',
+  format('SELECT count(*) FROM (SELECT enviar_mensaje(%L, %L)) x', (SELECT de_pepe FROM conv),
+         'Hola Pepe, ¿me pasás tu cel? El mío es 11 5555 1234 y mi mail marta@gmail.com'),
+  '1 filas');
+SELECT probar('antes de elegir, el teléfono y el correo quedan ocultos',
+  'service_role', NULL,
+  'SELECT count(*) FROM mensajes WHERE autor = ''cliente'' AND texto LIKE ''%[dato oculto]%'' AND texto NOT LIKE ''%5555%'' AND texto NOT LIKE ''%@%''',
+  '1 filas');
+SELECT probar('el postulante también puede escribir (los dos inician)',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  format('SELECT count(*) FROM (SELECT enviar_mensaje(%L, %L)) x', (SELECT de_pepe FROM conv),
+         'Hola Marta, ¿la tienda necesita facturación electrónica?'),
+  '1 filas');
+SELECT probar('el postulante tiene 1 mensaje sin leer de la clienta',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'SELECT count(*) FROM mensajes_sin_leer() WHERE cantidad = 1', '1 filas');
+SELECT probar('al abrir la conversación ve los 2 mensajes como desarrollador',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  format('SELECT count(*) FROM (SELECT abrir_conversacion(%L) AS c) x WHERE c->>''rol'' = ''desarrollador'' AND json_array_length(c->''mensajes'') = 2',
+         (SELECT de_pepe FROM conv)),
+  '1 filas');
+SELECT probar('y quedan leídos',
+  'authenticated', '22222222-2222-4222-8222-222222222222', 'SELECT count(*) FROM mensajes_sin_leer()', '0 filas');
+SELECT probar('otro postulante NO puede abrir esa conversación',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  format('SELECT count(*) FROM (SELECT abrir_conversacion(%L)) x', (SELECT de_pepe FROM conv)),
+  'error: No tenés acceso a esta conversación');
+SELECT probar('ni leerla directo (0 filas)',
+  'authenticated', '11111111-1111-4111-8111-111111111111', 'SELECT count(*) FROM mensajes', '0 filas');
+SELECT probar('ni otra clienta',
+  'authenticated', '88888888-8888-4888-8888-888888888888',
+  format('SELECT count(*) FROM (SELECT enviar_mensaje(%L, %L)) x', (SELECT de_pepe FROM conv), 'hola'),
+  'error: No tenés acceso a esta conversación');
+SELECT probar('la clienta lee sus mensajes directo (tiempo real)',
+  'authenticated', '77777777-7777-4777-8777-777777777777', 'SELECT count(*) FROM mensajes', '2 filas');
+SELECT probar('nadie inserta mensajes directo (saltearía el ocultamiento)',
+  'authenticated', '77777777-7777-4777-8777-777777777777',
+  format('WITH x AS (INSERT INTO mensajes (postulacion_id, autor, texto) VALUES (%L, ''cliente'', ''11 5555 1234'') RETURNING 1) SELECT count(*) FROM x',
+         (SELECT de_pepe FROM conv)),
+  'permiso denegado');
+SELECT probar('anon NO lee la tabla',
+  'anon', NULL, 'SELECT count(*) FROM mensajes', 'permiso denegado');
+SELECT probar('anon con el token del enlace entra como cliente',
+  'anon', NULL,
+  format('SELECT count(*) FROM (SELECT abrir_conversacion(%L, %L) AS c) x WHERE c->>''rol'' = ''cliente''',
+         (SELECT de_pepe FROM conv), (SELECT token FROM conv)),
+  '1 filas');
+SELECT probar('anon con un token inventado, no',
+  'anon', NULL,
+  format('SELECT count(*) FROM (SELECT enviar_mensaje(%L, %L, %L)) x', (SELECT de_pepe FROM conv), 'hola', gen_random_uuid()),
+  'error: No tenés acceso a esta conversación');
+
+-- Después de elegir a Pepe: su conversación sigue, ya sin ocultar; la del
+-- admin se cierra.
+UPDATE bolsa_pedidos SET estado = 'ASIGNADO', asignado_espacio_id = (SELECT id FROM espacios WHERE slug = 'estudio-pepe')
+WHERE id = (SELECT pedido FROM conv);
+SELECT probar('con el elegido, los datos ya no se ocultan',
+  'authenticated', '77777777-7777-4777-8777-777777777777',
+  format('SELECT count(*) FROM (SELECT enviar_mensaje(%L, %L) AS m) x WHERE m->>''texto'' LIKE ''%%11 5555 1234%%''',
+         (SELECT de_pepe FROM conv), 'Ahora sí: mi cel es 11 5555 1234'),
+  '1 filas');
+SELECT probar('con los demás postulantes, la conversación se cierra',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  format('SELECT count(*) FROM (SELECT enviar_mensaje(%L, %L)) x', (SELECT del_admin FROM conv), '¿Sigue en pie?'),
+  'error: La conversación está cerrada');
+SELECT probar('n8n lee los mensajes para avisar',
+  'n8n_writer', NULL, 'SELECT count(*) FROM mensajes WHERE avisado_en IS NULL', '3 filas');
+SELECT probar('pero sólo puede marcar avisado_en, no cambiar el texto',
+  'n8n_writer', NULL, 'WITH x AS (UPDATE mensajes SET texto = ''otro'' RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
 
 -- ── Reporte ────────────────────────────────────────────────────────────────
 \o

@@ -25,6 +25,20 @@ export type ServicioTipo =
 
 export type BolsaEstado = "ABIERTO" | "EN_ELECCION" | "ASIGNADO" | "VENCIDO";
 
+export interface Mensaje {
+  id: string;
+  autor: "cliente" | "desarrollador";
+  texto: string;
+  creado_en: string;
+  leido_en: string | null;
+}
+
+export interface Conversacion {
+  rol: "cliente" | "desarrollador";
+  abierta: boolean;
+  mensajes: Mensaje[];
+}
+
 export type TierTipo = "HOT" | "WARM" | "COLD";
 
 export type LeadEstadoDb =
@@ -568,6 +582,23 @@ export interface Database {
           p_comentario: string | null;
         };
         Returns: string;
+      };
+      // Mensajes (etapa 9): una conversación por postulación.
+      abrir_conversacion: {
+        Args: {p_postulacion: string; p_token?: string | null};
+        Returns: Conversacion;
+      };
+      enviar_mensaje: {
+        Args: {
+          p_postulacion: string;
+          p_texto: string;
+          p_token?: string | null;
+        };
+        Returns: Mensaje;
+      };
+      mensajes_sin_leer: {
+        Args: Record<string, never>;
+        Returns: {postulacion_id: string; cantidad: number}[];
       };
       // El cliente publica su proyecto (sólo cuentas de cliente).
       publicar_proyecto: {
