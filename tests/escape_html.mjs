@@ -149,19 +149,44 @@ for (const nombre of NODOS_HTML) {
   check('Code - Decidir Pago Hito: el enlace al proyecto no se cierra antes de tiempo', !/href='[^']*'\s+onmouseover/i.test(html));
 }
 
+// Avisos de la línea de tiempo de los hitos (etapa 11): un evento de cada
+// tipo, con los textos libres hostiles (título del hito, nota de entrega,
+// motivo de la disputa, nombres). Cubre el correo al cliente y el mensaje del
+// aviso al desarrollador, que ya sale escapado de acá.
+{
+  const nodo = crm.nodes.find((n) => n.name === 'Code - Avisos de Hitos');
+  const tipos = ['entregado', 'aprobado', 'liberado_solo', 'disputado', 'resuelto', 'devuelto', 'anulado', 'reembolsado'];
+  const items = tipos.map((tipo, i) => ({json: {
+    evento_id: i + 1, tipo, detalle: PAYLOAD, orden: 1, titulo: PAYLOAD, monto: 500, monto_liberado: 200,
+    monto_reembolsado: 300, comision: 10, libera_en: '2026-10-05T00:00:00Z', lead_id: 'LD-1',
+    cliente_nombre: PAYLOAD, cliente_email: 'c@x.co', lead_estado: 'CERRADO', ultimo: true,
+    proyecto_token: "x' onmouseover='alert(1)", calificacion_token: '"><img src=x>',
+    espacio_nombre: PAYLOAD, espacio_email: 'd@x.co'}}));
+  const salida = new Function('$input', '$env', nodo.parameters.jsCode)({all: () => items}, {});
+  const texto = salida.map((r) => (r.json.cuerpo_html || '') + (r.json.mensaje || '')).join('\n');
+
+  check('Code - Avisos de Hitos: produce correos y avisos',
+    salida.some((r) => r.json.salida === 'correo') && salida.some((r) => r.json.salida === 'aviso'));
+  check('Code - Avisos de Hitos: una disputa es crítica', salida.some((r) => r.json.tipo === 'hito_disputado' && r.json.nivel === 'critico'));
+  check('Code - Avisos de Hitos: sin <iframe> crudo', !/<iframe/i.test(texto));
+  check('Code - Avisos de Hitos: sin <img> crudo', !/<img/i.test(texto));
+  check('Code - Avisos de Hitos: ningún href se cierra antes de tiempo', !/href="[^"]*"\s*>?<img|href='[^']*'\s+onmouseover/i.test(texto));
+}
+
 // Cualquier nodo Code nuevo que arme HTML tiene que sumarse a la lista de arriba.
 const armanHtml = crm.nodes.filter(
   (n) => n.type === 'n8n-nodes-base.code' && /<(p|div|table|b)[\s>]/.test(n.parameters.jsCode || ''),
 );
 
 for (const n of armanHtml) {
-  check('cubierto por el test: ' + n.name, NODOS_HTML.includes(n.name) || ['Code - HTML Confirmacion', 'Code - Decidir Pago', 'Code - Decidir Pago Hito'].includes(n.name));
+  check('cubierto por el test: ' + n.name, NODOS_HTML.includes(n.name) || ['Code - HTML Confirmacion', 'Code - Decidir Pago', 'Code - Decidir Pago Hito', 'Code - Avisos de Hitos'].includes(n.name));
 }
 
 // ── Expresiones {{ }} que van a Telegram (parse_mode HTML) o a Gmail ───────
 const CAMPO_LIBRE = /\.(nombre|cliente|mensaje|error_msg|detalle|wf_origen|message)\b/;
 // El detalle de este aviso ya sale escapado de Code - Resumen Facturas Vencidas.
-const YA_ESCAPADOS = new Set(['Telegram - Facturas Vencidas']);
+// Los de los hitos salen escapados de Code - Avisos de Hitos (cubierto arriba).
+const YA_ESCAPADOS = new Set(['Telegram - Facturas Vencidas', 'Aviso - Hitos al Desarrollador', 'Aviso - Disputa de Hito']);
 
 function textosHtml(wf) {
   const out = [];

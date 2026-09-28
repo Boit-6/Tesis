@@ -2,16 +2,16 @@
 
 import type {Database, Proyecto} from "@/types/supabase";
 
-import {useEffect, useRef, useState} from "react";
+import {useCallback, useEffect, useRef, useState} from "react";
 
 import FormPropuesta, {type HitosPropuesta} from "./form-propuesta";
+import HitosDesarrollador from "./hitos-desarrollador";
 import RechazoPedido from "./rechazo-pedido";
 import {Tag, formatDate, formatMoney} from "./dashboard-shared";
 import {ESTADO_COLOR, TIER_COLOR} from "./dashboard-types";
 import {EsqueletoLeadDetalle} from "./esqueletos";
 
 import {ghostButtonClass} from "@/lib/constants";
-import {ESTADO_HITO, usd} from "@/lib/hitos";
 import {presupuestoDeclarado} from "@/lib/presupuesto";
 import {createClient} from "@/lib/supabase/client";
 
@@ -98,6 +98,13 @@ export default function LeadDetalle({
     dialogRef.current?.showModal();
   }, []);
 
+  // Se vuelve a pedir después de cada acción sobre un hito.
+  const cargarProyecto = useCallback(() => {
+    supabase?.rpc("ver_proyecto", {p_lead: leadId}).then(({data}) => {
+      if (data) setProyecto(data);
+    });
+  }, [leadId, supabase]);
+
   useEffect(() => {
     if (!supabase) return;
 
@@ -114,14 +121,12 @@ export default function LeadDetalle({
         else setLead(data);
       });
 
-    supabase.rpc("ver_proyecto", {p_lead: leadId}).then(({data}) => {
-      if (vigente && data) setProyecto(data);
-    });
+    cargarProyecto();
 
     return () => {
       vigente = false;
     };
-  }, [leadId, supabase]);
+  }, [cargarProyecto, leadId, supabase]);
 
   const porEnviar = lead?.estado === "NUEVO" && (lead.tier === "HOT" || lead.tier === "WARM");
   const pedidoCambio = lead?.estado === "EN_SEGUIMIENTO" && Boolean(lead.notas);
@@ -233,25 +238,7 @@ export default function LeadDetalle({
                   )}
                 </dl>
                 {proyecto?.cobro_modo === "hitos" && proyecto.hitos.length > 0 && (
-                  <div className="mt-5">
-                    <p className="text-faint mb-2 text-[10px] tracking-[0.16em] uppercase">
-                      Por hitos · pago protegido
-                    </p>
-                    <ol className="border-rule-soft divide-rule-soft divide-y border-y">
-                      {proyecto.hitos.map((h) => (
-                        <li key={h.id} className="flex items-baseline gap-3 py-2.5 text-[14px]">
-                          <span className="text-mist w-4 text-right text-[12px] tabular-nums">
-                            {h.orden}.
-                          </span>
-                          <span className="text-ink-soft flex-1">{h.titulo}</span>
-                          <span className="text-mist text-[11px] tracking-[0.08em] uppercase">
-                            {ESTADO_HITO[h.estado]}
-                          </span>
-                          <span className="text-ink tabular-nums">{usd(h.monto)}</span>
-                        </li>
-                      ))}
-                    </ol>
-                  </div>
+                  <HitosDesarrollador proyecto={proyecto} onCambio={cargarProyecto} />
                 )}
               </div>
             )}

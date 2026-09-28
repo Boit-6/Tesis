@@ -1,4 +1,5 @@
 import {render, screen} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {beforeEach, describe, expect, it, vi} from "vitest";
 
 const rpc = vi.fn();
@@ -136,5 +137,71 @@ describe("ProyectoHitos", () => {
     render(<ProyectoHitos recienPagado token={TOKEN} />);
 
     expect(await screen.findByText(/El pago quedó registrado/)).toBeInTheDocument();
+  });
+
+  it("la clienta aprueba un hito entregado con el token, confirmando antes", async () => {
+    const entregado = hito({
+      estado: "ENTREGADO",
+      fondeado_en: "2026-09-20T00:00:00Z",
+      libera_en: "2026-10-05T12:00:00Z",
+      entrega_nota: "Figma listo",
+    });
+
+    rpc.mockImplementation((fn: string) =>
+      Promise.resolve(
+        fn === "ver_proyecto"
+          ? {data: proyecto([entregado]), error: null}
+          : {data: null, error: null},
+      ),
+    );
+    const user = userEvent.setup();
+
+    render(<ProyectoHitos recienPagado={false} token={TOKEN} />);
+
+    expect(await screen.findByText(/se libera solo el/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", {name: /Aprobar y liberar/}));
+    expect(rpc).not.toHaveBeenCalledWith("aprobar_hito", expect.anything());
+    await user.click(screen.getByRole("button", {name: "Sí, liberar"}));
+
+    expect(rpc).toHaveBeenCalledWith("aprobar_hito", {
+      p_hito: entregado.id,
+      p_token: TOKEN,
+    });
+    // Después de aprobar, vuelve a pedir el proyecto.
+    expect(rpc.mock.calls.filter(([fn]) => fn === "ver_proyecto").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("una disputa pide un motivo de al menos 10 caracteres", async () => {
+    rpc.mockImplementation((fn: string) =>
+      Promise.resolve(
+        fn === "ver_proyecto"
+          ? {
+              data: proyecto([
+                hito({
+                  estado: "FONDEADO",
+                  fondeado_en: "2026-09-20T00:00:00Z",
+                }),
+              ]),
+              error: null,
+            }
+          : {data: null, error: null},
+      ),
+    );
+    const user = userEvent.setup();
+
+    render(<ProyectoHitos recienPagado={false} token={TOKEN} />);
+    await user.click(await screen.findByRole("button", {name: "Algo no está bien"}));
+    const abrir = screen.getByRole("button", {name: "Abrir disputa"});
+
+    await user.type(screen.getByLabelText("Qué pasó con este hito"), "mal");
+    expect(abrir).toBeDisabled();
+    await user.type(screen.getByLabelText("Qué pasó con este hito"), " hecho el carrito");
+    await user.click(abrir);
+
+    expect(rpc).toHaveBeenCalledWith("disputar_hito", {
+      p_hito: "11111111-1111-4111-8111-111111111111",
+      p_motivo: "mal hecho el carrito",
+      p_token: TOKEN,
+    });
   });
 });

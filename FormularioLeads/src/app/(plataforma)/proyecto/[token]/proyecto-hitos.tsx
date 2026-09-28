@@ -88,7 +88,139 @@ function Resumen({proyecto}: {proyecto: Proyecto}) {
   );
 }
 
-function TarjetaHito({hito, token}: {hito: Hito; token: string}) {
+// Aprobar o disputar un hito pagado. Aprobar libera la plata y no se
+// deshace: pide confirmación en el mismo lugar.
+function RevisarHito({hito, token, onCambio}: {hito: Hito; token: string; onCambio: () => void}) {
+  const [supabase] = useState(() => createClient());
+  const [abierta, setAbierta] = useState<"aprobar" | "disputar" | null>(null);
+  const [motivo, setMotivo] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function ejecutar() {
+    if (!supabase || !abierta) return;
+    setEnviando(true);
+    setError(null);
+    const {error: err} =
+      abierta === "aprobar"
+        ? await supabase.rpc("aprobar_hito", {
+            p_hito: hito.id,
+            p_token: token,
+          })
+        : await supabase.rpc("disputar_hito", {
+            p_hito: hito.id,
+            p_motivo: motivo,
+            p_token: token,
+          });
+
+    setEnviando(false);
+    if (err) {
+      setError(err.message);
+
+      return;
+    }
+    setAbierta(null);
+    onCambio();
+  }
+
+  const botonClass =
+    "ease px-5 py-3 text-[11px] tracking-[0.16em] uppercase transition duration-200 disabled:cursor-not-allowed disabled:opacity-40";
+
+  return (
+    <div className="border-rule-soft mt-1 flex flex-col gap-3 border-t pt-4">
+      {hito.estado === "ENTREGADO" && hito.libera_en && (
+        <p className="text-ink-soft text-[13.5px] leading-relaxed">
+          Revisá la entrega. Si está bien, aprobala para liberar el pago; si no respondés, se libera
+          solo el <b>{fecha(hito.libera_en)}</b>.
+        </p>
+      )}
+      {abierta === null && (
+        <div className="flex flex-wrap items-center gap-4">
+          <button
+            className={`${botonClass} bg-ink text-paper hover:bg-moss`}
+            type="button"
+            onClick={() => setAbierta("aprobar")}
+          >
+            Aprobar y liberar {usd(hito.monto)}
+          </button>
+          <button
+            className="text-muted hover:text-brick text-[11px] tracking-[0.14em] uppercase"
+            type="button"
+            onClick={() => setAbierta("disputar")}
+          >
+            Algo no está bien
+          </button>
+        </div>
+      )}
+      {abierta === "aprobar" && (
+        <div className="flex flex-col gap-3">
+          <p className="text-ink-soft text-[13.5px]">
+            ¿Liberar {usd(hito.monto)}? La plata le llega al desarrollador y ya no se puede
+            disputar.
+          </p>
+          <div className="flex gap-4">
+            <button
+              className={`${botonClass} bg-moss text-paper`}
+              disabled={enviando}
+              type="button"
+              onClick={ejecutar}
+            >
+              {enviando ? "Liberando…" : "Sí, liberar"}
+            </button>
+            <button
+              className="text-muted text-[11px] tracking-[0.14em] uppercase"
+              type="button"
+              onClick={() => setAbierta(null)}
+            >
+              Volver
+            </button>
+          </div>
+        </div>
+      )}
+      {abierta === "disputar" && (
+        <div className="flex flex-col gap-3">
+          <p className="text-ink-soft text-[13.5px] leading-relaxed">
+            Contanos qué pasó. La plata queda retenida hasta que la plataforma revise el caso con
+            las dos partes.
+          </p>
+          <textarea
+            aria-label="Qué pasó con este hito"
+            className="ease border-rule bg-card text-ink placeholder-mist focus:border-ochre w-full resize-y border px-3 py-2.5 text-[14px] transition duration-200 outline-none"
+            maxLength={2000}
+            placeholder="Ej: el carrito no calcula los envíos"
+            rows={3}
+            value={motivo}
+            onChange={(e) => setMotivo(e.target.value)}
+          />
+          <div className="flex gap-4">
+            <button
+              className={`${botonClass} bg-brick text-paper`}
+              disabled={enviando || motivo.trim().length < 10}
+              type="button"
+              onClick={ejecutar}
+            >
+              {enviando ? "Enviando…" : "Abrir disputa"}
+            </button>
+            <button
+              className="text-muted text-[11px] tracking-[0.14em] uppercase"
+              type="button"
+              onClick={() => setAbierta(null)}
+            >
+              Volver
+            </button>
+          </div>
+        </div>
+      )}
+      {error && (
+        <p className="text-brick text-[13px]" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function TarjetaHito({hito, token, onCambio}: {hito: Hito; token: string; onCambio: () => void}) {
   const pagar = `${N8N_BASE}/webhook/hito-pagar?h=${encodeURIComponent(hito.id)}&t=${encodeURIComponent(token)}`;
 
   return (
@@ -129,6 +261,14 @@ function TarjetaHito({hito, token}: {hito: Hito; token: string}) {
         >
           Pagar {usd(hito.monto)}
         </a>
+      )}
+      {(hito.estado === "FONDEADO" || hito.estado === "ENTREGADO") && (
+        <RevisarHito hito={hito} token={token} onCambio={onCambio} />
+      )}
+      {hito.estado === "EN_DISPUTA" && (
+        <p className="text-brick text-[13.5px] leading-relaxed">
+          Abriste una disputa: la plataforma la está revisando. La plata sigue retenida.
+        </p>
       )}
     </li>
   );
@@ -229,7 +369,7 @@ export default function ProyectoHitos({
       <Resumen proyecto={proyecto} />
       <ol className="flex flex-col gap-4">
         {proyecto.hitos.map((h) => (
-          <TarjetaHito key={h.id} hito={h} token={token} />
+          <TarjetaHito key={h.id} hito={h} token={token} onCambio={cargar} />
         ))}
       </ol>
     </div>
