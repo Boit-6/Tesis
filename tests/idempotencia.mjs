@@ -185,10 +185,13 @@ try {
       score: 100,
       tier: 'HOT',
       espacio: '',
+      presupuesto_rango: '2000_5000',
+      compartir_bolsa: true,
       ...over,
     };
     return ejecutar(SQL_INSERT_LEAD, [l.lead_id, l.nombre, l.email, l.telefono, l.presupuesto,
-      l.urgencia, l.servicio, l.descripcion, l.fuente, l.score, l.tier, l.espacio]).length;
+      l.urgencia, l.servicio, l.descripcion, l.fuente, l.score, l.tier, l.espacio,
+      l.presupuesto_rango, l.compartir_bolsa]).length;
   };
 
   console.log('\n── S6 · Deduplicación por correo en la captación ──\n');
@@ -231,6 +234,10 @@ try {
   comprobar('el lead conserva su puntaje y su nivel',
     valor("SELECT score || '/' || tier FROM leads WHERE lead_id = 'LD-1000000000000-AAAA';") === '100/HOT');
 
+  comprobar('guarda el rango de presupuesto y el consentimiento de compartirlo en la bolsa',
+    valor("SELECT presupuesto_rango || '/' || compartir_bolsa FROM leads WHERE lead_id = 'LD-1000000000000-AAAA';")
+      === '2000_5000/true');
+
   // Pasada la ventana, el mismo correo vuelve a ser un lead legítimo: es una
   // consulta nueva del mismo interesado, no un doble clic.
   psql("UPDATE leads SET creado_en = now() - interval '30 minutes' WHERE email = 'juan@test.com';");
@@ -266,7 +273,7 @@ try {
     `SET ROLE n8n_writer;\n` +
     `PREPARE consulta AS ${SQL_INSERT_LEAD};\n` +
     `EXECUTE consulta(${[leadId, 'Doble Clic', correo, '', 1000, 'media', 'consultoria',
-      'Dos peticiones solapadas.', 'formulario_web', 50, 'WARM', ''].map(lit).join(', ')});\n`;
+      'Dos peticiones solapadas.', 'formulario_web', 50, 'WARM', '', '', false].map(lit).join(', ')});\n`;
 
   const correoCarrera = 'concurrente@test.com';
   const sesionA = psqlAsincrono(`BEGIN;\n${sentenciaLead('LD-3000000000000-AAAA', correoCarrera)}SELECT pg_sleep(2);\nCOMMIT;\n`);

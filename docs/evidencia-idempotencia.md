@@ -3,12 +3,12 @@
 | campo | valor |
 | --- | --- |
 | comando | `node tests/idempotencia.mjs` |
-| marca temporal (UTC) | 2026-09-23T16:56:59.282Z |
-| commit | 83cbf8e5c82c4b4f554c52b7967a8eeb2846de10 |
-| commit (corto) | 83cbf8e |
+| marca temporal (UTC) | 2026-09-28T17:36:01.466Z |
+| commit | 3fcad28a0b97c1f22e250b5ea3e36029188b2329 |
+| commit (corto) | 3fcad28 |
 | arbol de trabajo | CON CAMBIOS SIN CONFIRMAR |
 | codigo de salida | 0 |
-| duracion | 8.9 s |
+| duracion | 10.3 s |
 
 ## salida
 
@@ -23,8 +23,13 @@ OK    el segundo envío con el mismo correo NO crea un lead nuevo (doble clic)
 OK    y tampoco creó una segunda fila en la base
 OK    el correo se compara sin distinguir mayúsculas
 OK    otro interesado, con otro correo, sí entra
+OK    el mismo correo, en el formulario de OTRO espacio, sí entra
+OK    y queda en ese espacio, no en el del admin
+OK    el doble clic dentro de ese mismo espacio sigue sin duplicar
+OK    un formulario con una dirección que no existe no crea nada
 OK    la descripción con comas llegó entera (los parámetros no se partieron)
 OK    el lead conserva su puntaje y su nivel
+OK    guarda el rango de presupuesto y el consentimiento de compartirlo en la bolsa
 OK    vencida la ventana, el mismo correo vuelve a generar un lead
 OK    dos envíos SIMULTÁNEOS del mismo correo dejan un solo lead
 
@@ -44,12 +49,12 @@ OK    y una segunda pasada no vuelve a aplicarlo
 OK    reconciliado, el lead ya no aparece como pendiente
 OK    la factura recuperada entra al circuito de recordatorios de pago
 
-── Cobro por MercadoPago: ningún pago aprobado se pierde en silencio ──
+── Cobro por Stripe: ningún pago confirmado se pierde en silencio ──
 
 OK    un pago por el monto justo cobra la factura PENDIENTE
-OK    y queda registrado que la cobró MercadoPago
+OK    y queda registrado que la cobró Stripe, con su PaymentIntent
 OK    la notificación repetida del mismo pago no vuelve a aplicarse
-OK    y no genera alerta (MercadoPago reintenta: es ruido esperable)
+OK    y no genera alerta (Stripe reintenta: es ruido esperable)
 OK    un pago tardío cobra la factura VENCIDA (antes se perdía)
 OK    un pago sobre una factura ANULADA no la cobra
 OK    pero deja alerta: la plata ya entró
@@ -58,7 +63,7 @@ OK    y la alerta dice cuánto se pagó y cuánto se facturó
 OK    un pago en otra moneda tampoco la cobra
 OK    un segundo pago sobre una factura ya cobrada se detecta como pago doble
 OK    un pago que apunta a una factura inexistente deja alerta
-OK    un pago no aprobado (factura_id vacío) no toca nada ni alerta
+OK    un evento sin factura (factura_id vacío) no toca nada ni alerta
 OK    n8n_writer puede dejar la alerta en logs
 
 ── metrics_mensuales: una factura ANULADA no es facturación ──
@@ -78,5 +83,22 @@ OK    con el token vencido no se acepta
 OK    con el token vigente se acepta
 OK    y una segunda aceptación con el mismo token no vuelve a aplicar
 
-Resultado: 47 OK, 0 FALLA
+── Tickets: siembra del CRM y envejecimiento ──
+
+OK    sembrar dos veces el mismo ticket del proyecto no lo duplica
+OK    las etiquetas llegan como arreglo y la vista trae el cliente
+OK    el score crece con los días abierto (BAJA 10 + 2×11 = 32)
+OK    un ticket cerrado vale 0
+OK    el cron arma un resumen por espacio
+OK    el resumen de Ana tiene sólo su ticket, y lo escaló
+OK    el cron escala sólo al que superó lo que tolera su prioridad
+OK    sube un escalón y el reloj se reinicia
+OK    el cerrado y el reciente no se tocan
+OK    CRITICA es el tope: no escala, pero aparece en el resumen
+OK    el resumen cuenta los abiertos
+OK    correrlo de nuevo el mismo día no vuelve a escalar
+OK    pasar a HECHO lo cierra (cerrado_en)
+OK    reabrirlo limpia cerrado_en
+
+Resultado: 66 OK, 0 FALLA
 ```
