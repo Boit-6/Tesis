@@ -795,6 +795,8 @@ export interface Database {
           }[];
           // El token del propio proyecto: con él elige por el webhook bolsa-elegir.
           eleccion_token: string;
+          // Etapa 11: la página del proyecto ya asignado (/proyecto/<token>).
+          proyecto_token: string | null;
         }[];
       };
     };

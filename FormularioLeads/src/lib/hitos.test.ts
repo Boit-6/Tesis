@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest";
 
-import {hitosParaEnviar, leerMonto, problemaHitos, totalHitos} from "./hitos";
+import {hitosParaEnviar, leerMonto, problemaHitos, totalHitos, usd} from "./hitos";
 
 describe("leerMonto", () => {
   it("acepta enteros, punto y coma decimal", () => {
@@ -59,5 +59,12 @@ describe("hitosParaEnviar", () => {
     expect(hitosParaEnviar([{titulo: "  Diseño ", monto: "1,5"}])).toEqual([
       {titulo: "Diseño", monto: 1.5},
     ]);
+  });
+});
+
+describe("usd", () => {
+  it("sin centavos no muestra decimales; con centavos, siempre dos", () => {
+    expect(usd(1000)).toMatch(/^US\$\s?1\.000$/);
+    expect(usd(500.5)).toMatch(/^US\$\s?500,50$/);
   });
 });

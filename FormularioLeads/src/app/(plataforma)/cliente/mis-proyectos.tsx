@@ -113,11 +113,19 @@ function TarjetaProyecto({
       )}
 
       {proyecto.estado === "ASIGNADO" && elegida && (
-        <div>
+        <div className="flex flex-wrap items-center gap-4">
           <BotonMensajes
             sinLeer={sinLeer[elegida.id]}
             onClick={() => onMensajes(elegida.id, elegida.espacio)}
           />
+          {proyecto.proyecto_token && (
+            <a
+              className="text-ochre hover:text-ochre-deep text-[11px] tracking-[0.14em] uppercase underline-offset-4 hover:underline"
+              href={`/proyecto/${proyecto.proyecto_token}`}
+            >
+              Ver el proyecto y los pagos →
+            </a>
+          )}
         </div>
       )}
 

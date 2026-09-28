@@ -133,13 +133,29 @@ for (const nombre of NODOS_HTML) {
   check('Code - Decidir Pago: sin <iframe> crudo', !/<iframe/i.test(html));
 }
 
+// Lo mismo al pagar un hito (etapa 11), cuando el desarrollador todavía no
+// habilitó los cobros: la página nombra a su espacio.
+{
+  const nodo = crm.nodes.find((n) => n.name === 'Code - Decidir Pago Hito');
+  const item = {json: {id: '550e8400-e29b-41d4-a716-446655440000', orden: 1, titulo: PAYLOAD, monto: 300,
+    espacio_nombre: PAYLOAD, stripe_cobros_activos: false}};
+  const pedido = {json: {hito_id: item.json.id, proyecto_token: "x' onmouseover='alert(1)"}};
+  const salida = new Function('$input', '$', '$env', nodo.parameters.jsCode)(
+    {first: () => item}, () => ({first: () => pedido}), {STRIPE_SECRET_KEY: 'sk_test_x'});
+  const html = salida[0].json.html;
+
+  check('Code - Decidir Pago Hito: produce la página', html.includes('Todavía no se puede pagar'));
+  check('Code - Decidir Pago Hito: sin <iframe> crudo', !/<iframe/i.test(html));
+  check('Code - Decidir Pago Hito: el enlace al proyecto no se cierra antes de tiempo', !/href='[^']*'\s+onmouseover/i.test(html));
+}
+
 // Cualquier nodo Code nuevo que arme HTML tiene que sumarse a la lista de arriba.
 const armanHtml = crm.nodes.filter(
   (n) => n.type === 'n8n-nodes-base.code' && /<(p|div|table|b)[\s>]/.test(n.parameters.jsCode || ''),
 );
 
 for (const n of armanHtml) {
-  check('cubierto por el test: ' + n.name, NODOS_HTML.includes(n.name) || ['Code - HTML Confirmacion', 'Code - Decidir Pago'].includes(n.name));
+  check('cubierto por el test: ' + n.name, NODOS_HTML.includes(n.name) || ['Code - HTML Confirmacion', 'Code - Decidir Pago', 'Code - Decidir Pago Hito'].includes(n.name));
 }
 
 // ── Expresiones {{ }} que van a Telegram (parse_mode HTML) o a Gmail ───────

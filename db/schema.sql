@@ -1809,41 +1809,6 @@ $$;
 REVOKE ALL ON FUNCTION public.sortear_postulacion(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.sortear_postulacion(uuid) TO n8n_writer;
 
--- (Va al final: usa reputacion(), que depende de la tabla calificaciones.)
--- Los proyectos del cliente con sesión, con sus postulaciones (lo mismo que
--- ve en /elegir: marca del espacio, mensaje, precio y plazo) y a quién eligió.
--- `eleccion_token` es el del propio cliente: con él elige desde su panel por
--- el mismo webhook que el enlace del correo.
-DROP FUNCTION IF EXISTS public.mis_proyectos();
-CREATE FUNCTION public.mis_proyectos()
-RETURNS TABLE (
-  id uuid, titulo text, resumen text, servicio servicio_tipo, urgencia urgencia_tipo,
-  presupuesto_rango text, estado bolsa_estado, postulaciones int, tope_postulaciones int,
-  publicado_en timestamptz, vence_en timestamptz, elegido_nombre text, detalle json,
-  eleccion_token uuid
-)
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT b.id, b.titulo, b.resumen, b.servicio, b.urgencia, b.presupuesto_rango, b.estado,
-         b.postulaciones, b.tope_postulaciones, b.publicado_en, b.vence_en,
-         (SELECT e.nombre FROM espacios e WHERE e.id = b.asignado_espacio_id),
-         COALESCE((
-           SELECT json_agg(json_build_object(
-                    'id', p.id, 'espacio', e.nombre, 'mensaje', p.mensaje,
-                    'precio', p.precio_estimado, 'plazo', p.plazo,
-                    'slug', e.slug, 'promedio', r.promedio, 'calificaciones', r.cantidad,
-                    'elegida', p.espacio_id IS NOT DISTINCT FROM b.asignado_espacio_id)
-                  ORDER BY p.creado_en)
-           FROM postulaciones p JOIN espacios e ON e.id = p.espacio_id
-           CROSS JOIN LATERAL reputacion(e.id) r
-           WHERE p.pedido_id = b.id
-         ), '[]'::json),
-         b.eleccion_token
-  FROM bolsa_pedidos b
-  WHERE b.cliente_id = auth.uid()
-  ORDER BY b.publicado_en DESC
-$$;
-REVOKE ALL ON FUNCTION public.mis_proyectos() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION public.mis_proyectos() TO authenticated;
 
 -- =====================================================================
 -- 10) Mensajes (etapa 9, 24-sep-2026)
@@ -2704,3 +2669,45 @@ BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.hitos;
   END IF;
 END $$;
+
+-- =====================================================================
+-- Al final del archivo: usa reputacion() (sección 9) y leads.proyecto_token
+-- (sección 12), que en una base nueva todavía no existen más arriba.
+-- =====================================================================
+-- Los proyectos del cliente con sesión, con sus postulaciones (lo mismo que
+-- ve en /elegir: marca del espacio, mensaje, precio y plazo) y a quién eligió.
+-- `eleccion_token` es el del propio cliente: con él elige desde su panel por
+-- el mismo webhook que el enlace del correo. `proyecto_token` (etapa 11): el
+-- de la página del proyecto ya asignado.
+DROP FUNCTION IF EXISTS public.mis_proyectos();
+CREATE FUNCTION public.mis_proyectos()
+RETURNS TABLE (
+  id uuid, titulo text, resumen text, servicio servicio_tipo, urgencia urgencia_tipo,
+  presupuesto_rango text, estado bolsa_estado, postulaciones int, tope_postulaciones int,
+  publicado_en timestamptz, vence_en timestamptz, elegido_nombre text, detalle json,
+  eleccion_token uuid, proyecto_token uuid
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT b.id, b.titulo, b.resumen, b.servicio, b.urgencia, b.presupuesto_rango, b.estado,
+         b.postulaciones, b.tope_postulaciones, b.publicado_en, b.vence_en,
+         (SELECT e.nombre FROM espacios e WHERE e.id = b.asignado_espacio_id),
+         COALESCE((
+           SELECT json_agg(json_build_object(
+                    'id', p.id, 'espacio', e.nombre, 'mensaje', p.mensaje,
+                    'precio', p.precio_estimado, 'plazo', p.plazo,
+                    'slug', e.slug, 'promedio', r.promedio, 'calificaciones', r.cantidad,
+                    'elegida', p.espacio_id IS NOT DISTINCT FROM b.asignado_espacio_id)
+                  ORDER BY p.creado_en)
+           FROM postulaciones p JOIN espacios e ON e.id = p.espacio_id
+           CROSS JOIN LATERAL reputacion(e.id) r
+           WHERE p.pedido_id = b.id
+         ), '[]'::json),
+         b.eleccion_token,
+         -- Etapa 11: la página del proyecto elegido, donde paga los hitos.
+         (SELECT l.proyecto_token FROM leads l WHERE l.lead_id = b.lead_id)
+  FROM bolsa_pedidos b
+  WHERE b.cliente_id = auth.uid()
+  ORDER BY b.publicado_en DESC
+$$;
+REVOKE ALL ON FUNCTION public.mis_proyectos() FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.mis_proyectos() TO authenticated;

@@ -79,5 +79,21 @@ check('un pago diferido que después se acredita se aplica',
   (await conFirma(JSON.stringify({type: 'checkout.session.async_payment_succeeded',
     data: {object: {amount_total: 100, currency: 'usd', payment_intent: 'pi_2', client_reference_id: 'FAC-2026-X'}}}))).accion === 'aplicar');
 
+// ── Pago protegido por hitos (etapa 11) ────────────────────────────────────
+const HITO = '550e8400-e29b-41d4-a716-446655440000';
+const deHito = await conFirma(evento({id: 'cs_h', payment_intent: 'pi_h', amount_total: 50050, metadata: {hito_id: HITO}}));
+
+check('el pago de un hito va por la rama de hitos, no de facturas',
+  deHito.accion === 'hito' && deHito.hito_id === HITO && !deHito.factura_id, JSON.stringify(deHito));
+check('trae la sesión, el pago y el importe (500,50 USD)',
+  deHito.stripe_checkout_id === 'cs_h' && deHito.stripe_pago_id === 'pi_h' && deHito.monto_pagado === 500.5
+    && deHito.moneda_pagada === 'USD', JSON.stringify(deHito));
+check('un hito_id que no es un UUID no se toma como hito',
+  (await conFirma(evento({metadata: {hito_id: "x' OR 1=1"}}))).accion === 'ignorar');
+check('una sesión de hito sin pagar se ignora',
+  (await conFirma(evento({payment_status: 'unpaid', metadata: {hito_id: HITO}}))).accion === 'ignorar');
+check('un pago de hito con la firma alterada se rechaza igual',
+  (await verificar(evento({metadata: {hito_id: HITO}}), firmar(evento()))).accion === 'rechazar');
+
 console.log('\nResultado: ' + ok + ' OK, ' + fail + ' FAIL');
 process.exit(fail ? 1 : 0);

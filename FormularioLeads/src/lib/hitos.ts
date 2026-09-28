@@ -3,7 +3,7 @@
 // a 120 caracteres y monto de al menos US$ 1 con hasta dos decimales. Acá se
 // validan antes de mandar, para mostrar el error al lado del campo; la base
 // vuelve a validar igual.
-import type {HitoEstado} from "@/types/supabase";
+import type {HitoEstado, HitoEvento} from "@/types/supabase";
 
 export const MAX_HITOS = 10;
 
@@ -12,15 +12,21 @@ export interface HitoBorrador {
   monto: string;
 }
 
-const formatoUsd = new Intl.NumberFormat("es-AR", {
+const formatoEntero = new Intl.NumberFormat("es-AR", {
   style: "currency",
   currency: "USD",
-  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+});
+const formatoCentavos = new Intl.NumberFormat("es-AR", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
 
+// «US$ 300» o «US$ 500,50»: con centavos, siempre los dos decimales.
 export function usd(valor: number): string {
-  return formatoUsd.format(valor);
+  return (Math.round(valor * 100) % 100 ? formatoCentavos : formatoEntero).format(valor);
 }
 
 // El monto tal como lo escribió el desarrollador. Admite la coma decimal
@@ -75,4 +81,29 @@ export const ESTADO_HITO: Record<HitoEstado, string> = {
   LIBERADO: "Liberado",
   REEMBOLSADO: "Reembolsado",
   ANULADO: "Anulado",
+};
+
+// La línea de tiempo de cada hito.
+export const EVENTO_HITO: Record<HitoEvento["tipo"], string> = {
+  fondeado: "Pagado: la plata queda retenida",
+  entregado: "Entregado",
+  aprobado: "Aprobado: se libera al desarrollador",
+  liberado_solo: "Liberado solo (pasó el plazo sin respuesta)",
+  disputado: "Disputa abierta",
+  resuelto: "Disputa resuelta por la plataforma",
+  devuelto: "Devuelto al cliente",
+  anulado: "Anulado",
+  transferido: "Transferido al desarrollador",
+  reembolsado: "Reembolsado al cliente",
+};
+
+// Color del estado, con los tonos del tema.
+export const COLOR_HITO: Record<HitoEstado, string> = {
+  PENDIENTE: "text-mist",
+  FONDEADO: "text-ochre",
+  ENTREGADO: "text-ochre-deep",
+  EN_DISPUTA: "text-brick",
+  LIBERADO: "text-moss",
+  REEMBOLSADO: "text-muted",
+  ANULADO: "text-mist line-through",
 };

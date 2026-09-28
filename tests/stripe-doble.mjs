@@ -10,6 +10,14 @@
  *   GET  /v1/accounts/{id}                    → estado (charges_enabled, ...)
  *   POST /v1/checkout/sessions                → sesión de pago (destination charge)
  *   POST /v1/checkout/sessions/{id}/expire    → la expira (factura anulada)
+ *   POST /v1/transfers                        → transferencia a una cuenta conectada
+ *                                               (al liberar un hito, etapa 11)
+ *   POST /v1/refunds                          → reembolso de un pago (hito devuelto)
+ *
+ * Las sesiones sin transfer_data son cobros de la plataforma (pago protegido
+ * por hitos): la plata queda en la plataforma hasta que se transfiere aparte.
+ * Transferencias y reembolsos respetan Idempotency-Key: la misma clave
+ * devuelve el mismo objeto, como la API real.
  *
  * Y, del lado del navegador, lo que en Stripe hace una persona:
  *
@@ -52,6 +60,9 @@ let cuentas = new Map();   // acct_x -> cuenta
 let links = new Map();     // acct_x -> { return_url, refresh_url }
 let sesiones = new Map();  // cs_x   -> sesión
 let eventos = [];          // eventos enviados al webhook, con su respuesta
+let transferencias = [];   // tr_x
+let reembolsos = [];       // re_x
+let idempotencia = new Map(); // Idempotency-Key -> respuesta
 
 const id = (prefijo) => prefijo + '_' + randomBytes(8).toString('hex');
 
@@ -124,10 +135,12 @@ createServer(async (req, res) => {
 
   // ── Auxiliares ──
   if (ruta === '/__estado') {
-    return responder(res, 200, {cuentas: [...cuentas.values()], sesiones: [...sesiones.values()], eventos});
+    return responder(res, 200, {cuentas: [...cuentas.values()], sesiones: [...sesiones.values()], eventos,
+      transferencias, reembolsos});
   }
   if (ruta === '/__reset' && req.method === 'POST') {
     cuentas = new Map(); links = new Map(); sesiones = new Map(); eventos = [];
+    transferencias = []; reembolsos = []; idempotencia = new Map();
 
     return responder(res, 200, {ok: true});
   }
@@ -192,14 +205,17 @@ createServer(async (req, res) => {
     const item = datos.line_items?.['0'];
     const monto = Number(item?.price_data?.unit_amount);
 
-    if (!cuentas.get(destino)?.charges_enabled) return errorStripe(res, 400, 'The destination account cannot receive charges');
+    // Sin destino es un cobro de la plataforma (separate charges and transfers).
+    if (destino && !cuentas.get(destino)?.charges_enabled) {
+      return errorStripe(res, 400, 'The destination account cannot receive charges');
+    }
     if (!Number.isInteger(monto) || monto <= 0) return errorStripe(res, 400, 'Invalid unit_amount');
     const sesion = {id: id('cs'), object: 'checkout.session', mode: datos.mode, status: 'open', payment_status: 'unpaid',
       amount_total: monto * Number(item.quantity || 1), currency: item.price_data.currency,
       client_reference_id: datos.client_reference_id || null, metadata: datos.metadata || {},
       success_url: datos.success_url, cancel_url: datos.cancel_url, payment_intent: null,
       application_fee_amount: Number(datos.payment_intent_data?.application_fee_amount || 0),
-      transfer_destination: destino};
+      transfer_destination: destino || null, transfer_group: datos.payment_intent_data?.transfer_group || null};
 
     sesion.url = `${PUBLICO}/checkout/${sesion.id}`;
     sesiones.set(sesion.id, sesion);
@@ -216,6 +232,36 @@ createServer(async (req, res) => {
     sesion.status = 'expired';
 
     return responder(res, 200, sesion);
+  }
+
+  if (req.method === 'POST' && (ruta === '/v1/transfers' || ruta === '/v1/refunds')) {
+    const clave = req.headers['idempotency-key'];
+
+    if (clave && idempotencia.has(clave)) return responder(res, 200, idempotencia.get(clave));
+    const monto = Number(datos.amount);
+
+    if (!Number.isInteger(monto) || monto <= 0) return errorStripe(res, 400, 'Invalid amount');
+    let objeto;
+
+    if (ruta === '/v1/transfers') {
+      if (!cuentas.get(datos.destination)?.charges_enabled) return errorStripe(res, 400, 'No such destination account');
+      objeto = {id: id('tr'), object: 'transfer', amount: monto, currency: datos.currency, destination: datos.destination,
+        transfer_group: datos.transfer_group || null, metadata: datos.metadata || {}};
+      transferencias.push(objeto);
+    } else {
+      const pagada = [...sesiones.values()].find((x) => x.payment_intent === datos.payment_intent);
+
+      if (!pagada) return errorStripe(res, 404, 'No such payment_intent');
+      const yaDevuelto = reembolsos.filter((r) => r.payment_intent === datos.payment_intent).reduce((a, r) => a + r.amount, 0);
+
+      if (yaDevuelto + monto > pagada.amount_total) return errorStripe(res, 400, 'Refund amount is greater than unrefunded amount');
+      objeto = {id: id('re'), object: 'refund', amount: monto, payment_intent: datos.payment_intent, status: 'succeeded',
+        metadata: datos.metadata || {}};
+      reembolsos.push(objeto);
+    }
+    if (clave) idempotencia.set(clave, objeto);
+
+    return responder(res, 200, objeto);
   }
 
   return errorStripe(res, 404, `Unrecognized request URL (${req.method}: ${ruta})`);

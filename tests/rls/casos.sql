@@ -993,6 +993,9 @@ SELECT l.proyecto_token AS token,
 FROM leads l WHERE l.lead_id = 'LD-HITOS-0001';
 GRANT SELECT ON ph TO PUBLIC;
 
+SELECT probar('la clienta con cuenta llega a la página del proyecto desde mis_proyectos()',
+  'authenticated', '77777777-7777-4777-8777-777777777777',
+  format('SELECT count(*) FROM mis_proyectos() WHERE proyecto_token = %L', (SELECT token FROM ph)), '1 filas');
 SELECT probar('antes de que el cliente acepte, no se paga nada',
   'n8n_writer', NULL,
   format('SELECT count(*) FROM hito_para_cobrar(%L, %L)', (SELECT h1 FROM ph), (SELECT token FROM ph)), '0 filas');

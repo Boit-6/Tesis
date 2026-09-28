@@ -4003,7 +4003,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Eventos que Stripe manda al webhook de la plataforma. Con destination\n// charges la sesión de pago es de la cuenta de la plataforma, así que los\n// eventos llegan acá y no a un endpoint de Connect.\n//\n// Firma (Stripe-Signature: t=<unix>,v1=<hex>): HMAC SHA-256 de \"<t>.<cuerpo>\"\n// con STRIPE_WEBHOOK_SECRET, sobre el cuerpo CRUDO (por eso el webhook tiene\n// rawBody). Sin secreto configurado se falla cerrado: sin verificar la firma,\n// cualquiera podría dar por pagada una factura mandando un evento inventado.\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\nconst item = $input.first();\nconst headers = (item.json && item.json.headers) || {};\nlet crudo = '';\ntry {\n  const buf = await this.helpers.getBinaryDataBuffer(0, 'data');\n  crudo = buf.toString('utf8');\n} catch (e) {\n  const bin = item.binary && item.binary.data;\n  crudo = bin && bin.data ? Buffer.from(bin.data, 'base64').toString('utf8') : '';\n}\nconst rechazar = (motivo) => [{ json: { accion: 'rechazar', status: 400, motivo } }];\nconst secreto = leerEnv('STRIPE_WEBHOOK_SECRET', '');\nif (!secreto) return rechazar('STRIPE_WEBHOOK_SECRET sin configurar');\n// Sin crypto (NODE_FUNCTION_ALLOW_BUILTIN) no hay cómo verificar: se rechaza.\nlet crypto;\ntry { crypto = require('crypto'); } catch (e) { return rechazar('crypto no disponible en el nodo Code'); }\nconst partes = String(headers['stripe-signature'] || '').split(',').map((p) => p.split('='));\nconst t = (partes.find(([k]) => k === 't') || [])[1];\nconst firmas = partes.filter(([k]) => k === 'v1').map(([, v]) => v);\nif (!t || !firmas.length || !crudo) return rechazar('firma ausente');\n// Tolerancia de 5 minutos, como las librerías de Stripe: una firma vieja\n// reenviada (replay) no sirve.\nconst tolerancia = Number(leerEnv('STRIPE_WEBHOOK_TOLERANCIA_S', '300')) || 300;\nif (Math.abs(Math.floor(Date.now() / 1000) - Number(t)) > tolerancia) return rechazar('firma vencida');\nconst esperada = crypto.createHmac('sha256', secreto).update(t + '.' + crudo).digest('hex');\nconst igual = (a) => a.length === esperada.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(esperada));\nif (!firmas.some(igual)) return rechazar('firma inválida');\nlet evento;\ntry { evento = JSON.parse(crudo); } catch (e) { return rechazar('cuerpo inválido'); }\nconst s = (evento.data && evento.data.object) || {};\nconst pagado = (evento.type === 'checkout.session.completed' && s.payment_status === 'paid') || evento.type === 'checkout.session.async_payment_succeeded';\nconst facturaId = (s.metadata && s.metadata.factura_id) || s.client_reference_id || '';\nif (!pagado || !facturaId) return [{ json: { accion: 'ignorar', status: 200, tipo: evento.type } }];\nreturn [{ json: {\n  accion: 'aplicar',\n  factura_id: String(facturaId),\n  stripe_pago_id: String(s.payment_intent || s.id || ''),\n  monto_pagado: Number(s.amount_total) / 100,\n  moneda_pagada: String(s.currency || '').toUpperCase(),\n} }];"
+        "jsCode": "// Eventos que Stripe manda al webhook de la plataforma. Con destination\n// charges la sesión de pago es de la cuenta de la plataforma, así que los\n// eventos llegan acá y no a un endpoint de Connect.\n//\n// Firma (Stripe-Signature: t=<unix>,v1=<hex>): HMAC SHA-256 de \"<t>.<cuerpo>\"\n// con STRIPE_WEBHOOK_SECRET, sobre el cuerpo CRUDO (por eso el webhook tiene\n// rawBody). Sin secreto configurado se falla cerrado: sin verificar la firma,\n// cualquiera podría dar por pagada una factura mandando un evento inventado.\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\nconst item = $input.first();\nconst headers = (item.json && item.json.headers) || {};\nlet crudo = '';\ntry {\n  const buf = await this.helpers.getBinaryDataBuffer(0, 'data');\n  crudo = buf.toString('utf8');\n} catch (e) {\n  const bin = item.binary && item.binary.data;\n  crudo = bin && bin.data ? Buffer.from(bin.data, 'base64').toString('utf8') : '';\n}\nconst rechazar = (motivo) => [{ json: { accion: 'rechazar', status: 400, motivo } }];\nconst secreto = leerEnv('STRIPE_WEBHOOK_SECRET', '');\nif (!secreto) return rechazar('STRIPE_WEBHOOK_SECRET sin configurar');\n// Sin crypto (NODE_FUNCTION_ALLOW_BUILTIN) no hay cómo verificar: se rechaza.\nlet crypto;\ntry { crypto = require('crypto'); } catch (e) { return rechazar('crypto no disponible en el nodo Code'); }\nconst partes = String(headers['stripe-signature'] || '').split(',').map((p) => p.split('='));\nconst t = (partes.find(([k]) => k === 't') || [])[1];\nconst firmas = partes.filter(([k]) => k === 'v1').map(([, v]) => v);\nif (!t || !firmas.length || !crudo) return rechazar('firma ausente');\n// Tolerancia de 5 minutos, como las librerías de Stripe: una firma vieja\n// reenviada (replay) no sirve.\nconst tolerancia = Number(leerEnv('STRIPE_WEBHOOK_TOLERANCIA_S', '300')) || 300;\nif (Math.abs(Math.floor(Date.now() / 1000) - Number(t)) > tolerancia) return rechazar('firma vencida');\nconst esperada = crypto.createHmac('sha256', secreto).update(t + '.' + crudo).digest('hex');\nconst igual = (a) => a.length === esperada.length && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(esperada));\nif (!firmas.some(igual)) return rechazar('firma inválida');\nlet evento;\ntry { evento = JSON.parse(crudo); } catch (e) { return rechazar('cuerpo inválido'); }\nconst s = (evento.data && evento.data.object) || {};\nconst pagado = (evento.type === 'checkout.session.completed' && s.payment_status === 'paid') || evento.type === 'checkout.session.async_payment_succeeded';\n// Pago protegido por hitos (etapa 11): la sesión lleva metadata.hito_id y no\n// es de una factura.\nconst hitoId = String((s.metadata && s.metadata.hito_id) || '').toLowerCase();\nif (pagado && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(hitoId)) {\n  return [{ json: {\n    accion: 'hito',\n    hito_id: hitoId,\n    stripe_checkout_id: String(s.id || ''),\n    stripe_pago_id: String(s.payment_intent || s.id || ''),\n    monto_pagado: Number(s.amount_total) / 100,\n    moneda_pagada: String(s.currency || '').toUpperCase(),\n  } }];\n}\nconst facturaId = (s.metadata && s.metadata.factura_id) || s.client_reference_id || '';\nif (!pagado || !facturaId) return [{ json: { accion: 'ignorar', status: 200, tipo: evento.type } }];\nreturn [{ json: {\n  accion: 'aplicar',\n  factura_id: String(facturaId),\n  stripe_pago_id: String(s.payment_intent || s.id || ''),\n  monto_pagado: Number(s.amount_total) / 100,\n  moneda_pagada: String(s.currency || '').toUpperCase(),\n} }];"
       },
       "id": "mp-05-0000-4000-8000-aaaaaaaaaaaa",
       "name": "Code - Verificar Evento Stripe",
@@ -7816,6 +7816,434 @@
         620
       ],
       "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "httpMethod": "GET",
+        "path": "hito-pagar",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "8c67e4c5-75d6-4cf3-85d7-61a3ad5df4e6",
+      "name": "💳 Webhook - Pagar Hito",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        4600,
+        12100
+      ],
+      "webhookId": "87aea253-6903-4dc5-aafe-5a9989a817aa"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Enlace «Pagar» de la página del proyecto (?h=<hito>&t=<token del proyecto>).\n// Se valida la forma acá y el resto contra la base en el próximo nodo.\nconst q = $input.first().json.query || {};\nconst uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;\nconst hito = String(q.h || '').trim().toLowerCase();\nconst token = String(q.t || '').trim().toLowerCase();\nconst valido = uuid.test(hito) && uuid.test(token);\nreturn [{ json: { hito_id: valido ? hito : '', proyecto_token: valido ? token : '' } }];"
+      },
+      "id": "8c65e26d-3b62-492f-8046-41c39546df1e",
+      "name": "Code - Leer Pagar Hito",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4900,
+        12100
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT c.*, e.stripe_cobros_activos, $2 AS proyecto_token FROM hito_para_cobrar(NULLIF($1, '')::uuid, NULLIF($2, '')::uuid) c JOIN hitos h ON h.id = c.id JOIN espacios e ON e.id = h.espacio_id;",
+        "options": {
+          "queryReplacement": "={{ [$json.hito_id, $json.proyecto_token] }}"
+        }
+      },
+      "id": "0fb0ab46-6f1f-473e-af2c-5557010b4fd7",
+      "name": "Postgres - Buscar Hito a Pagar",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        5200,
+        12100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Qué hacer con el «Pagar» de un hito:\n//  - 'stripe': sesión de pago a nombre de la PLATAFORMA (sin transfer_data):\n//    la plata queda retenida y al liberar el hito se transfiere aparte a la\n//    cuenta del desarrollador (separate charges and transfers). transfer_group\n//    y metadata llevan el id del hito.\n//  - 'pagina': una explicación (ya pagado, no le toca todavía, o el\n//    desarrollador todavía no habilitó los cobros).\nconst esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;');\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\nconst h = $input.first().json || {};\nconst pedido = $('Code - Leer Pagar Hito').first().json;\nconst FRONT = leerEnv('FRONTEND_URL', 'http://localhost:3000').replace(/\\/+$/, '');\nconst proyecto = FRONT + '/proyecto/' + encodeURIComponent(pedido.proyecto_token || '');\nconst pagina = (status, titulo, texto) => ({ accion: 'pagina', status, html:\n  \"<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>\" + esc(titulo) + \"</title></head>\" +\n  \"<body style='font-family:Arial,Helvetica,sans-serif;background:#f5f2ea;color:#27272a;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0'>\" +\n  \"<div style='background:#fff;border:1px solid #e4e0d4;padding:40px;max-width:440px;margin:16px'><h1 style='font-size:22px;margin:0 0 12px'>\" + esc(titulo) + \"</h1>\" +\n  \"<p style='font-size:15px;line-height:1.6;color:#52525b;margin:0 0 20px'>\" + texto + \"</p>\" +\n  (pedido.proyecto_token ? \"<a href='\" + esc(proyecto) + \"' style='color:#8f5f22'>Volver al proyecto</a>\" : '') + \"</div></body></html>\" });\nlet salida;\nif (!h.id) {\n  salida = pagina(409, 'No se puede pagar este hito', 'Puede que ya esté pagado o que antes haya que pagar el anterior. Volvé a la página del proyecto para ver en qué está.');\n} else if (!leerEnv('STRIPE_SECRET_KEY', '')) {\n  salida = pagina(503, 'Pagos no disponibles', 'La plataforma todavía no tiene configurados los pagos online.');\n} else if (!h.stripe_cobros_activos) {\n  salida = pagina(200, 'Todavía no se puede pagar', esc(h.espacio_nombre) + ' todavía no habilitó los cobros en la plataforma. Te avisamos por correo apenas puedas pagar.');\n} else {\n  const svc = String(h.servicio || 'servicio').replace(/_/g, ' ');\n  const campos = {\n    mode: 'payment',\n    'line_items[0][quantity]': '1',\n    'line_items[0][price_data][currency]': 'usd',\n    'line_items[0][price_data][unit_amount]': String(Math.round(Number(h.monto) * 100)),\n    'line_items[0][price_data][product_data][name]': 'Hito ' + h.orden + ': ' + h.titulo + ' (' + svc + ', ' + h.espacio_nombre + ')',\n    'payment_intent_data[transfer_group]': h.id,\n    'payment_intent_data[metadata][hito_id]': h.id,\n    'metadata[hito_id]': h.id,\n    'metadata[lead_id]': h.lead_id,\n    customer_email: String(h.cliente_email || ''),\n    success_url: proyecto + '?pago=ok',\n    cancel_url: proyecto,\n  };\n  const form = Object.entries(campos).filter(([, v]) => v !== '').map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');\n  salida = { accion: 'stripe', stripe_form: form, hito_id: h.id };\n}\nreturn [{ json: salida }];"
+      },
+      "id": "20ff00f2-c9b1-45d1-9764-fb5808e1e925",
+      "name": "Code - Decidir Pago Hito",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5500,
+        12100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.accion }}",
+              "rightValue": "stripe",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cc804808-6619-427f-9f04-8e4508622d9c",
+      "name": "IF - Pagar Hito con Stripe?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5800,
+        12100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.STRIPE_API_BASE || 'https://api.stripe.com' }}/v1/checkout/sessions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $env.STRIPE_SECRET_KEY || '' }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/x-www-form-urlencoded",
+        "body": "={{ $json.stripe_form }}",
+        "options": {}
+      },
+      "name": "HTTP - Stripe Checkout Hito",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6100,
+        12000
+      ],
+      "onError": "continueRegularOutput",
+      "id": "21689c54-12ae-490b-a94c-9916fdaf6e5c"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE hitos SET stripe_checkout_id = $2 WHERE id = $1::uuid AND $2 <> '' RETURNING id;",
+        "options": {
+          "queryReplacement": "={{ [$('Code - Decidir Pago Hito').item.json.hito_id, $json.id || ''] }}"
+        }
+      },
+      "id": "5a607567-849a-4970-a6bc-ebbf0a5aafe7",
+      "name": "Postgres - Guardar Checkout Hito",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        6400,
+        12000
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $('HTTP - Stripe Checkout Hito').item.json.url ? '' : \"<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'></head><body style='font-family:Arial,sans-serif;padding:40px'><h1>No pudimos abrir el pago</h1><p>Probá de nuevo en unos minutos. Si sigue fallando, respondé el correo de la factura.</p></body></html>\" }}",
+        "options": {
+          "responseCode": "={{ $('HTTP - Stripe Checkout Hito').item.json.url ? 303 : 502 }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Location",
+                "value": "={{ $('HTTP - Stripe Checkout Hito').item.json.url || '' }}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Respond - Ir a Stripe (Hito)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        6700,
+        12000
+      ],
+      "id": "d550a648-dda4-4ac0-bc30-f3167a548fb6"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "={{ $json.html }}",
+        "options": {
+          "responseCode": "={{ $json.status }}",
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Location",
+                "value": "={{ $json.location || '' }}"
+              },
+              {
+                "name": "Content-Type",
+                "value": "text/html; charset=utf-8"
+              }
+            ]
+          }
+        }
+      },
+      "name": "Respond - Pago Hito Pagina",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        6100,
+        12220
+      ],
+      "id": "58942ebe-edd5-4d25-9dfa-28fed55a04ba"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.accion }}",
+              "rightValue": "hito",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2f1a6a47-71d6-4f43-a395-2afe3fc18041",
+      "name": "IF - Evento de Hito?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3200,
+        11950
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH ap AS (SELECT CASE WHEN $5 = 'USD' AND EXISTS (SELECT 1 FROM hitos WHERE id = $1::uuid AND monto = $4::numeric) THEN hito_fondeado($1::uuid, $2, $3) ELSE false END AS aplicado) SELECT ap.aplicado, h.id AS hito_id, h.lead_id, h.orden, h.titulo, h.monto, h.stripe_pago_id AS pago_registrado, l.nombre AS cliente, e.nombre AS espacio_nombre FROM ap LEFT JOIN hitos h ON h.id = $1::uuid LEFT JOIN leads l ON l.lead_id = h.lead_id LEFT JOIN espacios e ON e.id = h.espacio_id;",
+        "options": {
+          "queryReplacement": "={{ [$json.hito_id, $json.stripe_checkout_id, $json.stripe_pago_id, $json.monto_pagado, $json.moneda_pagada] }}"
+        }
+      },
+      "id": "e9f386f8-803f-4bd5-95b5-ac0f18be66e5",
+      "name": "Postgres - Fondear Hito",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3500,
+        11850
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      },
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"ok\": true }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "3b106832-2721-4abd-97fc-3ece41c47319",
+      "name": "Respond - Stripe OK (Hito)",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        3800,
+        11700
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.aplicado }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "0740fa3f-5580-4744-9847-92aae6f92585",
+      "name": "IF - Hito Fondeado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3800,
+        11950
+      ]
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "hito_fondeado",
+            "nivel": "atencion",
+            "mensaje": "=💰 <b>Hito pagado</b>\n{{ String($json.cliente || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }} pagó el hito {{ $json.orden }}: {{ String($json.titulo || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }} (US$ {{ $json.monto }}).\nLa plata queda retenida hasta que apruebe la entrega: ya podés empezar.",
+            "lead_id": "={{ $json.lead_id || '' }}",
+            "factura_id": "",
+            "espacio_id": ""
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "id": "5d488560-bbfa-4351-bac8-360cbabb85e9",
+      "name": "Aviso - Hito Fondeado",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        4100,
+        11850
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "INSERT INTO logs (workflow, lead_id, evento, nivel, detalle) SELECT 'cobro_stripe', $2, 'pago_hito_no_aplicado', 'ERROR', 'hito=' || $1 || ' pago_stripe=' || $3 || ' pagado=' || $4 || ' ' || $5 WHERE $3 <> $6;",
+        "options": {
+          "queryReplacement": "={{ [$('Code - Verificar Evento Stripe').item.json.hito_id, $json.lead_id || null, $('Code - Verificar Evento Stripe').item.json.stripe_pago_id, String($('Code - Verificar Evento Stripe').item.json.monto_pagado), $('Code - Verificar Evento Stripe').item.json.moneda_pagada, $json.pago_registrado || ''] }}"
+        }
+      },
+      "id": "36479e77-0fba-4197-9a7a-9f7c2288375b",
+      "name": "Postgres - Log Pago Hito No Aplicado",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        4100,
+        12100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
     }
   ],
   "connections": {
@@ -9650,7 +10078,7 @@
         ],
         [
           {
-            "node": "Respond - Evento Stripe Ignorado",
+            "node": "IF - Evento de Hito?",
             "type": "main",
             "index": 0
           }
@@ -10202,6 +10630,142 @@
         [
           {
             "node": "Gmail - Proyecto Hitos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "💳 Webhook - Pagar Hito": {
+      "main": [
+        [
+          {
+            "node": "Code - Leer Pagar Hito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Leer Pagar Hito": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Buscar Hito a Pagar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Buscar Hito a Pagar": {
+      "main": [
+        [
+          {
+            "node": "Code - Decidir Pago Hito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Decidir Pago Hito": {
+      "main": [
+        [
+          {
+            "node": "IF - Pagar Hito con Stripe?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Pagar Hito con Stripe?": {
+      "main": [
+        [
+          {
+            "node": "HTTP - Stripe Checkout Hito",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Pago Hito Pagina",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - Stripe Checkout Hito": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Guardar Checkout Hito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Guardar Checkout Hito": {
+      "main": [
+        [
+          {
+            "node": "Respond - Ir a Stripe (Hito)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Evento de Hito?": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Fondear Hito",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Evento Stripe Ignorado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Fondear Hito": {
+      "main": [
+        [
+          {
+            "node": "Respond - Stripe OK (Hito)",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "IF - Hito Fondeado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Hito Fondeado?": {
+      "main": [
+        [
+          {
+            "node": "Aviso - Hito Fondeado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Postgres - Log Pago Hito No Aplicado",
             "type": "main",
             "index": 0
           }

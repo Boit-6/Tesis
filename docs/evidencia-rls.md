@@ -3,12 +3,12 @@
 | campo | valor |
 | --- | --- |
 | comando | `node tests/verificar_rls.mjs` |
-| marca temporal (UTC) | 2026-09-28T17:43:23.890Z |
-| commit | 5b1bbb1e8f3173e7c5f8003c88014893d63aef1d |
-| commit (corto) | 5b1bbb1 |
+| marca temporal (UTC) | 2026-09-28T18:17:12.896Z |
+| commit | ea95147a63ba95a2f28a92ba14fe6ee0a6429a42 |
+| commit (corto) | ea95147 |
 | arbol de trabajo | CON CAMBIOS SIN CONFIRMAR |
 | codigo de salida | 0 |
-| duracion | 5.3 s |
+| duracion | 5.5 s |
 
 ## salida
 
@@ -275,8 +275,9 @@ Border style is 2.
 | 23 | OK     | nadie cambia un hito directo (saltearía las reglas)                                        | permiso denegado                                                                                 | permiso denegado                                                                                 |
 | 23 | OK     | n8n tampoco cambia el estado, sólo guarda la sesión de pago                                | permiso denegado                                                                                 | permiso denegado                                                                                 |
 | 23 | OK     | los eventos no se leen desde el panel                                                      | permiso denegado                                                                                 | permiso denegado                                                                                 |
+| 23 | OK     | la clienta con cuenta llega a la página del proyecto desde mis_proyectos()                 | 1 filas                                                                                          | 1 filas                                                                                          |
 | 23 | OK     | antes de que el cliente acepte, no se paga nada                                            | 0 filas                                                                                          | 0 filas                                                                                          |
-| 23 | OK     | aceptada, ya no se puede cambiar la forma de cobro                                         | error: La forma de cobro se define antes de que el cliente acepte                                | error: La forma de cobro se define antes de que el cliente acepte                                |
+| 24 | OK     | aceptada, ya no se puede cambiar la forma de cobro                                         | error: La forma de cobro se define antes de que el cliente acepte                                | error: La forma de cobro se define antes de que el cliente acepte                                |
 | 24 | OK     | no se paga el hito 2 antes que el 1                                                        | 0 filas                                                                                          | 0 filas                                                                                          |
 | 24 | OK     | ni con un token inventado                                                                  | 0 filas                                                                                          | 0 filas                                                                                          |
 | 24 | OK     | el hito 1, con el token del proyecto, sí                                                   | 1 filas                                                                                          | 1 filas                                                                                          |
@@ -286,7 +287,7 @@ Border style is 2.
 | 24 | OK     | la clienta con cuenta ve su proyecto como cliente                                          | 1 filas                                                                                          | 1 filas                                                                                          |
 | 24 | OK     | y le toca pagar el hito 2                                                                  | 1 filas                                                                                          | 1 filas                                                                                          |
 | 24 | OK     | el enlace con el token también abre el proyecto                                            | 1 filas                                                                                          | 1 filas                                                                                          |
-| 24 | OK     | con un token inventado, no                                                                 | error: No tenés acceso a este proyecto                                                           | error: No tenés acceso a este proyecto                                                           |
+| 25 | OK     | con un token inventado, no                                                                 | error: No tenés acceso a este proyecto                                                           | error: No tenés acceso a este proyecto                                                           |
 | 25 | OK     | ni otra clienta                                                                            | error: No tenés acceso a este proyecto                                                           | error: No tenés acceso a este proyecto                                                           |
 | 25 | OK     | la clienta no puede marcar una entrega                                                     | error: No tenés acceso a este hito                                                               | error: No tenés acceso a este hito                                                               |
 | 25 | OK     | el desarrollador entrega y corre el plazo de 7 días                                        | 1 filas                                                                                          | 1 filas                                                                                          |
@@ -296,7 +297,7 @@ Border style is 2.
 | 25 | OK     | n8n ve la transferencia pendiente: 285                                                     | 1 filas                                                                                          | 1 filas                                                                                          |
 | 25 | OK     | la registra una sola vez                                                                   | 1 filas                                                                                          | 1 filas                                                                                          |
 | 25 | OK     | una disputa necesita un motivo                                                             | error: Contá qué pasó (de 10 a 2000 caracteres)                                                  | error: Contá qué pasó (de 10 a 2000 caracteres)                                                  |
-| 25 | OK     | la clienta disputa el hito 2                                                               | 1 filas                                                                                          | 1 filas                                                                                          |
+| 26 | OK     | la clienta disputa el hito 2                                                               | 1 filas                                                                                          | 1 filas                                                                                          |
 | 26 | OK     | el desarrollador no resuelve disputas                                                      | error: Sólo el admin de la plataforma resuelve disputas                                          | error: Sólo el admin de la plataforma resuelve disputas                                          |
 | 26 | OK     | ni ve la lista de disputas                                                                 | error: Sólo el admin de la plataforma ve las disputas                                            | error: Sólo el admin de la plataforma ve las disputas                                            |
 | 26 | OK     | el admin ve la disputa abierta                                                             | 1 filas                                                                                          | 1 filas                                                                                          |
@@ -306,7 +307,7 @@ Border style is 2.
 | 26 | OK     | n8n ve los dos movimientos: 190 al desarrollador y 300.50 a la clienta                     | 2 filas                                                                                          | 2 filas                                                                                          |
 | 26 | OK     | antes del plazo, el cron no libera nada                                                    | 0 filas                                                                                          | 0 filas                                                                                          |
 | 26 | OK     | vencido el plazo, el cron lo libera solo                                                   | 1 filas                                                                                          | 1 filas                                                                                          |
-| 26 | OK     | con todos los hitos cerrados, el proyecto termina                                          | 1 filas                                                                                          | 1 filas                                                                                          |
+| 27 | OK     | con todos los hitos cerrados, el proyecto termina                                          | 1 filas                                                                                          | 1 filas                                                                                          |
 | 27 | OK     | la línea de tiempo registra cada paso                                                      | 7 filas                                                                                          | 7 filas                                                                                          |
 | 27 | OK     | el admin no resuelve una disputa de un proyecto suyo                                       | error: No podés resolver una disputa de un proyecto tuyo                                         | error: No podés resolver una disputa de un proyecto tuyo                                         |
 | 27 | OK     | pero como desarrollador puede devolver la plata                                            | 1 filas                                                                                          | 1 filas                                                                                          |
@@ -316,12 +317,12 @@ Border style is 2.
 | 27 | OK     | (n8n ve el reembolso de 50 pendiente)                                                      | 1 filas                                                                                          | 1 filas                                                                                          |
 | 27 | OK     | y el proyecto del admin, con todo devuelto o anulado, queda cerrado                        | 1 filas                                                                                          | 1 filas                                                                                          |
 +----+--------+--------------------------------------------------------------------------------------------+--------------------------------------------------------------------------------------------------+--------------------------------------------------------------------------------------------------+
-(277 rows)
+(278 rows)
 
 +----------+-----------------+
 | casos ok | casos con falla |
 +----------+-----------------+
-|      277 |               0 |
+|      278 |               0 |
 +----------+-----------------+
 (1 row)
 
