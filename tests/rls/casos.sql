@@ -932,6 +932,233 @@ SELECT probar('n8n lee los servicios y las alertas de cada espacio',
   'SELECT count(*) FROM espacios WHERE ''ecommerce'' = ANY (servicios) AND alerta_presupuesto_min = 1000 AND alertas_correo AND configurado_en IS NOT NULL',
   '1 filas');
 
+-- ── 30. Pago protegido por hitos (etapa 11) ────────────────────────────────
+-- El proyecto de Marta (7777) de la sección 28 quedó asignado a Pepe (2222):
+-- se le crea el lead, que es «de la plataforma». LD-PEPE-0001 es un cliente
+-- propio de Pepe y LD-TEST-0001, del admin (1111), que también es desarrollador.
+INSERT INTO leads (lead_id, espacio_id, nombre, email, presupuesto, urgencia, servicio, estado, score, tier)
+VALUES ('LD-HITOS-0001', (SELECT id FROM espacios WHERE slug = 'estudio-pepe'),
+        'Marta Gómez', 'marta@test.com', 1000, 'media', 'ecommerce', 'PROPUESTA_ENVIADA', 60, 'WARM')
+ON CONFLICT (lead_id) DO NOTHING;
+UPDATE bolsa_pedidos SET lead_id = 'LD-HITOS-0001' WHERE titulo = 'Tienda online para mi marca';
+
+SELECT probar('el desarrollador divide en hitos su proyecto de la plataforma',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  $q$SELECT count(*) FROM (SELECT definir_cobro('LD-HITOS-0001', '[{"titulo":"Diseño","monto":300},{"titulo":"Desarrollo","monto":"500.50"},{"titulo":"Publicación","monto":199.50,"descripcion":"Dominio y puesta en marcha"}]')) x$q$,
+  '1 filas');
+SELECT probar('en un proyecto de la plataforma no puede volver a la factura única',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  $q$SELECT count(*) FROM (SELECT definir_cobro('LD-HITOS-0001', '[]')) x$q$,
+  'error: Los proyectos que llegan por la plataforma se cobran por hitos');
+INSERT INTO leads (lead_id, espacio_id, nombre, email, presupuesto, urgencia, servicio, estado, score, tier)
+VALUES ('LD-HITOS-0003', (SELECT id FROM espacios WHERE slug = 'estudio-pepe'),
+        'Cliente propio de Pepe', 'propio@test.com', 800, 'media', 'desarrollo_web', 'NUEVO', 40, 'WARM')
+ON CONFLICT (lead_id) DO NOTHING;
+SELECT probar('con un cliente propio sí elige la factura única',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  $q$SELECT count(*) FROM (SELECT definir_cobro('LD-HITOS-0003', NULL) AS n) x WHERE n = 0$q$,
+  '1 filas');
+SELECT probar('otro desarrollador no define los hitos de un proyecto ajeno',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  $q$SELECT count(*) FROM (SELECT definir_cobro('LD-HITOS-0001', '[{"titulo":"Todo","monto":1}]')) x$q$,
+  'error: No tenés acceso a este proyecto');
+SELECT probar('un monto con tres decimales no se acepta',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  $q$SELECT count(*) FROM (SELECT definir_cobro('LD-HITOS-0001', '[{"titulo":"Diseño","monto":"10.555"}]')) x$q$,
+  'error: El monto del hito 1 tiene que ser de al menos US$ 1, con hasta dos decimales');
+SELECT probar('(vistos por n8n) quedaron 3 hitos al 5% y el lead cobra por hitos',
+  'n8n_writer', NULL,
+  $q$SELECT count(*) FROM hitos h JOIN leads l ON l.lead_id = h.lead_id WHERE h.lead_id = 'LD-HITOS-0001' AND h.comision_porcentaje = 5 AND l.cobro_modo = 'hitos'$q$,
+  '3 filas');
+SELECT probar('anon NO lee los hitos',
+  'anon', NULL, 'SELECT count(*) FROM hitos', 'permiso denegado');
+SELECT probar('el desarrollador lee los hitos de su espacio',
+  'authenticated', '22222222-2222-4222-8222-222222222222', 'SELECT count(*) FROM hitos', '3 filas');
+SELECT probar('otro desarrollador no ve hitos ajenos (0 filas)',
+  'authenticated', '11111111-1111-4111-8111-111111111111', 'SELECT count(*) FROM hitos', '0 filas');
+SELECT probar('nadie cambia un hito directo (saltearía las reglas)',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'WITH x AS (UPDATE hitos SET estado = ''LIBERADO'' RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
+SELECT probar('n8n tampoco cambia el estado, sólo guarda la sesión de pago',
+  'n8n_writer', NULL,
+  'WITH x AS (UPDATE hitos SET estado = ''FONDEADO'' RETURNING 1) SELECT count(*) FROM x', 'permiso denegado');
+SELECT probar('los eventos no se leen desde el panel',
+  'authenticated', '22222222-2222-4222-8222-222222222222', 'SELECT count(*) FROM hitos_eventos', 'permiso denegado');
+
+CREATE TEMP TABLE ph AS
+SELECT l.proyecto_token AS token,
+       (SELECT id FROM hitos WHERE lead_id = 'LD-HITOS-0001' AND orden = 1) AS h1,
+       (SELECT id FROM hitos WHERE lead_id = 'LD-HITOS-0001' AND orden = 2) AS h2,
+       (SELECT id FROM hitos WHERE lead_id = 'LD-HITOS-0001' AND orden = 3) AS h3
+FROM leads l WHERE l.lead_id = 'LD-HITOS-0001';
+GRANT SELECT ON ph TO PUBLIC;
+
+SELECT probar('antes de que el cliente acepte, no se paga nada',
+  'n8n_writer', NULL,
+  format('SELECT count(*) FROM hito_para_cobrar(%L, %L)', (SELECT h1 FROM ph), (SELECT token FROM ph)), '0 filas');
+-- El cliente acepta la propuesta (lo hace n8n con el enlace de /aceptar).
+UPDATE leads SET estado = 'ACEPTADO', fecha_aceptacion = now() WHERE lead_id = 'LD-HITOS-0001';
+SELECT probar('aceptada, ya no se puede cambiar la forma de cobro',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  $q$SELECT count(*) FROM (SELECT definir_cobro('LD-HITOS-0001', '[{"titulo":"Todo junto","monto":1000}]')) x$q$,
+  'error: La forma de cobro se define antes de que el cliente acepte');
+SELECT probar('no se paga el hito 2 antes que el 1',
+  'n8n_writer', NULL,
+  format('SELECT count(*) FROM hito_para_cobrar(%L, %L)', (SELECT h2 FROM ph), (SELECT token FROM ph)), '0 filas');
+SELECT probar('ni con un token inventado',
+  'n8n_writer', NULL,
+  format('SELECT count(*) FROM hito_para_cobrar(%L, %L)', (SELECT h1 FROM ph), gen_random_uuid()), '0 filas');
+SELECT probar('el hito 1, con el token del proyecto, sí',
+  'n8n_writer', NULL,
+  format('SELECT count(*) FROM hito_para_cobrar(%L, %L) WHERE monto = 300', (SELECT h1 FROM ph), (SELECT token FROM ph)), '1 filas');
+SELECT probar('el público no llama a las funciones de cobro',
+  'anon', NULL,
+  format('SELECT count(*) FROM hito_para_cobrar(%L, %L)', (SELECT h1 FROM ph), (SELECT token FROM ph)), 'permiso denegado');
+SELECT probar('Stripe confirma el pago: el hito queda fondeado',
+  'n8n_writer', NULL,
+  format('SELECT count(*) FROM (SELECT hito_fondeado(%L, ''cs_1'', ''pi_1'') AS f) x WHERE f', (SELECT h1 FROM ph)), '1 filas');
+SELECT probar('la misma confirmación dos veces no hace nada',
+  'n8n_writer', NULL,
+  format('SELECT count(*) FROM (SELECT hito_fondeado(%L, ''cs_1'', ''pi_1'') AS f) x WHERE NOT f', (SELECT h1 FROM ph)), '1 filas');
+SELECT probar('la clienta con cuenta ve su proyecto como cliente',
+  'authenticated', '77777777-7777-4777-8777-777777777777',
+  $q$SELECT count(*) FROM (SELECT ver_proyecto('LD-HITOS-0001') AS p) x WHERE p->>'rol' = 'cliente' AND json_array_length(p->'hitos') = 3 AND (p->>'de_plataforma')::boolean$q$,
+  '1 filas');
+SELECT probar('y le toca pagar el hito 2',
+  'authenticated', '77777777-7777-4777-8777-777777777777',
+  $q$SELECT count(*) FROM json_array_elements((SELECT ver_proyecto('LD-HITOS-0001'))->'hitos') h WHERE (h->>'puede_pagar')::boolean AND (h->>'orden')::int = 2$q$,
+  '1 filas');
+SELECT probar('el enlace con el token también abre el proyecto',
+  'anon', NULL,
+  format('SELECT count(*) FROM (SELECT ver_proyecto(NULL, %L) AS p) x WHERE p->>''rol'' = ''cliente''', (SELECT token FROM ph)), '1 filas');
+SELECT probar('con un token inventado, no',
+  'anon', NULL,
+  format('SELECT count(*) FROM (SELECT ver_proyecto(NULL, %L) AS p) x WHERE p IS NOT NULL', gen_random_uuid()), 'error: No tenés acceso a este proyecto');
+SELECT probar('ni otra clienta',
+  'authenticated', '88888888-8888-4888-8888-888888888888',
+  $q$SELECT count(*) FROM (SELECT ver_proyecto('LD-HITOS-0001') AS p) x WHERE p IS NOT NULL$q$, 'error: No tenés acceso a este proyecto');
+SELECT probar('la clienta no puede marcar una entrega',
+  'authenticated', '77777777-7777-4777-8777-777777777777',
+  format('SELECT count(*) FROM (SELECT entregar_hito(%L, ''Listo el diseño'')) x', (SELECT h1 FROM ph)),
+  'error: No tenés acceso a este hito');
+SELECT probar('el desarrollador entrega y corre el plazo de 7 días',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  format('SELECT count(*) FROM (SELECT entregar_hito(%L, ''Diseño aprobado en Figma'') AS t) x WHERE t BETWEEN now() + interval ''6 days 23 hours'' AND now() + interval ''7 days 1 hour''', (SELECT h1 FROM ph)),
+  '1 filas');
+SELECT probar('el desarrollador no se aprueba a sí mismo',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  format('SELECT count(*) FROM (SELECT aprobar_hito(%L)) x', (SELECT h1 FROM ph)), 'error: No tenés acceso a este hito');
+SELECT probar('la clienta aprueba con el token del enlace',
+  'anon', NULL,
+  format('SELECT count(*) FROM (SELECT aprobar_hito(%L, %L)) x', (SELECT h1 FROM ph), (SELECT token FROM ph)), '1 filas');
+SELECT probar('queda liberado: 300 al desarrollador y 15 de comisión',
+  'service_role', NULL,
+  format('SELECT count(*) FROM hitos WHERE id = %L AND estado = ''LIBERADO'' AND monto_liberado = 300 AND comision = 15 AND libera_en IS NULL', (SELECT h1 FROM ph)),
+  '1 filas');
+SELECT probar('n8n ve la transferencia pendiente: 285',
+  'n8n_writer', NULL,
+  format('SELECT count(*) FROM hitos_por_mover() WHERE id = %L AND movimiento = ''transferir'' AND importe = 285', (SELECT h1 FROM ph)),
+  '1 filas');
+SELECT probar('la registra una sola vez',
+  'n8n_writer', NULL,
+  format('SELECT count(*) FROM (SELECT hito_movido(%L, ''transferir'', ''tr_1'') AS a, hito_movido(%L, ''transferir'', ''tr_2'') AS b) x WHERE a AND NOT b',
+         (SELECT h1 FROM ph), (SELECT h1 FROM ph)),
+  '1 filas');
+
+-- Hito 2: se paga y la clienta lo disputa.
+SELECT hito_fondeado((SELECT h2 FROM ph), 'cs_2', 'pi_2');
+SELECT probar('una disputa necesita un motivo',
+  'authenticated', '77777777-7777-4777-8777-777777777777',
+  format('SELECT count(*) FROM (SELECT disputar_hito(%L, ''mal'')) x', (SELECT h2 FROM ph)),
+  'error: Contá qué pasó (de 10 a 2000 caracteres)');
+SELECT probar('la clienta disputa el hito 2',
+  'authenticated', '77777777-7777-4777-8777-777777777777',
+  format('SELECT count(*) FROM (SELECT disputar_hito(%L, ''El carrito no calcula los envíos.'')) x', (SELECT h2 FROM ph)),
+  '1 filas');
+SELECT probar('el desarrollador no resuelve disputas',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  format('SELECT count(*) FROM (SELECT resolver_disputa(%L, 500.50, ''Está todo bien'')) x', (SELECT h2 FROM ph)),
+  'error: Sólo el admin de la plataforma resuelve disputas');
+SELECT probar('ni ve la lista de disputas',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  'SELECT count(*) FROM disputas_abiertas()', 'error: Sólo el admin de la plataforma ve las disputas');
+SELECT probar('el admin ve la disputa abierta',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  'SELECT count(*) FROM disputas_abiertas() WHERE espacio_nombre IS NOT NULL', '1 filas');
+SELECT probar('y la ve en el proyecto como admin',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  $q$SELECT count(*) FROM (SELECT ver_proyecto('LD-HITOS-0001') AS p) x WHERE p->>'rol' = 'admin'$q$, '1 filas');
+SELECT probar('no puede liberar más que el monto',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  format('SELECT count(*) FROM (SELECT resolver_disputa(%L, 600, ''Todo al desarrollador'')) x', (SELECT h2 FROM ph)),
+  'error: Lo que se libera tiene que estar entre 0 y el monto del hito');
+SELECT probar('la resuelve en partes: 200 al desarrollador',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  format('SELECT count(*) FROM (SELECT resolver_disputa(%L, 200, ''Se entregó la mitad del carrito'')) x', (SELECT h2 FROM ph)),
+  '1 filas');
+SELECT probar('n8n ve los dos movimientos: 190 al desarrollador y 300.50 a la clienta',
+  'n8n_writer', NULL,
+  format('SELECT count(*) FROM hitos_por_mover() WHERE id = %L AND ((movimiento = ''transferir'' AND importe = 190) OR (movimiento = ''reembolsar'' AND importe = 300.50))', (SELECT h2 FROM ph)),
+  '2 filas');
+
+-- Hito 3: se paga y se entrega; la clienta no contesta.
+SELECT hito_fondeado((SELECT h3 FROM ph), 'cs_3', 'pi_3');
+SET request.jwt.claims = '{"sub":"22222222-2222-4222-8222-222222222222"}';
+SELECT entregar_hito((SELECT h3 FROM ph), 'Tienda publicada en el dominio');
+RESET request.jwt.claims;
+SELECT probar('antes del plazo, el cron no libera nada',
+  'n8n_writer', NULL, 'SELECT count(*) FROM liberar_vencidos()', '0 filas');
+UPDATE hitos SET libera_en = now() - interval '1 minute' WHERE id = (SELECT h3 FROM ph);
+SELECT probar('vencido el plazo, el cron lo libera solo',
+  'n8n_writer', NULL, 'SELECT count(*) FROM liberar_vencidos()', '1 filas');
+SELECT probar('con todos los hitos cerrados, el proyecto termina',
+  'service_role', NULL,
+  $q$SELECT count(*) FROM leads WHERE lead_id = 'LD-HITOS-0001' AND estado = 'CERRADO' AND fecha_cierre IS NOT NULL$q$, '1 filas');
+SELECT probar('la línea de tiempo registra cada paso',
+  'n8n_writer', NULL,
+  $q$SELECT count(*) FROM (SELECT DISTINCT tipo FROM hitos_eventos WHERE lead_id = 'LD-HITOS-0001') x$q$, '7 filas');
+
+-- El admin también es desarrollador: una disputa de su proyecto no la
+-- resuelve él.
+INSERT INTO leads (lead_id, espacio_id, nombre, email, presupuesto, urgencia, servicio, estado, score, tier)
+VALUES ('LD-HITOS-0002', (SELECT id FROM espacios WHERE dueno_id = '11111111-1111-4111-8111-111111111111'),
+        'Cliente del admin', 'cliente-admin@test.com', 150, 'baja', 'soporte', 'NUEVO', 20, 'COLD')
+ON CONFLICT (lead_id) DO NOTHING;
+SET request.jwt.claims = '{"sub":"11111111-1111-4111-8111-111111111111"}';
+SELECT definir_cobro('LD-HITOS-0002', '[{"titulo":"Primera parte","monto":100},{"titulo":"Segunda parte","monto":50}]');
+RESET request.jwt.claims;
+UPDATE leads SET estado = 'ACEPTADO' WHERE lead_id = 'LD-HITOS-0002';
+SELECT hito_fondeado((SELECT id FROM hitos WHERE lead_id = 'LD-HITOS-0002' AND orden = 1), 'cs_4', 'pi_4');
+SELECT disputar_hito((SELECT id FROM hitos WHERE lead_id = 'LD-HITOS-0002' AND orden = 1), 'No se entregó nada todavía.',
+                     (SELECT proyecto_token FROM leads WHERE lead_id = 'LD-HITOS-0002'));
+SELECT probar('el admin no resuelve una disputa de un proyecto suyo',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  $q$SELECT count(*) FROM (SELECT resolver_disputa((SELECT id FROM hitos WHERE lead_id = 'LD-HITOS-0002' AND orden = 1), 100, 'Me lo quedo')) x$q$,
+  'error: No podés resolver una disputa de un proyecto tuyo');
+SELECT probar('pero como desarrollador puede devolver la plata',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  $q$SELECT count(*) FROM (SELECT devolver_hito((SELECT id FROM hitos WHERE lead_id = 'LD-HITOS-0002' AND orden = 1), 'Tiene razón')) x$q$,
+  '1 filas');
+SELECT probar('no se anula un hito ajeno',
+  'authenticated', '22222222-2222-4222-8222-222222222222',
+  $q$SELECT count(*) FROM (SELECT anular_hito((SELECT id FROM hitos WHERE lead_id = 'LD-HITOS-0002' AND orden = 2))) x$q$,
+  'error: No tenés acceso a este hito');
+SELECT probar('el propio, sin pagar, sí',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  $q$SELECT count(*) FROM (SELECT anular_hito((SELECT id FROM hitos WHERE lead_id = 'LD-HITOS-0002' AND orden = 2))) x$q$,
+  '1 filas');
+SELECT probar('un pago que llega después de anulado queda para devolver entero',
+  'n8n_writer', NULL,
+  $q$SELECT count(*) FROM (SELECT hito_fondeado((SELECT id FROM hitos WHERE lead_id = 'LD-HITOS-0002' AND orden = 2), 'cs_5', 'pi_5') AS f) x WHERE f$q$,
+  '1 filas');
+SELECT probar('(n8n ve el reembolso de 50 pendiente)',
+  'n8n_writer', NULL,
+  $q$SELECT count(*) FROM hitos_por_mover() m JOIN hitos h ON h.id = m.id WHERE h.lead_id = 'LD-HITOS-0002' AND h.orden = 2 AND m.movimiento = 'reembolsar' AND m.importe = 50$q$,
+  '1 filas');
+SELECT probar('y el proyecto del admin, con todo devuelto o anulado, queda cerrado',
+  'service_role', NULL,
+  $q$SELECT count(*) FROM leads WHERE lead_id = 'LD-HITOS-0002' AND estado = 'CERRADO'$q$, '1 filas');
+
 -- ── Reporte ────────────────────────────────────────────────────────────────
 \o
 \pset border 2

@@ -2074,3 +2074,633 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
 $$;
 REVOKE ALL ON FUNCTION public.directorio_publico(servicio_tipo, text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.directorio_publico(servicio_tipo, text) TO anon, authenticated;
+
+-- =====================================================================
+-- 12) Pago protegido por hitos (etapa 11, 28-sep-2026)
+-- =====================================================================
+-- El desarrollador divide el proyecto en hitos. El cliente paga cada uno por
+-- adelantado y la plataforma retiene la plata hasta que el cliente aprueba la
+-- entrega: recién ahí se le transfiere al desarrollador, menos la comisión.
+-- Si el cliente no aprueba ni disputa, la entrega se libera sola a los 7 días
+-- (app.hitos_dias_liberacion). Una disputa la resuelve el admin de la
+-- plataforma: libera, reembolsa o parte el monto.
+--
+-- Es obligatorio en los proyectos que llegaron por la plataforma (la bolsa o
+-- /publicar). Con sus clientes propios, el desarrollador elige entre hitos y
+-- la factura única de siempre.
+--
+-- La base decide y registra; la plata la mueve n8n con Stripe (la plataforma
+-- cobra y, al liberar, transfiere aparte a la cuenta del desarrollador). Una
+-- decisión que mueve plata deja la marca pendiente (monto_liberado sin
+-- stripe_transfer_id, monto_reembolsado sin stripe_reembolso_id) y el cron de
+-- n8n la ejecuta, con el id del hito como clave de idempotencia en Stripe.
+--
+-- Nadie escribe estas tablas directo: todo pasa por las funciones de abajo,
+-- que deciden quién es el que llama (desarrollador, cliente o admin) y qué
+-- puede hacer en cada estado.
+
+-- 'factura': la factura única de siempre. 'hitos': pago protegido.
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS cobro_modo TEXT NOT NULL DEFAULT 'factura';
+DO $$ BEGIN
+  ALTER TABLE leads ADD CONSTRAINT chk_leads_cobro_modo CHECK (cobro_modo IN ('factura','hitos'));
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+-- Enlace de la página del proyecto (/proyecto/<token>): ahí el cliente sin
+-- cuenta paga, aprueba y disputa los hitos. El que tiene cuenta entra también
+-- desde «Mis proyectos».
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS proyecto_token UUID NOT NULL DEFAULT gen_random_uuid();
+CREATE UNIQUE INDEX IF NOT EXISTS idx_leads_proyecto_token ON leads (proyecto_token);
+
+-- PENDIENTE → FONDEADO → ENTREGADO → LIBERADO, con dos desvíos: EN_DISPUTA
+-- (lo resuelve el admin) y REEMBOLSADO. ANULADO: el desarrollador lo sacó
+-- antes de que se pagara.
+DO $$ BEGIN CREATE TYPE hito_estado AS ENUM
+  ('PENDIENTE','FONDEADO','ENTREGADO','EN_DISPUTA','LIBERADO','REEMBOLSADO','ANULADO');
+EXCEPTION WHEN duplicate_object THEN null; END $$;
+
+CREATE TABLE IF NOT EXISTS hitos (
+  id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  -- RESTRICT, como las facturas: es registro de plata.
+  lead_id             TEXT NOT NULL REFERENCES leads(lead_id) ON DELETE RESTRICT,
+  -- Siempre el del lead: lo fija trg_hitos_espacio.
+  espacio_id          UUID NOT NULL REFERENCES espacios(id),
+  orden               SMALLINT NOT NULL CHECK (orden BETWEEN 1 AND 10),
+  titulo              TEXT NOT NULL CHECK (length(btrim(titulo)) BETWEEN 3 AND 120),
+  descripcion         TEXT CHECK (descripcion IS NULL OR length(descripcion) <= 1000),
+  monto               NUMERIC(12,2) NOT NULL CHECK (monto >= 1),
+  -- Se fija al crear el hito (app.comision_hitos, 5 por defecto): cambiar la
+  -- comisión de la plataforma no toca lo ya acordado.
+  comision_porcentaje NUMERIC(5,2) NOT NULL CHECK (comision_porcentaje BETWEEN 0 AND 50),
+  estado              hito_estado NOT NULL DEFAULT 'PENDIENTE',
+  -- Cobro: la sesión de pago la crea n8n cuando el cliente toca «Pagar».
+  stripe_checkout_id  TEXT,
+  stripe_pago_id      TEXT,
+  fondeado_en         TIMESTAMPTZ,
+  -- Entrega: qué entregó el desarrollador y hasta cuándo puede el cliente
+  -- aprobar o disputar antes de que se libere sola.
+  entrega_nota        TEXT CHECK (entrega_nota IS NULL OR length(entrega_nota) <= 2000),
+  entregado_en        TIMESTAMPTZ,
+  libera_en           TIMESTAMPTZ,
+  disputa_motivo      TEXT CHECK (disputa_motivo IS NULL OR length(disputa_motivo) <= 2000),
+  disputa_abierta_en  TIMESTAMPTZ,
+  -- Cierre: cuánto va al desarrollador, cuánto vuelve al cliente y cuánto se
+  -- queda la plataforma (sobre lo liberado). resolucion_nota la escribe quien
+  -- decidió una devolución o una disputa.
+  monto_liberado      NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (monto_liberado >= 0),
+  monto_reembolsado   NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (monto_reembolsado >= 0),
+  comision            NUMERIC(12,2) NOT NULL DEFAULT 0 CHECK (comision >= 0),
+  resolucion_nota     TEXT CHECK (resolucion_nota IS NULL OR length(resolucion_nota) <= 2000),
+  cerrado_en          TIMESTAMPTZ,
+  -- Los movimientos que ya hizo n8n en Stripe.
+  stripe_transfer_id  TEXT,
+  transferido_en      TIMESTAMPTZ,
+  stripe_reembolso_id TEXT,
+  reembolsado_en      TIMESTAMPTZ,
+  creado_en           TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (lead_id, orden),
+  CHECK (monto_liberado + monto_reembolsado <= monto),
+  -- Un hito cerrado reparte el monto entero.
+  CHECK (estado NOT IN ('LIBERADO','REEMBOLSADO') OR monto_liberado + monto_reembolsado = monto)
+);
+CREATE INDEX IF NOT EXISTS idx_hitos_lead ON hitos (lead_id, orden);
+CREATE INDEX IF NOT EXISTS idx_hitos_espacio ON hitos (espacio_id);
+CREATE INDEX IF NOT EXISTS idx_hitos_a_liberar ON hitos (libera_en) WHERE estado = 'ENTREGADO';
+
+DROP TRIGGER IF EXISTS trg_hitos_espacio ON hitos;
+CREATE TRIGGER trg_hitos_espacio
+  BEFORE INSERT OR UPDATE ON hitos
+  FOR EACH ROW EXECUTE FUNCTION public.espacio_desde_lead();
+
+-- Lo que pasó con cada hito, en orden: es la línea de tiempo que ven las dos
+-- partes y la cola de los correos (n8n marca avisado_en).
+CREATE TABLE IF NOT EXISTS hitos_eventos (
+  id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  hito_id    UUID NOT NULL REFERENCES hitos(id) ON DELETE CASCADE,
+  lead_id    TEXT NOT NULL,
+  tipo       TEXT NOT NULL CHECK (tipo IN (
+               'fondeado','entregado','aprobado','liberado_solo','disputado','resuelto',
+               'devuelto','anulado','transferido','reembolsado')),
+  actor      TEXT NOT NULL CHECK (actor IN ('cliente','desarrollador','admin','plataforma')),
+  detalle    TEXT,
+  avisado_en TIMESTAMPTZ,
+  creado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_hitos_eventos_hito ON hitos_eventos (hito_id, creado_en);
+CREATE INDEX IF NOT EXISTS idx_hitos_eventos_sin_avisar ON hitos_eventos (creado_en) WHERE avisado_en IS NULL;
+
+-- ¿El proyecto llegó por la plataforma? Mismo criterio que calificar(): pasó
+-- por la bolsa y quedó asignado al espacio que lo tiene.
+CREATE OR REPLACE FUNCTION public.lead_de_plataforma(p_lead text) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT EXISTS (
+    SELECT 1 FROM bolsa_pedidos b JOIN leads l ON l.lead_id = b.lead_id
+    WHERE b.lead_id = p_lead AND b.estado = 'ASIGNADO' AND b.asignado_espacio_id = l.espacio_id
+  )
+$$;
+
+-- Quién es el que llama en un proyecto. Interna.
+--   'desarrollador': el dueño del espacio del lead.
+--   'cliente': quien trae el token de la página del proyecto, o la cuenta de
+--              cliente que publicó el pedido en la bolsa.
+--   'admin': el admin de la plataforma, si no es ninguno de los dos.
+CREATE OR REPLACE FUNCTION public.proyecto_rol(p_lead text, p_token uuid)
+RETURNS text
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT CASE
+           WHEN EXISTS (SELECT 1 FROM espacios e WHERE e.id = l.espacio_id AND e.dueno_id = auth.uid())
+             THEN 'desarrollador'
+           WHEN (p_token IS NOT NULL AND p_token = l.proyecto_token)
+             OR EXISTS (SELECT 1 FROM bolsa_pedidos b WHERE b.lead_id = l.lead_id AND b.cliente_id = auth.uid())
+             THEN 'cliente'
+           WHEN EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role = 'admin')
+             THEN 'admin'
+         END
+  FROM leads l WHERE l.lead_id = p_lead
+$$;
+
+-- El desarrollador define cómo cobra, antes de que el cliente acepte:
+-- p_hitos es un arreglo de {titulo, descripcion?, monto}. Vacío o NULL vuelve
+-- a la factura única, salvo en los proyectos de la plataforma. Reemplaza los
+-- hitos que hubiera (todavía no se pagó ninguno). Devuelve cuántos quedaron.
+CREATE OR REPLACE FUNCTION public.definir_cobro(p_lead text, p_hitos jsonb)
+RETURNS int
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  l leads%ROWTYPE;
+  h jsonb;
+  i int := 0;
+  titulo text;
+  monto text;
+  pct numeric := coalesce(nullif(current_setting('app.comision_hitos', true), '')::numeric, 5);
+BEGIN
+  SELECT * INTO l FROM leads WHERE lead_id = p_lead FOR UPDATE;
+  IF NOT FOUND OR proyecto_rol(p_lead, NULL) IS DISTINCT FROM 'desarrollador' THEN
+    RAISE EXCEPTION 'No tenés acceso a este proyecto';
+  END IF;
+  IF l.estado NOT IN ('NUEVO','PROPUESTA_ENVIADA','EN_SEGUIMIENTO') THEN
+    RAISE EXCEPTION 'La forma de cobro se define antes de que el cliente acepte';
+  END IF;
+
+  IF p_hitos IS NULL OR jsonb_typeof(p_hitos) <> 'array' OR jsonb_array_length(p_hitos) = 0 THEN
+    IF lead_de_plataforma(p_lead) THEN
+      RAISE EXCEPTION 'Los proyectos que llegan por la plataforma se cobran por hitos';
+    END IF;
+    DELETE FROM hitos WHERE lead_id = p_lead;
+    UPDATE leads SET cobro_modo = 'factura' WHERE lead_id = p_lead;
+    RETURN 0;
+  END IF;
+  IF jsonb_array_length(p_hitos) > 10 THEN RAISE EXCEPTION 'Hasta 10 hitos por proyecto'; END IF;
+
+  DELETE FROM hitos WHERE lead_id = p_lead;
+  FOR h IN SELECT value FROM jsonb_array_elements(p_hitos) LOOP
+    i := i + 1;
+    titulo := btrim(coalesce(h->>'titulo', ''));
+    monto := btrim(coalesce(h->>'monto', ''));
+    IF length(titulo) NOT BETWEEN 3 AND 120 THEN
+      RAISE EXCEPTION 'El hito % necesita un título de 3 a 120 caracteres', i;
+    END IF;
+    IF length(coalesce(h->>'descripcion', '')) > 1000 THEN
+      RAISE EXCEPTION 'La descripción del hito % puede tener hasta 1000 caracteres', i;
+    END IF;
+    IF monto !~ '^\d{1,9}(\.\d{1,2})?$' OR monto::numeric < 1 THEN
+      RAISE EXCEPTION 'El monto del hito % tiene que ser de al menos US$ 1, con hasta dos decimales', i;
+    END IF;
+    INSERT INTO hitos (lead_id, espacio_id, orden, titulo, descripcion, monto, comision_porcentaje)
+    VALUES (p_lead, l.espacio_id, i, titulo, nullif(btrim(coalesce(h->>'descripcion', '')), ''), monto::numeric, pct);
+  END LOOP;
+  UPDATE leads SET cobro_modo = 'hitos' WHERE lead_id = p_lead;
+  RETURN i;
+END;
+$$;
+
+-- Cierra un hito repartiendo el monto y, si era el último abierto, cierra el
+-- proyecto. Interna: la llaman las funciones de abajo con el hito bloqueado.
+CREATE OR REPLACE FUNCTION public.hito_cerrar(
+  p_hito uuid, p_liberado numeric, p_nota text, p_evento text, p_actor text
+) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  h hitos%ROWTYPE;
+BEGIN
+  UPDATE hitos SET
+    estado            = CASE WHEN p_liberado > 0 THEN 'LIBERADO' ELSE 'REEMBOLSADO' END::hito_estado,
+    monto_liberado    = p_liberado,
+    monto_reembolsado = monto - p_liberado,
+    comision          = round(p_liberado * comision_porcentaje / 100, 2),
+    resolucion_nota   = coalesce(nullif(btrim(coalesce(p_nota, '')), ''), resolucion_nota),
+    libera_en         = NULL,
+    cerrado_en        = now()
+  WHERE id = p_hito
+  RETURNING * INTO h;
+
+  INSERT INTO hitos_eventos (hito_id, lead_id, tipo, actor, detalle)
+  VALUES (h.id, h.lead_id, p_evento, p_actor, nullif(btrim(coalesce(p_nota, '')), ''));
+
+  -- Con todos los hitos cerrados, el proyecto termina (y se puede calificar).
+  IF NOT EXISTS (SELECT 1 FROM hitos WHERE lead_id = h.lead_id
+                 AND estado NOT IN ('LIBERADO','REEMBOLSADO','ANULADO')) THEN
+    UPDATE leads SET estado = 'CERRADO', estado_trabajo = 'ENTREGADO', fecha_cierre = now()
+    WHERE lead_id = h.lead_id AND estado <> 'CERRADO';
+  END IF;
+END;
+$$;
+
+-- n8n, antes de crear la sesión de pago: valida el token y que se paguen en
+-- orden (no se puede pagar el 2 sin haber pagado el 1), y devuelve lo que
+-- necesita para cobrar. Sin filas = no se puede pagar.
+CREATE OR REPLACE FUNCTION public.hito_para_cobrar(p_hito uuid, p_token uuid)
+RETURNS TABLE (
+  id uuid, lead_id text, orden smallint, titulo text, monto numeric,
+  cliente_nombre text, cliente_email text, espacio_nombre text, servicio servicio_tipo
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT h.id, h.lead_id, h.orden, h.titulo, h.monto, l.nombre, l.email, e.nombre, l.servicio
+  FROM hitos h
+  JOIN leads l ON l.lead_id = h.lead_id
+  JOIN espacios e ON e.id = h.espacio_id
+  WHERE h.id = p_hito
+    AND l.proyecto_token = p_token
+    AND h.estado = 'PENDIENTE'
+    AND l.estado = 'ACEPTADO'
+    AND l.cobro_modo = 'hitos'
+    AND NOT EXISTS (SELECT 1 FROM hitos a WHERE a.lead_id = h.lead_id AND a.orden < h.orden AND a.estado = 'PENDIENTE')
+$$;
+
+-- n8n, al confirmar Stripe el pago. Idempotente: el mismo pago dos veces no
+-- hace nada. Si el hito se anuló mientras el cliente pagaba, queda para
+-- reembolsar entero. Devuelve si aplicó algo.
+CREATE OR REPLACE FUNCTION public.hito_fondeado(p_hito uuid, p_checkout text, p_pago text)
+RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  h hitos%ROWTYPE;
+BEGIN
+  SELECT * INTO h FROM hitos WHERE id = p_hito FOR UPDATE;
+  IF NOT FOUND OR h.stripe_pago_id IS NOT NULL THEN RETURN false; END IF;
+
+  IF h.estado = 'PENDIENTE' THEN
+    UPDATE hitos SET estado = 'FONDEADO', stripe_checkout_id = p_checkout, stripe_pago_id = p_pago,
+                     fondeado_en = now()
+    WHERE id = p_hito;
+    INSERT INTO hitos_eventos (hito_id, lead_id, tipo, actor) VALUES (h.id, h.lead_id, 'fondeado', 'cliente');
+  ELSIF h.estado = 'ANULADO' THEN
+    UPDATE hitos SET stripe_checkout_id = p_checkout, stripe_pago_id = p_pago, fondeado_en = now(),
+                     estado = 'REEMBOLSADO', monto_reembolsado = monto, cerrado_en = now(),
+                     resolucion_nota = 'Se pagó después de anulado: se devuelve entero'
+    WHERE id = p_hito;
+    INSERT INTO hitos_eventos (hito_id, lead_id, tipo, actor, detalle)
+    VALUES (h.id, h.lead_id, 'devuelto', 'plataforma', 'Se pagó después de anulado');
+  ELSE
+    RETURN false;
+  END IF;
+  RETURN true;
+END;
+$$;
+
+-- El desarrollador marca el hito como entregado y cuenta qué entregó. Desde
+-- ahí corre el plazo para que se libere solo.
+CREATE OR REPLACE FUNCTION public.entregar_hito(p_hito uuid, p_nota text)
+RETURNS timestamptz
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  h hitos%ROWTYPE;
+  dias int := coalesce(nullif(current_setting('app.hitos_dias_liberacion', true), '')::int, 7);
+  plazo timestamptz;
+BEGIN
+  SELECT * INTO h FROM hitos WHERE id = p_hito FOR UPDATE;
+  IF NOT FOUND OR proyecto_rol(h.lead_id, NULL) IS DISTINCT FROM 'desarrollador' THEN
+    RAISE EXCEPTION 'No tenés acceso a este hito';
+  END IF;
+  IF h.estado <> 'FONDEADO' THEN RAISE EXCEPTION 'Sólo se entrega un hito pagado y sin entregar'; END IF;
+  IF length(btrim(coalesce(p_nota, ''))) NOT BETWEEN 5 AND 2000 THEN
+    RAISE EXCEPTION 'Contá qué entregaste (de 5 a 2000 caracteres)';
+  END IF;
+
+  plazo := now() + make_interval(days => dias);
+  UPDATE hitos SET estado = 'ENTREGADO', entrega_nota = btrim(p_nota), entregado_en = now(), libera_en = plazo
+  WHERE id = p_hito;
+  INSERT INTO hitos_eventos (hito_id, lead_id, tipo, actor, detalle)
+  VALUES (h.id, h.lead_id, 'entregado', 'desarrollador', btrim(p_nota));
+  RETURN plazo;
+END;
+$$;
+
+-- El cliente aprueba y libera la plata. Puede hacerlo también antes de la
+-- entrega, si ya está conforme.
+CREATE OR REPLACE FUNCTION public.aprobar_hito(p_hito uuid, p_token uuid DEFAULT NULL)
+RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  h hitos%ROWTYPE;
+BEGIN
+  SELECT * INTO h FROM hitos WHERE id = p_hito FOR UPDATE;
+  IF NOT FOUND OR proyecto_rol(h.lead_id, p_token) IS DISTINCT FROM 'cliente' THEN
+    RAISE EXCEPTION 'No tenés acceso a este hito';
+  END IF;
+  IF h.estado NOT IN ('FONDEADO','ENTREGADO') THEN RAISE EXCEPTION 'Este hito no tiene nada para liberar'; END IF;
+  PERFORM hito_cerrar(p_hito, h.monto, NULL, 'aprobado', 'cliente');
+END;
+$$;
+
+-- El cliente disputa: la plata queda retenida (se corta el plazo de
+-- liberación) hasta que el admin resuelva.
+CREATE OR REPLACE FUNCTION public.disputar_hito(p_hito uuid, p_motivo text, p_token uuid DEFAULT NULL)
+RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  h hitos%ROWTYPE;
+BEGIN
+  SELECT * INTO h FROM hitos WHERE id = p_hito FOR UPDATE;
+  IF NOT FOUND OR proyecto_rol(h.lead_id, p_token) IS DISTINCT FROM 'cliente' THEN
+    RAISE EXCEPTION 'No tenés acceso a este hito';
+  END IF;
+  IF h.estado NOT IN ('FONDEADO','ENTREGADO') THEN RAISE EXCEPTION 'Este hito no se puede disputar'; END IF;
+  IF length(btrim(coalesce(p_motivo, ''))) NOT BETWEEN 10 AND 2000 THEN
+    RAISE EXCEPTION 'Contá qué pasó (de 10 a 2000 caracteres)';
+  END IF;
+
+  UPDATE hitos SET estado = 'EN_DISPUTA', disputa_motivo = btrim(p_motivo), disputa_abierta_en = now(), libera_en = NULL
+  WHERE id = p_hito;
+  INSERT INTO hitos_eventos (hito_id, lead_id, tipo, actor, detalle)
+  VALUES (h.id, h.lead_id, 'disputado', 'cliente', btrim(p_motivo));
+END;
+$$;
+
+-- El desarrollador devuelve la plata entera (no puede o no quiere seguir, o
+-- le da la razón al cliente en una disputa).
+CREATE OR REPLACE FUNCTION public.devolver_hito(p_hito uuid, p_nota text)
+RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  h hitos%ROWTYPE;
+BEGIN
+  SELECT * INTO h FROM hitos WHERE id = p_hito FOR UPDATE;
+  IF NOT FOUND OR proyecto_rol(h.lead_id, NULL) IS DISTINCT FROM 'desarrollador' THEN
+    RAISE EXCEPTION 'No tenés acceso a este hito';
+  END IF;
+  IF h.estado NOT IN ('FONDEADO','ENTREGADO','EN_DISPUTA') THEN RAISE EXCEPTION 'Este hito no tiene plata para devolver'; END IF;
+  PERFORM hito_cerrar(p_hito, 0, p_nota, 'devuelto', 'desarrollador');
+END;
+$$;
+
+-- El desarrollador saca un hito que todavía no se pagó.
+CREATE OR REPLACE FUNCTION public.anular_hito(p_hito uuid)
+RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  h hitos%ROWTYPE;
+BEGIN
+  SELECT * INTO h FROM hitos WHERE id = p_hito FOR UPDATE;
+  IF NOT FOUND OR proyecto_rol(h.lead_id, NULL) IS DISTINCT FROM 'desarrollador' THEN
+    RAISE EXCEPTION 'No tenés acceso a este hito';
+  END IF;
+  IF h.estado <> 'PENDIENTE' THEN RAISE EXCEPTION 'Sólo se anula un hito que todavía no se pagó'; END IF;
+
+  UPDATE hitos SET estado = 'ANULADO', cerrado_en = now() WHERE id = p_hito;
+  INSERT INTO hitos_eventos (hito_id, lead_id, tipo, actor) VALUES (h.id, h.lead_id, 'anulado', 'desarrollador');
+  -- Si era lo único que quedaba abierto, el proyecto termina.
+  IF NOT EXISTS (SELECT 1 FROM hitos WHERE lead_id = h.lead_id
+                 AND estado NOT IN ('LIBERADO','REEMBOLSADO','ANULADO')) THEN
+    UPDATE leads SET
+      estado = CASE WHEN EXISTS (SELECT 1 FROM hitos WHERE lead_id = h.lead_id AND estado <> 'ANULADO')
+                    THEN 'CERRADO' ELSE 'PERDIDO' END::lead_estado,
+      fecha_cierre = now()
+    WHERE lead_id = h.lead_id AND estado NOT IN ('CERRADO','PERDIDO');
+  END IF;
+END;
+$$;
+
+-- El admin de la plataforma resuelve una disputa: cuánto se libera al
+-- desarrollador (0 = se reembolsa todo, el monto entero = se libera todo). No
+-- puede resolver una disputa de un proyecto propio.
+CREATE OR REPLACE FUNCTION public.resolver_disputa(p_hito uuid, p_liberar numeric, p_nota text)
+RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  h hitos%ROWTYPE;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin') THEN
+    RAISE EXCEPTION 'Sólo el admin de la plataforma resuelve disputas';
+  END IF;
+  SELECT * INTO h FROM hitos WHERE id = p_hito FOR UPDATE;
+  IF NOT FOUND OR h.estado <> 'EN_DISPUTA' THEN RAISE EXCEPTION 'Este hito no está en disputa'; END IF;
+  IF proyecto_rol(h.lead_id, NULL) = 'desarrollador' THEN
+    RAISE EXCEPTION 'No podés resolver una disputa de un proyecto tuyo';
+  END IF;
+  IF p_liberar IS NULL OR p_liberar < 0 OR p_liberar > h.monto OR p_liberar <> round(p_liberar, 2) THEN
+    RAISE EXCEPTION 'Lo que se libera tiene que estar entre 0 y el monto del hito';
+  END IF;
+  IF length(btrim(coalesce(p_nota, ''))) NOT BETWEEN 5 AND 2000 THEN
+    RAISE EXCEPTION 'Explicá la resolución (de 5 a 2000 caracteres)';
+  END IF;
+  PERFORM hito_cerrar(p_hito, p_liberar, p_nota, 'resuelto', 'admin');
+END;
+$$;
+
+-- Cron de n8n: libera las entregas que nadie aprobó ni disputó a tiempo.
+-- Devuelve las que liberó (para avisar).
+CREATE OR REPLACE FUNCTION public.liberar_vencidos()
+RETURNS TABLE (id uuid, lead_id text)
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  h hitos%ROWTYPE;
+BEGIN
+  FOR h IN SELECT * FROM hitos WHERE estado = 'ENTREGADO' AND libera_en <= now() FOR UPDATE SKIP LOCKED LOOP
+    PERFORM hito_cerrar(h.id, h.monto, NULL, 'liberado_solo', 'plataforma');
+    id := h.id; lead_id := h.lead_id;
+    RETURN NEXT;
+  END LOOP;
+END;
+$$;
+
+-- Cron de n8n: lo que falta mover en Stripe. Una fila por movimiento.
+--   'transferir': al desarrollador, lo liberado menos la comisión.
+--   'reembolsar': al cliente, sobre el pago original.
+CREATE OR REPLACE FUNCTION public.hitos_por_mover()
+RETURNS TABLE (
+  id uuid, lead_id text, movimiento text, importe numeric, stripe_pago_id text,
+  stripe_account_id text, espacio_nombre text, titulo text
+)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
+  SELECT h.id, h.lead_id, 'transferir', h.monto_liberado - h.comision, h.stripe_pago_id,
+         e.stripe_account_id, e.nombre, h.titulo
+  FROM hitos h JOIN espacios e ON e.id = h.espacio_id
+  WHERE h.monto_liberado > 0 AND h.stripe_transfer_id IS NULL AND h.stripe_pago_id IS NOT NULL
+  UNION ALL
+  SELECT h.id, h.lead_id, 'reembolsar', h.monto_reembolsado, h.stripe_pago_id,
+         NULL, e.nombre, h.titulo
+  FROM hitos h JOIN espacios e ON e.id = h.espacio_id
+  WHERE h.monto_reembolsado > 0 AND h.stripe_reembolso_id IS NULL AND h.stripe_pago_id IS NOT NULL
+$$;
+
+-- n8n, después de mover la plata en Stripe. Idempotente.
+CREATE OR REPLACE FUNCTION public.hito_movido(p_hito uuid, p_movimiento text, p_stripe_id text)
+RETURNS boolean
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  h hitos%ROWTYPE;
+BEGIN
+  IF p_movimiento = 'transferir' THEN
+    UPDATE hitos SET stripe_transfer_id = p_stripe_id, transferido_en = now()
+    WHERE id = p_hito AND monto_liberado > 0 AND stripe_transfer_id IS NULL
+    RETURNING * INTO h;
+  ELSIF p_movimiento = 'reembolsar' THEN
+    UPDATE hitos SET stripe_reembolso_id = p_stripe_id, reembolsado_en = now()
+    WHERE id = p_hito AND monto_reembolsado > 0 AND stripe_reembolso_id IS NULL
+    RETURNING * INTO h;
+  ELSE
+    RAISE EXCEPTION 'Movimiento desconocido: %', p_movimiento;
+  END IF;
+  IF h.id IS NULL THEN RETURN false; END IF;
+
+  INSERT INTO hitos_eventos (hito_id, lead_id, tipo, actor, detalle)
+  VALUES (h.id, h.lead_id,
+          CASE p_movimiento WHEN 'transferir' THEN 'transferido' ELSE 'reembolsado' END, 'plataforma',
+          'US$ ' || CASE p_movimiento WHEN 'transferir' THEN h.monto_liberado - h.comision ELSE h.monto_reembolsado END);
+  RETURN true;
+END;
+$$;
+
+-- Lo que ve cada parte de un proyecto por hitos: el desarrollador y el
+-- cliente con cuenta, por el lead; el cliente sin cuenta, por el token (con
+-- p_lead NULL); el admin, para resolver disputas. `puede_pagar` marca el
+-- hito que toca pagar.
+CREATE OR REPLACE FUNCTION public.ver_proyecto(p_lead text, p_token uuid DEFAULT NULL)
+RETURNS json
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  l leads%ROWTYPE;
+  rol text;
+BEGIN
+  IF p_lead IS NULL AND p_token IS NOT NULL THEN
+    SELECT * INTO l FROM leads WHERE proyecto_token = p_token;
+  ELSE
+    SELECT * INTO l FROM leads WHERE lead_id = p_lead;
+  END IF;
+  rol := proyecto_rol(l.lead_id, p_token);
+  IF rol IS NULL THEN RAISE EXCEPTION 'No tenés acceso a este proyecto'; END IF;
+
+  RETURN json_build_object(
+    'rol', rol,
+    'lead_id', l.lead_id,
+    'estado', l.estado,
+    'cobro_modo', l.cobro_modo,
+    'servicio', l.servicio,
+    'cliente_nombre', split_part(btrim(l.nombre), ' ', 1),
+    'espacio_nombre', (SELECT e.nombre FROM espacios e WHERE e.id = l.espacio_id),
+    'alcance', l.alcance_propuesto,
+    'plazo', l.plazo_propuesto,
+    'de_plataforma', lead_de_plataforma(l.lead_id),
+    'hitos', COALESCE((
+      SELECT json_agg(json_build_object(
+               'id', h.id, 'orden', h.orden, 'titulo', h.titulo, 'descripcion', h.descripcion,
+               'monto', h.monto, 'estado', h.estado, 'comision_porcentaje', h.comision_porcentaje,
+               'fondeado_en', h.fondeado_en, 'entrega_nota', h.entrega_nota, 'entregado_en', h.entregado_en,
+               'libera_en', h.libera_en, 'disputa_motivo', h.disputa_motivo,
+               'monto_liberado', h.monto_liberado, 'monto_reembolsado', h.monto_reembolsado,
+               'comision', h.comision, 'resolucion_nota', h.resolucion_nota, 'cerrado_en', h.cerrado_en,
+               'transferido_en', h.transferido_en, 'reembolsado_en', h.reembolsado_en,
+               'puede_pagar', h.estado = 'PENDIENTE' AND l.estado = 'ACEPTADO'
+                 AND NOT EXISTS (SELECT 1 FROM hitos a WHERE a.lead_id = h.lead_id AND a.orden < h.orden AND a.estado = 'PENDIENTE'),
+               'eventos', COALESCE((
+                 SELECT json_agg(json_build_object('tipo', ev.tipo, 'actor', ev.actor, 'detalle', ev.detalle,
+                                                   'creado_en', ev.creado_en) ORDER BY ev.creado_en, ev.id)
+                 FROM hitos_eventos ev WHERE ev.hito_id = h.id), '[]'::json))
+             ORDER BY h.orden)
+      FROM hitos h WHERE h.lead_id = l.lead_id
+    ), '[]'::json)
+  );
+END;
+$$;
+
+-- Las disputas abiertas, para el admin de la plataforma.
+CREATE OR REPLACE FUNCTION public.disputas_abiertas()
+RETURNS TABLE (
+  id uuid, lead_id text, titulo text, monto numeric, disputa_motivo text, disputa_abierta_en timestamptz,
+  entrega_nota text, espacio_nombre text, cliente_nombre text, servicio servicio_tipo
+)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND role = 'admin') THEN
+    RAISE EXCEPTION 'Sólo el admin de la plataforma ve las disputas';
+  END IF;
+  RETURN QUERY
+    SELECT h.id, h.lead_id, h.titulo, h.monto, h.disputa_motivo, h.disputa_abierta_en,
+           h.entrega_nota, e.nombre, split_part(btrim(l.nombre), ' ', 1), l.servicio
+    FROM hitos h JOIN leads l ON l.lead_id = h.lead_id JOIN espacios e ON e.id = h.espacio_id
+    WHERE h.estado = 'EN_DISPUTA'
+    ORDER BY h.disputa_abierta_en;
+END;
+$$;
+
+-- Permisos. Las internas (proyecto_rol, hito_cerrar) no se exponen.
+REVOKE ALL ON FUNCTION public.lead_de_plataforma(text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.proyecto_rol(text, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.definir_cobro(text, jsonb) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.hito_cerrar(uuid, numeric, text, text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.hito_para_cobrar(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.hito_fondeado(uuid, text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.entregar_hito(uuid, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.aprobar_hito(uuid, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.disputar_hito(uuid, text, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.devolver_hito(uuid, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.anular_hito(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.resolver_disputa(uuid, numeric, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.liberar_vencidos() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.hitos_por_mover() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.hito_movido(uuid, text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.ver_proyecto(text, uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.disputas_abiertas() FROM PUBLIC;
+-- El desarrollador, desde el panel.
+GRANT EXECUTE ON FUNCTION public.definir_cobro(text, jsonb) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.entregar_hito(uuid, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.devolver_hito(uuid, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.anular_hito(uuid) TO authenticated;
+-- El cliente, con cuenta o con el token del enlace.
+GRANT EXECUTE ON FUNCTION public.aprobar_hito(uuid, uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.disputar_hito(uuid, text, uuid) TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ver_proyecto(text, uuid) TO anon, authenticated;
+-- El admin.
+GRANT EXECUTE ON FUNCTION public.resolver_disputa(uuid, numeric, text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.disputas_abiertas() TO authenticated;
+-- n8n: cobra, libera las vencidas y mueve la plata.
+GRANT EXECUTE ON FUNCTION public.lead_de_plataforma(text) TO n8n_writer;
+GRANT EXECUTE ON FUNCTION public.hito_para_cobrar(uuid, uuid) TO n8n_writer;
+GRANT EXECUTE ON FUNCTION public.hito_fondeado(uuid, text, text) TO n8n_writer;
+GRANT EXECUTE ON FUNCTION public.liberar_vencidos() TO n8n_writer;
+GRANT EXECUTE ON FUNCTION public.hitos_por_mover() TO n8n_writer;
+GRANT EXECUTE ON FUNCTION public.hito_movido(uuid, text, text) TO n8n_writer;
+
+ALTER TABLE hitos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hitos FORCE ROW LEVEL SECURITY;
+ALTER TABLE hitos_eventos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hitos_eventos FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON hitos, hitos_eventos FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON hitos, hitos_eventos TO service_role;
+-- El desarrollador lee los hitos de su espacio directo (panel y tiempo
+-- real); escribir, sólo por las funciones.
+GRANT SELECT ON hitos TO authenticated;
+DROP POLICY IF EXISTS hitos_select_espacio ON hitos;
+CREATE POLICY hitos_select_espacio ON hitos
+  FOR SELECT TO authenticated
+  USING (espacio_id IN (SELECT id FROM espacios WHERE dueno_id = (SELECT auth.uid())));
+-- n8n: lee todo, guarda la sesión de pago y marca los correos enviados.
+GRANT SELECT, UPDATE (stripe_checkout_id) ON hitos TO n8n_writer;
+DROP POLICY IF EXISTS hitos_select_n8n_writer ON hitos;
+CREATE POLICY hitos_select_n8n_writer ON hitos FOR SELECT TO n8n_writer USING (true);
+DROP POLICY IF EXISTS hitos_update_n8n_writer ON hitos;
+CREATE POLICY hitos_update_n8n_writer ON hitos FOR UPDATE TO n8n_writer USING (true) WITH CHECK (true);
+GRANT SELECT, UPDATE (avisado_en) ON hitos_eventos TO n8n_writer;
+DROP POLICY IF EXISTS hitos_eventos_select_n8n_writer ON hitos_eventos;
+CREATE POLICY hitos_eventos_select_n8n_writer ON hitos_eventos FOR SELECT TO n8n_writer USING (true);
+DROP POLICY IF EXISTS hitos_eventos_update_n8n_writer ON hitos_eventos;
+CREATE POLICY hitos_eventos_update_n8n_writer ON hitos_eventos FOR UPDATE TO n8n_writer USING (true) WITH CHECK (true);
+
+-- Tiempo real: el panel ve al instante cuando el cliente paga o aprueba.
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime')
+     AND NOT EXISTS (SELECT 1 FROM pg_publication_tables
+                     WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'hitos') THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.hitos;
+  END IF;
+END $$;
