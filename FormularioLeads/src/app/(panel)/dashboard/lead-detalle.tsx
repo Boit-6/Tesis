@@ -1,16 +1,17 @@
 "use client";
 
-import type {Database} from "@/types/supabase";
+import type {Database, Proyecto} from "@/types/supabase";
 
 import {useEffect, useRef, useState} from "react";
 
-import FormPropuesta from "./form-propuesta";
+import FormPropuesta, {type HitosPropuesta} from "./form-propuesta";
 import RechazoPedido from "./rechazo-pedido";
 import {Tag, formatDate, formatMoney} from "./dashboard-shared";
 import {ESTADO_COLOR, TIER_COLOR} from "./dashboard-types";
 import {EsqueletoLeadDetalle} from "./esqueletos";
 
 import {ghostButtonClass} from "@/lib/constants";
+import {ESTADO_HITO, usd} from "@/lib/hitos";
 import {presupuestoDeclarado} from "@/lib/presupuesto";
 import {createClient} from "@/lib/supabase/client";
 
@@ -75,6 +76,7 @@ export default function LeadDetalle({
     precio: number,
     plazo: string,
     alcance: string,
+    hitos: HitosPropuesta,
   ) => Promise<void>;
   onAceptarCambio: (leadId: string) => Promise<boolean>;
   onRechazarCambio: (leadId: string) => Promise<boolean>;
@@ -86,6 +88,9 @@ export default function LeadDetalle({
 }) {
   const [supabase] = useState(() => createClient());
   const [lead, setLead] = useState<LeadCompleto | null>(null);
+  // Cobro por hitos (etapa 11): si llegó por la plataforma y los hitos que
+  // tiene. Si falla, el detalle se muestra igual, como un lead propio.
+  const [proyecto, setProyecto] = useState<Proyecto | null>(null);
   const [error, setError] = useState<string | null>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
 
@@ -108,6 +113,10 @@ export default function LeadDetalle({
         if (err || !data) setError("No se pudo cargar el lead.");
         else setLead(data);
       });
+
+    supabase.rpc("ver_proyecto", {p_lead: leadId}).then(({data}) => {
+      if (vigente && data) setProyecto(data);
+    });
 
     return () => {
       vigente = false;
@@ -223,6 +232,27 @@ export default function LeadDetalle({
                     </div>
                   )}
                 </dl>
+                {proyecto?.cobro_modo === "hitos" && proyecto.hitos.length > 0 && (
+                  <div className="mt-5">
+                    <p className="text-faint mb-2 text-[10px] tracking-[0.16em] uppercase">
+                      Por hitos · pago protegido
+                    </p>
+                    <ol className="border-rule-soft divide-rule-soft divide-y border-y">
+                      {proyecto.hitos.map((h) => (
+                        <li key={h.id} className="flex items-baseline gap-3 py-2.5 text-[14px]">
+                          <span className="text-mist w-4 text-right text-[12px] tabular-nums">
+                            {h.orden}.
+                          </span>
+                          <span className="text-ink-soft flex-1">{h.titulo}</span>
+                          <span className="text-mist text-[11px] tracking-[0.08em] uppercase">
+                            {ESTADO_HITO[h.estado]}
+                          </span>
+                          <span className="text-ink tabular-nums">{usd(h.monto)}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
               </div>
             )}
 
@@ -230,8 +260,9 @@ export default function LeadDetalle({
               <section className="border-ochre bg-card border-l-2 px-5 py-5">
                 <h3 className="text-ink mb-4 font-serif text-[20px]">Fijá los términos</h3>
                 <FormPropuesta
-                  onEnviar={async (precio, plazo, alcance) => {
-                    await onEnviarPropuesta(lead.lead_id, precio, plazo, alcance);
+                  dePlataforma={proyecto?.de_plataforma ?? false}
+                  onEnviar={async (precio, plazo, alcance, hitos) => {
+                    await onEnviarPropuesta(lead.lead_id, precio, plazo, alcance, hitos);
                     dialogRef.current?.close();
                   }}
                 />

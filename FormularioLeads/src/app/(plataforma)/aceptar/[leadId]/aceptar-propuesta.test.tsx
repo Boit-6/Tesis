@@ -76,6 +76,78 @@ describe("AceptarPropuesta", () => {
     expect(screen.getByText("$7.200 USD")).toBeInTheDocument();
   });
 
+  it("por hitos, muestra cada hito, el total y el pago protegido", async () => {
+    mockFetch({
+      propuesta: {
+        status: "ok",
+        lead: {
+          nombre: "Marta",
+          servicio: "ecommerce",
+          precio: 1000,
+          cobro_modo: "hitos",
+          hitos: [
+            {orden: 1, titulo: "Diseño", descripcion: "", monto: 300},
+            {
+              orden: 2,
+              titulo: "Desarrollo",
+              descripcion: "Carrito y pagos",
+              monto: 700,
+            },
+          ],
+        },
+      },
+    });
+
+    await renderComponent();
+
+    expect(await screen.findByText("1. Diseño")).toBeInTheDocument();
+    expect(screen.getByText("Carrito y pagos")).toBeInTheDocument();
+    expect(screen.getByText("$700 USD")).toBeInTheDocument();
+    expect(screen.getByText("Total")).toBeInTheDocument();
+    expect(screen.getByText("$1.000 USD")).toBeInTheDocument();
+    expect(screen.getByText(/la plata queda retenida/)).toBeInTheDocument();
+  });
+
+  it("aceptada por hitos, lleva a la página del proyecto", async () => {
+    mockFetch({
+      accion: {
+        status: "ok",
+        cobro_modo: "hitos",
+        proyecto_token: "pt-9",
+        mensaje: "Pagá el primer hito.",
+      },
+    });
+    const user = userEvent.setup();
+
+    await renderComponent();
+    await user.click(await screen.findByRole("button", {name: /Aceptar propuesta/i}));
+
+    expect(await screen.findByText("Pagá el primer hito.")).toBeInTheDocument();
+    expect(screen.getByRole("link", {name: "Ir a tu proyecto"})).toHaveAttribute(
+      "href",
+      "/proyecto/pt-9",
+    );
+  });
+
+  it("ya aceptada por hitos, el enlace viejo también lleva al proyecto", async () => {
+    mockFetch({
+      propuesta: {
+        status: "ya_procesado",
+        motivo: "token_usado",
+        proyecto_token: "pt-9",
+        mensaje: "Ya aceptaste.",
+      },
+    });
+
+    await renderComponent();
+
+    expect(await screen.findByText("Ya aceptaste.")).toBeInTheDocument();
+    expect(screen.getByRole("link", {name: "Ir a tu proyecto"})).toHaveAttribute(
+      "href",
+      "/proyecto/pt-9",
+    );
+  });
+
   it("aceptar la propuesta llama a lead-acepta y muestra la pantalla de éxito", async () => {
     const fetchMock = mockFetch({accion: {status: "ok"}});
     const user = userEvent.setup();

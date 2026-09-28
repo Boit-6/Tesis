@@ -50,6 +50,11 @@ const hostil = {
   seguimientos: 0,
   // Code - Emails Alertas sólo escribe a quien pidió alertas por correo.
   alertas_correo: true,
+  // Etapa 11: los hitos los escribe el desarrollador y salen en el correo de
+  // la propuesta; el token del proyecto va en un enlace.
+  hitos: [{orden: 1, titulo: PAYLOAD, descripcion: PAYLOAD, monto: 500}],
+  proyecto_token: "550e8400' onmouseover='alert(1)",
+  espacio_nombre: PAYLOAD,
 };
 
 function ejecutar(nodo) {
@@ -68,7 +73,8 @@ function htmlProducido(salida) {
 
   for (const r of salida) {
     for (const [k, v] of Object.entries(r.json)) {
-      if (typeof v === 'string' && /<[a-z]/i.test(v) && !(k in hostil)) piezas.push(v);
+      // `asunto` es el Subject del correo: texto plano, no se interpreta como HTML.
+      if (typeof v === 'string' && /<[a-z]/i.test(v) && !(k in hostil) && k !== 'asunto') piezas.push(v);
     }
     for (const b of Object.values(r.binary || {})) piezas.push(Buffer.from(b.data, 'base64').toString());
   }
@@ -96,6 +102,8 @@ const NODOS_HTML = [
   'Code - Emails Mensajes',
   // Alertas de proyectos nuevos en la bolsa (etapa 10).
   'Code - Emails Alertas',
+  // Enlace del proyecto al aceptar una propuesta por hitos (etapa 11).
+  'Code - Email Proyecto Hitos',
 ];
 
 for (const nombre of NODOS_HTML) {

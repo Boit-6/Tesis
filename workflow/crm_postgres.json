@@ -605,7 +605,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Todo dato que se interpola en el HTML pasa por esc(): nombre, email, etc. los\n// escribe quien completa el formulario público, y sin escapar alcanzaba para\n// inyectar HTML en el correo o en el PDF que renderiza Gotenberg.\nconst esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;');\nconst l = $input.first().json;\n// La plataforma es compartida: cada correo sale con el nombre del espacio del\n// desarrollador que atiende el pedido. Sin espacio, el de la plataforma.\nconst marca = String(l.espacio_nombre || '').trim() || (() => {\n  try { return (typeof $env !== 'undefined' && $env && $env.PLATAFORMA_NOMBRE) || 'FormularioLeads'; } catch (e) { return 'FormularioLeads'; }\n})();\nconst primerNombre = String(l.nombre || 'Cliente').split(' ')[0];\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\n// El plazo, el precio y el alcance los fija el profesional al enviar la\n// propuesta. El respaldo por urgencia queda sólo para las propuestas\n// anteriores a que esa función existiera.\nconst tiempo = String(l.plazo_propuesto || '').trim() || ((l.urgencia === 'alta') ? '3-5 dias habiles' : '1-2 semanas');\nconst precio = Number(l.precio_propuesto) > 0 ? Number(l.precio_propuesto) : Number(l.presupuesto) || 0;\nconst alcance = esc(String(l.alcance_propuesto || '').trim()).replace(/\\n/g, '<br>');\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n// URL pública del front. Se configura con FRONTEND_URL (ver .env.example).\nconst FRONT_BASE = leerEnv('FRONTEND_URL', 'http://localhost:3000').replace(/\\/+$/, '');\nconst acceptUrl = FRONT_BASE + '/aceptar/' + encodeURIComponent(l.lead_id) + '?token=' + encodeURIComponent(l.accept_token);\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head><body style='margin:0;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif;color:#27272a'><div style='max-width:600px;margin:0 auto;background:#ffffff'><div style='background:#111827;padding:32px 40px'><div style='color:#fbbf24;font-size:20px;font-weight:800;letter-spacing:1px'>${esc(marca.toUpperCase())}</div><div style='color:#9ca3af;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:4px'>Propuesta de trabajo</div></div><div style='padding:40px'><p style='font-size:16px;margin:0 0 8px'>Hola <b>${esc(primerNombre)}</b>,</p><p style='font-size:15px;line-height:1.6;color:#52525b;margin:0 0 28px'>Gracias por tu interes. Preparamos una propuesta para tu proyecto de <b>${esc(svc)}</b>:</p><table style='width:100%;border-collapse:collapse;margin:0 0 28px'><tr><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;color:#71717a;font-size:13px'>Servicio</td><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;text-align:right;font-weight:700'>${esc(svc)}</td></tr>${alcance ? \"<tr><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;color:#71717a;font-size:13px;vertical-align:top'>Alcance</td><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;text-align:right;line-height:1.5'>\" + alcance + '</td></tr>' : ''}<tr><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;color:#71717a;font-size:13px'>Tiempo de entrega</td><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;text-align:right;font-weight:700'>${esc(tiempo)}</td></tr><tr><td style='padding:14px 0;color:#71717a;font-size:13px'>Inversion</td><td style='padding:14px 0;text-align:right;font-weight:800;font-size:18px;color:#111827'>${esc(precio)} USD</td></tr></table><div style='text-align:center;margin:0 0 24px'><a href='${esc(acceptUrl)}' style='display:inline-block;background:#fbbf24;color:#111827;padding:16px 40px;border-radius:8px;text-decoration:none;font-weight:800;font-size:15px'>Ver propuesta y responder</a></div><p style='font-size:13px;line-height:1.6;color:#a1a1aa;text-align:center;margin:0'>Desde el enlace vas a poder <b>aceptar</b>, <b>pedir cambios</b> o <b>rechazar</b> la propuesta.</p></div><div style='background:#fafafa;padding:24px 40px;border-top:1px solid #e4e4e7'><p style='margin:0;font-size:13px;color:#71717a'>Saludos,<br><b style='color:#27272a'>${esc(marca)}</b></p></div></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { propuesta_html: html, accept_url: acceptUrl }) }];"
+        "jsCode": "// Todo dato que se interpola en el HTML pasa por esc(): nombre, email, etc. los\n// escribe quien completa el formulario público, y sin escapar alcanzaba para\n// inyectar HTML en el correo o en el PDF que renderiza Gotenberg.\nconst esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;');\nconst l = $input.first().json;\n// La plataforma es compartida: cada correo sale con el nombre del espacio del\n// desarrollador que atiende el pedido. Sin espacio, el de la plataforma.\nconst marca = String(l.espacio_nombre || '').trim() || (() => {\n  try { return (typeof $env !== 'undefined' && $env && $env.PLATAFORMA_NOMBRE) || 'FormularioLeads'; } catch (e) { return 'FormularioLeads'; }\n})();\nconst primerNombre = String(l.nombre || 'Cliente').split(' ')[0];\nconst svc = String(l.servicio || 'servicio').replace(/_/g, ' ').replace(/\\b\\w/g, c => c.toUpperCase());\n// El plazo, el precio y el alcance los fija el profesional al enviar la\n// propuesta. El respaldo por urgencia queda sólo para las propuestas\n// anteriores a que esa función existiera.\nconst tiempo = String(l.plazo_propuesto || '').trim() || ((l.urgencia === 'alta') ? '3-5 dias habiles' : '1-2 semanas');\nconst precio = Number(l.precio_propuesto) > 0 ? Number(l.precio_propuesto) : Number(l.presupuesto) || 0;\nconst alcance = esc(String(l.alcance_propuesto || '').trim()).replace(/\\n/g, '<br>');\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\n// URL pública del front. Se configura con FRONTEND_URL (ver .env.example).\nconst FRONT_BASE = leerEnv('FRONTEND_URL', 'http://localhost:3000').replace(/\\/+$/, '');\n// Cobro por hitos (etapa 11): el correo lista cada hito con su monto y\n// explica el pago protegido. La inversión es la suma de los hitos.\nconst hitos = Array.isArray(l.hitos) ? l.hitos : [];\nconst filasHitos = hitos.map((h) => \"<tr><td style='padding:10px 0;border-bottom:1px solid #f4f4f5;font-size:14px'>\" + esc(h.orden) + '. ' + esc(h.titulo) + (h.descripcion ? \"<div style='color:#a1a1aa;font-size:12px;margin-top:2px'>\" + esc(h.descripcion) + '</div>' : '') + \"</td><td style='padding:10px 0;border-bottom:1px solid #f4f4f5;text-align:right;font-size:14px;white-space:nowrap'>\" + esc(Number(h.monto).toLocaleString('es-AR', { minimumFractionDigits: Number(h.monto) % 1 ? 2 : 0 })) + ' USD</td></tr>').join('');\nconst bloqueHitos = hitos.length ? \"<p style='font-size:13px;letter-spacing:1px;text-transform:uppercase;color:#71717a;margin:0 0 6px'>Pago protegido por hitos</p><table style='width:100%;border-collapse:collapse;margin:0 0 12px'>\" + filasHitos + \"</table><p style='font-size:13px;line-height:1.6;color:#52525b;margin:0 0 28px;background:#fefce8;padding:12px 14px;border-radius:6px'>Pagás cada hito antes de que empiece. La plata queda retenida por la plataforma y le llega a \" + esc(marca) + ' recién cuando apruebes la entrega. Si algo no está bien, podés abrir una disputa.</p>' : '';\nconst acceptUrl = FRONT_BASE + '/aceptar/' + encodeURIComponent(l.lead_id) + '?token=' + encodeURIComponent(l.accept_token);\nconst html = `<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'></head><body style='margin:0;background:#f4f4f5;font-family:Arial,Helvetica,sans-serif;color:#27272a'><div style='max-width:600px;margin:0 auto;background:#ffffff'><div style='background:#111827;padding:32px 40px'><div style='color:#fbbf24;font-size:20px;font-weight:800;letter-spacing:1px'>${esc(marca.toUpperCase())}</div><div style='color:#9ca3af;font-size:12px;letter-spacing:2px;text-transform:uppercase;margin-top:4px'>Propuesta de trabajo</div></div><div style='padding:40px'><p style='font-size:16px;margin:0 0 8px'>Hola <b>${esc(primerNombre)}</b>,</p><p style='font-size:15px;line-height:1.6;color:#52525b;margin:0 0 28px'>Gracias por tu interes. Preparamos una propuesta para tu proyecto de <b>${esc(svc)}</b>:</p><table style='width:100%;border-collapse:collapse;margin:0 0 28px'><tr><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;color:#71717a;font-size:13px'>Servicio</td><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;text-align:right;font-weight:700'>${esc(svc)}</td></tr>${alcance ? \"<tr><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;color:#71717a;font-size:13px;vertical-align:top'>Alcance</td><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;text-align:right;line-height:1.5'>\" + alcance + '</td></tr>' : ''}<tr><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;color:#71717a;font-size:13px'>Tiempo de entrega</td><td style='padding:14px 0;border-bottom:1px solid #e4e4e7;text-align:right;font-weight:700'>${esc(tiempo)}</td></tr><tr><td style='padding:14px 0;color:#71717a;font-size:13px'>Inversion</td><td style='padding:14px 0;text-align:right;font-weight:800;font-size:18px;color:#111827'>${esc(precio)} USD</td></tr></table>${bloqueHitos}<div style='text-align:center;margin:0 0 24px'><a href='${esc(acceptUrl)}' style='display:inline-block;background:#fbbf24;color:#111827;padding:16px 40px;border-radius:8px;text-decoration:none;font-weight:800;font-size:15px'>Ver propuesta y responder</a></div><p style='font-size:13px;line-height:1.6;color:#a1a1aa;text-align:center;margin:0'>Desde el enlace vas a poder <b>aceptar</b>, <b>pedir cambios</b> o <b>rechazar</b> la propuesta.</p></div><div style='background:#fafafa;padding:24px 40px;border-top:1px solid #e4e4e7'><p style='margin:0;font-size:13px;color:#71717a'>Saludos,<br><b style='color:#27272a'>${esc(marca)}</b></p></div></div></body></html>`;\nreturn [{ json: Object.assign({}, l, { propuesta_html: html, accept_url: acceptUrl }) }];"
       },
       "id": "b9af8421-c555-4320-a2d7-09912761c111",
       "name": "Code - Generar Propuesta",
@@ -1288,7 +1288,7 @@
     },
     {
       "parameters": {
-        "jsCode": "return [{ json: { status: 'ok', mensaje: 'En breve te llega la factura por email.' } }];"
+        "jsCode": "// Con cobro por hitos no hay factura: el cliente sigue en la página de su\n// proyecto, donde paga el primer hito. La fila viene de Code - Clasificar\n// Aceptacion (el lead tal como estaba antes de aceptar).\nconst l = $input.first().json;\nif (l.cobro_modo === 'hitos') {\n  return [{ json: { status: 'ok', cobro_modo: 'hitos', proyecto_token: l.proyecto_token, mensaje: 'Listo. Ahora pagá el primer hito: la plata queda retenida hasta que apruebes la entrega.' } }];\n}\nreturn [{ json: { status: 'ok', cobro_modo: 'factura', mensaje: 'En breve te llega la factura por email.' } }];"
       },
       "id": "fbdbabce-2f21-43ca-b2b9-f6b25e10cc1d",
       "name": "Code - HTML Confirmacion",
@@ -1302,7 +1302,7 @@
     {
       "parameters": {
         "respondWith": "json",
-        "responseBody": "{ \"status\": \"ok\", \"mensaje\": \"En breve te llega la factura por email.\" }",
+        "responseBody": "={{ JSON.stringify($json) }}",
         "options": {
           "responseCode": 200
         }
@@ -2652,7 +2652,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM leads WHERE lead_id = $1 LIMIT 1;",
+        "query": "SELECT l.*, (SELECT json_agg(json_build_object('orden', h.orden, 'titulo', h.titulo, 'descripcion', h.descripcion, 'monto', h.monto) ORDER BY h.orden) FROM hitos h WHERE h.lead_id = l.lead_id AND h.estado <> 'ANULADO') AS hitos FROM leads l WHERE l.lead_id = $1 LIMIT 1;",
         "options": {
           "queryReplacement": "={{ [$json.lead_id] }}"
         }
@@ -2675,7 +2675,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// §4.3.2: la misma ambigüedad de /lead-acepta existía acá, que es lo que\n// carga la pantalla ANTES de que el cliente llegue a tocar 'Aceptar'. La\n// consulta anterior trae el lead SOLO por lead_id (sin filtrar por token ni\n// vigencia) para poder distinguir el motivo con estas columnas.\nconst rows = $input.all();\nconst r = rows.length ? rows[0].json : null;\nconst enviado = $('Code - Leer Query').first().json || {};\nconst tokenEnviado = enviado.token;\n\nif (!r || !r.lead_id) {\n  return [{ json: { status: 'invalido', motivo: 'invalido', mensaje: 'Enlace no válido o vencido.' } }];\n}\n\nconst tokenCoincide = r.accept_token != null && String(r.accept_token) === String(tokenEnviado);\nconst tokenVencido = tokenCoincide && !!r.token_expira_en && new Date(r.token_expira_en) <= new Date();\n\nif (r.estado === 'PERDIDO' || tokenVencido) {\n  return [{ json: { status: 'ya_procesado', motivo: 'expirado', mensaje: 'Esta oportunidad ya no está vigente: se agotaron los seguimientos y la propuesta caducó. Escribinos si todavía te interesa y coordinamos una nueva.' } }];\n}\n\nif (!tokenCoincide && r.estado !== 'NUEVO') {\n  return [{ json: { status: 'ya_procesado', motivo: 'rotado', mensaje: 'Este enlace ya no es válido: se generó una versión más reciente de la propuesta. Revisá tu email por el último correo que te enviamos.' } }];\n}\n\nif (tokenCoincide && (r.estado === 'ACEPTADO' || r.estado === 'FACTURADO')) {\n  return [{ json: { status: 'ya_procesado', motivo: 'token_usado', mensaje: 'Esta propuesta ya fue aceptada anteriormente. Ya deberías tener la factura en tu email.' } }];\n}\n\nconst activos = ['PROPUESTA_ENVIADA', 'EN_SEGUIMIENTO'];\nif (!tokenCoincide || !activos.includes(r.estado)) {\n  return [{ json: { status: 'invalido', motivo: 'invalido', mensaje: 'Enlace no válido o vencido.' } }];\n}\n// La pagina de aceptacion mostraba solo nombre, servicio y presupuesto, es\n// decir los tres datos que el propio cliente habia cargado en el formulario:\n// aceptaba una propuesta que esa pantalla no le mostraba. Se devuelven los\n// terminos que fijo el profesional, que son los que la propuesta compromete.\nconst precio = Number(r.precio_propuesto) > 0 ? Number(r.precio_propuesto) : Number(r.presupuesto) || 0;\nconst plazo = String(r.plazo_propuesto || '').trim() || ((r.urgencia === 'alta') ? '3-5 dias habiles' : '1-2 semanas');\nreturn [{ json: { status: 'ok', lead: {\n  nombre: r.nombre,\n  servicio: r.servicio,\n  presupuesto: Number(r.presupuesto),\n  precio: precio,\n  plazo: plazo,\n  alcance: String(r.alcance_propuesto || '').trim(),\n} } }];"
+        "jsCode": "// §4.3.2: la misma ambigüedad de /lead-acepta existía acá, que es lo que\n// carga la pantalla ANTES de que el cliente llegue a tocar 'Aceptar'. La\n// consulta anterior trae el lead SOLO por lead_id (sin filtrar por token ni\n// vigencia) para poder distinguir el motivo con estas columnas.\nconst rows = $input.all();\nconst r = rows.length ? rows[0].json : null;\nconst enviado = $('Code - Leer Query').first().json || {};\nconst tokenEnviado = enviado.token;\n\nif (!r || !r.lead_id) {\n  return [{ json: { status: 'invalido', motivo: 'invalido', mensaje: 'Enlace no válido o vencido.' } }];\n}\n\nconst tokenCoincide = r.accept_token != null && String(r.accept_token) === String(tokenEnviado);\nconst tokenVencido = tokenCoincide && !!r.token_expira_en && new Date(r.token_expira_en) <= new Date();\n\nif (r.estado === 'PERDIDO' || tokenVencido) {\n  return [{ json: { status: 'ya_procesado', motivo: 'expirado', mensaje: 'Esta oportunidad ya no está vigente: se agotaron los seguimientos y la propuesta caducó. Escribinos si todavía te interesa y coordinamos una nueva.' } }];\n}\n\nif (!tokenCoincide && r.estado !== 'NUEVO') {\n  return [{ json: { status: 'ya_procesado', motivo: 'rotado', mensaje: 'Este enlace ya no es válido: se generó una versión más reciente de la propuesta. Revisá tu email por el último correo que te enviamos.' } }];\n}\n\nconst porHitos = r.cobro_modo === 'hitos';\n// Ya aceptada y por hitos: no hay factura que esperar, sino un proyecto que\n// seguir. Quien trae el token de aceptación vigente es el cliente, así que se\n// le devuelve el enlace de su proyecto.\nif (tokenCoincide && porHitos && ['ACEPTADO', 'CERRADO'].includes(r.estado)) {\n  return [{ json: { status: 'ya_procesado', motivo: 'token_usado', proyecto_token: r.proyecto_token, mensaje: 'Ya aceptaste esta propuesta. Seguí tu proyecto y pagá cada hito desde su página.' } }];\n}\n\nif (tokenCoincide && (r.estado === 'ACEPTADO' || r.estado === 'FACTURADO')) {\n  return [{ json: { status: 'ya_procesado', motivo: 'token_usado', mensaje: 'Esta propuesta ya fue aceptada anteriormente. Ya deberías tener la factura en tu email.' } }];\n}\n\nconst activos = ['PROPUESTA_ENVIADA', 'EN_SEGUIMIENTO'];\nif (!tokenCoincide || !activos.includes(r.estado)) {\n  return [{ json: { status: 'invalido', motivo: 'invalido', mensaje: 'Enlace no válido o vencido.' } }];\n}\n// La pagina de aceptacion mostraba solo nombre, servicio y presupuesto, es\n// decir los tres datos que el propio cliente habia cargado en el formulario:\n// aceptaba una propuesta que esa pantalla no le mostraba. Se devuelven los\n// terminos que fijo el profesional, que son los que la propuesta compromete.\nconst precio = Number(r.precio_propuesto) > 0 ? Number(r.precio_propuesto) : Number(r.presupuesto) || 0;\nconst plazo = String(r.plazo_propuesto || '').trim() || ((r.urgencia === 'alta') ? '3-5 dias habiles' : '1-2 semanas');\nreturn [{ json: { status: 'ok', lead: {\n  nombre: r.nombre,\n  servicio: r.servicio,\n  presupuesto: Number(r.presupuesto),\n  precio: precio,\n  plazo: plazo,\n  alcance: String(r.alcance_propuesto || '').trim(),\n  cobro_modo: porHitos ? 'hitos' : 'factura',\n  hitos: porHitos && Array.isArray(r.hitos)\n    ? r.hitos.map((h) => ({ orden: h.orden, titulo: h.titulo, descripcion: h.descripcion || '', monto: Number(h.monto) }))\n    : [],\n} } }];"
       },
       "id": "e1a2b3c4-0004-4f04-8a04-aa0000000004",
       "name": "Code - Armar Respuesta",
@@ -4263,7 +4263,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE leads SET precio_propuesto = $4::numeric, plazo_propuesto = $2, alcance_propuesto = $3 WHERE lead_id = $1 AND estado = 'NUEVO' AND tier IN ('HOT','WARM') RETURNING *, (SELECT e.nombre FROM espacios e WHERE e.id = leads.espacio_id) AS espacio_nombre, (SELECT e.email_contacto FROM espacios e WHERE e.id = leads.espacio_id) AS espacio_email;",
+        "query": "UPDATE leads SET precio_propuesto = CASE WHEN cobro_modo = 'hitos' THEN (SELECT sum(h.monto) FROM hitos h WHERE h.lead_id = leads.lead_id AND h.estado <> 'ANULADO') ELSE $4::numeric END, plazo_propuesto = $2, alcance_propuesto = $3 WHERE lead_id = $1 AND estado = 'NUEVO' AND tier IN ('HOT','WARM') AND (cobro_modo = 'factura' OR EXISTS (SELECT 1 FROM hitos h WHERE h.lead_id = leads.lead_id AND h.estado <> 'ANULADO')) AND (cobro_modo = 'hitos' OR NOT lead_de_plataforma(lead_id)) RETURNING *, (SELECT e.nombre FROM espacios e WHERE e.id = leads.espacio_id) AS espacio_nombre, (SELECT e.email_contacto FROM espacios e WHERE e.id = leads.espacio_id) AS espacio_email, (SELECT json_agg(json_build_object('orden', h.orden, 'titulo', h.titulo, 'descripcion', h.descripcion, 'monto', h.monto) ORDER BY h.orden) FROM hitos h WHERE h.lead_id = leads.lead_id AND h.estado <> 'ANULADO') AS hitos;",
         "options": {
           "queryReplacement": "={{ [$json.lead_id, $json.plazo, $json.alcance, $json.precio] }}"
         }
@@ -4434,7 +4434,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=SELECT l.lead_id, l.nombre, l.email, l.servicio, l.presupuesto, l.precio_propuesto, l.fecha_aceptacion FROM leads l WHERE l.estado = 'ACEPTADO' AND l.fecha_aceptacion IS NOT NULL AND l.fecha_aceptacion < now() - make_interval(mins => {{ $env.RECONCILIACION_GRACIA_MINUTOS || 15 }}) AND NOT EXISTS (SELECT 1 FROM facturas f WHERE f.lead_id = l.lead_id) ORDER BY l.fecha_aceptacion LIMIT 1;",
+        "query": "=SELECT l.lead_id, l.nombre, l.email, l.servicio, l.presupuesto, l.precio_propuesto, l.fecha_aceptacion FROM leads l WHERE l.estado = 'ACEPTADO' AND l.cobro_modo = 'factura' AND l.fecha_aceptacion IS NOT NULL AND l.fecha_aceptacion < now() - make_interval(mins => {{ $env.RECONCILIACION_GRACIA_MINUTOS || 15 }}) AND NOT EXISTS (SELECT 1 FROM facturas f WHERE f.lead_id = l.lead_id) ORDER BY l.fecha_aceptacion LIMIT 1;",
         "options": {}
       },
       "id": "s5pgleeraceptadosinfactura00001",
@@ -7653,6 +7653,169 @@
         24020
       ],
       "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.cobro_modo }}",
+              "rightValue": "hitos",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b0e4735f-071c-4a85-af2f-c8219813e62b",
+      "name": "IF - Cobro por Hitos?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1650,
+        900
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aceptada una propuesta por hitos: el cliente recibe el enlace de su\n// proyecto (/proyecto/<token>), donde paga cada hito, aprueba las entregas o\n// abre una disputa. Sale con la marca del espacio.\nconst esc = (s) => String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('\"', '&quot;');\nconst l = $input.first().json;\nconst SERVICIO = {\n  desarrollo_web: 'desarrollo web', ecommerce: 'tienda online', app_movil: 'app móvil',\n  automatizacion: 'automatización', marketing: 'marketing digital', seo: 'SEO',\n  diseno_ui: 'diseño UX/UI', consultoria: 'consultoría', soporte: 'soporte',\n};\nlet plataforma = 'FormularioLeads';\nlet frontend = 'http://localhost:3000';\ntry {\n  plataforma = ($env && $env.PLATAFORMA_NOMBRE) || plataforma;\n  frontend = String(($env && $env.FRONTEND_URL) || frontend).replace(/\\/+$/, '');\n} catch (e) {}\nconst marca = l.espacio_nombre || plataforma;\nconst servicio = SERVICIO[l.servicio] || String(l.servicio || '').replaceAll('_', ' ');\nconst url = `${frontend}/proyecto/${encodeURIComponent(l.proyecto_token)}`;\nreturn [{ json: {\n  ...l,\n  asunto: `Tu proyecto de ${servicio} con ${marca}: pagá el primer hito`,\n  cuerpo_html: `<p>Hola ${esc(String(l.nombre || '').split(' ')[0])},</p>\n<p>¡Gracias por aceptar la propuesta! El proyecto se paga por hitos, con pago protegido: pagás cada hito antes de que empiece, la plata queda retenida por ${esc(plataforma)} y le llega a <b>${esc(marca)}</b> recién cuando apruebes la entrega.</p>\n<p><a href=\"${esc(url)}\">Abrí tu proyecto y pagá el primer hito</a>. Guardá este enlace: desde ahí también aprobás las entregas.</p>\n<p>Saludos,<br><b>${esc(marca)}</b></p>`,\n} }];"
+      },
+      "id": "57f423cd-6f6b-4615-9fcf-98dbb5870f48",
+      "name": "Code - Email Proyecto Hitos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1950,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.email }}",
+        "subject": "={{ $json.asunto }}",
+        "message": "={{ $json.cuerpo_html }}",
+        "options": {
+          "appendAttribution": false,
+          "senderName": "={{ ($json.espacio_nombre ? $json.espacio_nombre + ' vía ' : '') + ($env.PLATAFORMA_NOMBRE || 'FormularioLeads') }}",
+          "replyTo": "={{ $json.espacio_email || '' }}"
+        }
+      },
+      "id": "fd44dbbf-a23b-4e0e-90a4-1f5034f8e0f9",
+      "name": "Gmail - Proyecto Hitos",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2,
+      "position": [
+        2250,
+        800
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "KN5umVWzd1RZZuYM",
+          "name": "Gmail account"
+        }
+      },
+      "webhookId": "gm-proyecto-hitos"
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "lead_acepto",
+            "nivel": "atencion",
+            "mensaje": "=🎉 <b>¡PROPUESTA ACEPTADA!</b> (por hitos)\n\nCliente: {{ String($json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}\nServicio: {{ $json.servicio }}\nTotal: ${{ $json.precio_propuesto }} USD\n\nEl cliente ya puede pagar el primer hito; te avisamos cuando esté fondeado.",
+            "lead_id": "={{ $json.lead_id || '' }}",
+            "factura_id": "",
+            "espacio_id": ""
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "id": "88fe0d4b-e7f2-445e-9481-50b9118a6994",
+      "name": "Aviso - Aceptó por Hitos",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        1950,
+        620
+      ],
+      "onError": "continueRegularOutput"
     }
   ],
   "connections": {
@@ -8762,12 +8925,12 @@
       "main": [
         [
           {
-            "node": "Code - Generar ID Factura",
+            "node": "Code - Tickets del Proyecto",
             "type": "main",
             "index": 0
           },
           {
-            "node": "Code - Tickets del Proyecto",
+            "node": "IF - Cobro por Hitos?",
             "type": "main",
             "index": 0
           }
@@ -10005,6 +10168,40 @@
         [
           {
             "node": "Gmail - Alertas de la Bolsa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Cobro por Hitos?": {
+      "main": [
+        [
+          {
+            "node": "Code - Email Proyecto Hitos",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Aviso - Aceptó por Hitos",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Code - Generar ID Factura",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code - Email Proyecto Hitos": {
+      "main": [
+        [
+          {
+            "node": "Gmail - Proyecto Hitos",
             "type": "main",
             "index": 0
           }

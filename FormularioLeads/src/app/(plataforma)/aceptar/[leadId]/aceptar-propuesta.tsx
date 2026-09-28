@@ -47,6 +47,14 @@ interface LeadInfo {
   precio?: number;
   plazo?: string;
   alcance?: string;
+  // Etapa 11: por hitos, el cliente ve cada hito con su monto antes de aceptar.
+  cobro_modo?: "factura" | "hitos";
+  hitos?: {
+    orden: number;
+    titulo: string;
+    descripcion: string;
+    monto: number;
+  }[];
 }
 
 interface ApiResponse {
@@ -54,6 +62,8 @@ interface ApiResponse {
   motivo?: ApiMotivo;
   mensaje?: string;
   lead?: LeadInfo;
+  // Aceptada por hitos: el enlace de la página del proyecto, donde se paga.
+  proyecto_token?: string;
 }
 
 interface StatusContent {
@@ -214,7 +224,13 @@ function buildContent(
   }
 }
 
-function StatusView({accent, icon, title, message}: StatusContent) {
+function StatusView({
+  accent,
+  icon,
+  title,
+  message,
+  proyectoToken,
+}: StatusContent & {proyectoToken?: string}) {
   // El resultado (aceptado/rechazado/error/expirado/...) reemplaza toda la
   // pantalla sin que haya un elemento previo al que quede el foco: sin esto,
   // un lector de pantalla no anuncia el desenlace de la acción que se acaba
@@ -236,6 +252,11 @@ function StatusView({accent, icon, title, message}: StatusContent) {
         {title}
       </h2>
       <p className="text-muted max-w-sm text-[14.5px] leading-relaxed">{message}</p>
+      {proyectoToken ? (
+        <a className={primaryButtonClass} href={`/proyecto/${encodeURIComponent(proyectoToken)}`}>
+          Ir a tu proyecto
+        </a>
+      ) : null}
       {CONTACTO ? (
         <p className="text-faint max-w-sm text-[13px] leading-relaxed">
           ¿Necesitás una mano? Escribinos a{" "}
@@ -286,6 +307,7 @@ function ConfirmarView({
   onRechazar: () => void;
 }) {
   const servicio = lead?.servicio ? lead.servicio.replace(/_/g, " ") : "tu servicio";
+  const hitos = lead?.cobro_modo === "hitos" ? (lead.hitos ?? []) : [];
 
   return (
     <div className={cardClass}>
@@ -319,9 +341,35 @@ function ConfirmarView({
             <dd className="text-ink leading-relaxed whitespace-pre-line">{lead.alcance}</dd>
           </div>
         ) : null}
+        {hitos.length > 0 ? (
+          <div className="border-rule-soft flex flex-col gap-2 border-b py-3">
+            <dt className="text-faint">Hitos · pago protegido</dt>
+            <dd>
+              <ol className="flex flex-col gap-2">
+                {hitos.map((h) => (
+                  <li key={h.orden} className="flex items-baseline justify-between gap-4">
+                    <span className="text-ink">
+                      {h.orden}. {h.titulo}
+                      {h.descripcion ? (
+                        <span className="text-faint block text-[12.5px]">{h.descripcion}</span>
+                      ) : null}
+                    </span>
+                    <span className="text-ink tabular-nums">
+                      $
+                      {h.monto.toLocaleString("es-AR", {
+                        minimumFractionDigits: h.monto % 1 ? 2 : 0,
+                      })}{" "}
+                      USD
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </dd>
+          </div>
+        ) : null}
         {lead?.precio != null ? (
           <div className="border-rule-soft flex items-baseline justify-between gap-6 border-b py-3">
-            <dt className="text-faint">Inversión</dt>
+            <dt className="text-faint">{hitos.length > 0 ? "Total" : "Inversión"}</dt>
             <dd className="text-ochre font-serif text-[24px]">
               ${lead.precio.toLocaleString("es-AR")} USD
             </dd>
@@ -330,7 +378,9 @@ function ConfirmarView({
       </dl>
 
       <p className="text-faint max-w-sm text-[13px] leading-relaxed">
-        Al aceptar te enviamos la factura por email. ¿Cómo querés seguir?
+        {hitos.length > 0
+          ? "Pagás cada hito antes de que empiece: la plata queda retenida y le llega al desarrollador recién cuando apruebes la entrega. ¿Cómo querés seguir?"
+          : "Al aceptar te enviamos la factura por email. ¿Cómo querés seguir?"}
       </p>
       <div className="flex w-full max-w-sm flex-col gap-3">
         <button
@@ -418,6 +468,7 @@ export default function AceptarPropuesta({leadId, token}: {leadId: string; token
   const [estado, setEstado] = useState<Estado>("cargando");
   const [lead, setLead] = useState<LeadInfo | null>(null);
   const [mensaje, setMensaje] = useState<string | undefined>(undefined);
+  const [proyectoToken, setProyectoToken] = useState<string | undefined>(undefined);
   const [pedido, setPedido] = useState("");
 
   // 1) Al cargar: GET read-only. MIRAR — no muta nada (los pre-fetchers caen acá, sin daño).
@@ -454,6 +505,8 @@ export default function AceptarPropuesta({leadId, token}: {leadId: string; token
           setLead(json.lead ?? null);
           setEstado("confirmar");
         } else {
+          setMensaje(json.proyecto_token ? json.mensaje : undefined);
+          setProyectoToken(json.proyecto_token);
           setEstado(resolverEstadoFalla(json));
         }
       } catch (err) {
@@ -491,6 +544,7 @@ export default function AceptarPropuesta({leadId, token}: {leadId: string; token
       const json: ApiResponse = await response.json().catch(() => ({}));
 
       setMensaje(json.mensaje);
+      setProyectoToken(json.proyecto_token);
       setEstado(json.status === "ok" ? exito : resolverEstadoFalla(json));
     } catch (err) {
       console.error(err);
@@ -533,5 +587,5 @@ export default function AceptarPropuesta({leadId, token}: {leadId: string; token
     );
   }
 
-  return <StatusView {...buildContent(estado, mensaje)} />;
+  return <StatusView {...buildContent(estado, mensaje)} proyectoToken={proyectoToken} />;
 }

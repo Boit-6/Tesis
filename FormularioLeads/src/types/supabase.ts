@@ -41,6 +41,76 @@ export interface Conversacion {
   mensajes: Mensaje[];
 }
 
+// Pago protegido por hitos (etapa 11).
+export type HitoEstado =
+  | "PENDIENTE"
+  | "FONDEADO"
+  | "ENTREGADO"
+  | "EN_DISPUTA"
+  | "LIBERADO"
+  | "REEMBOLSADO"
+  | "ANULADO";
+
+export type CobroModo = "factura" | "hitos";
+
+export interface HitoEvento {
+  tipo:
+    | "fondeado"
+    | "entregado"
+    | "aprobado"
+    | "liberado_solo"
+    | "disputado"
+    | "resuelto"
+    | "devuelto"
+    | "anulado"
+    | "transferido"
+    | "reembolsado";
+  actor: "cliente" | "desarrollador" | "admin" | "plataforma";
+  detalle: string | null;
+  creado_en: string;
+}
+
+export interface Hito {
+  id: string;
+  orden: number;
+  titulo: string;
+  descripcion: string | null;
+  monto: number;
+  estado: HitoEstado;
+  comision_porcentaje: number;
+  fondeado_en: string | null;
+  entrega_nota: string | null;
+  entregado_en: string | null;
+  // Hasta cuándo el cliente puede aprobar o disputar antes de que se libere solo.
+  libera_en: string | null;
+  disputa_motivo: string | null;
+  monto_liberado: number;
+  monto_reembolsado: number;
+  comision: number;
+  resolucion_nota: string | null;
+  cerrado_en: string | null;
+  transferido_en: string | null;
+  reembolsado_en: string | null;
+  // Es el que le toca pagar al cliente.
+  puede_pagar: boolean;
+  eventos: HitoEvento[];
+}
+
+// Lo que devuelve ver_proyecto(): la vista de un proyecto según quién mira.
+export interface Proyecto {
+  rol: "desarrollador" | "cliente" | "admin";
+  lead_id: string;
+  estado: LeadEstadoDb;
+  cobro_modo: CobroModo;
+  servicio: ServicioTipo;
+  cliente_nombre: string;
+  espacio_nombre: string;
+  alcance: string | null;
+  plazo: string | null;
+  de_plataforma: boolean;
+  hitos: Hito[];
+}
+
 export type TierTipo = "HOT" | "WARM" | "COLD";
 
 export type LeadEstadoDb =
@@ -168,6 +238,8 @@ export interface Database {
           precio_propuesto: number | null;
           plazo_propuesto: string | null;
           alcance_propuesto: string | null;
+          cobro_modo: CobroModo;
+          proyecto_token: string;
         };
         Insert: {
           id?: number;
@@ -641,6 +713,58 @@ export interface Database {
           proyectos_terminados: number;
         }[];
       };
+      // Pago protegido por hitos (etapa 11).
+      definir_cobro: {
+        // Vacío o null: factura única (no se admite en proyectos de la plataforma).
+        Args: {
+          p_lead: string;
+          p_hitos: {titulo: string; descripcion?: string; monto: number}[] | null;
+        };
+        Returns: number;
+      };
+      ver_proyecto: {
+        Args: {p_lead: string | null; p_token?: string | null};
+        Returns: Proyecto;
+      };
+      entregar_hito: {
+        Args: {p_hito: string; p_nota: string};
+        Returns: string;
+      };
+      aprobar_hito: {
+        Args: {p_hito: string; p_token?: string | null};
+        Returns: undefined;
+      };
+      disputar_hito: {
+        Args: {p_hito: string; p_motivo: string; p_token?: string | null};
+        Returns: undefined;
+      };
+      devolver_hito: {
+        Args: {p_hito: string; p_nota: string};
+        Returns: undefined;
+      };
+      anular_hito: {
+        Args: {p_hito: string};
+        Returns: undefined;
+      };
+      resolver_disputa: {
+        Args: {p_hito: string; p_liberar: number; p_nota: string};
+        Returns: undefined;
+      };
+      disputas_abiertas: {
+        Args: Record<string, never>;
+        Returns: {
+          id: string;
+          lead_id: string;
+          titulo: string;
+          monto: number;
+          disputa_motivo: string;
+          disputa_abierta_en: string;
+          entrega_nota: string | null;
+          espacio_nombre: string;
+          cliente_nombre: string;
+          servicio: ServicioTipo;
+        }[];
+      };
       // Los proyectos del cliente con sesión y sus postulaciones.
       mis_proyectos: {
         Args: Record<string, never>;
@@ -685,6 +809,7 @@ export interface Database {
       ticket_estado: TicketEstadoDb;
       ticket_prioridad: TicketPrioridadDb;
       bolsa_estado: BolsaEstado;
+      hito_estado: HitoEstado;
     };
     CompositeTypes: Record<string, never>;
   };

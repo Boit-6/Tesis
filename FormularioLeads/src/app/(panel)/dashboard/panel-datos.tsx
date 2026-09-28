@@ -8,6 +8,7 @@ import type {
   PorEnviar,
   Trabajo,
 } from "./dashboard-types";
+import type {HitosPropuesta} from "./form-propuesta";
 import type {Database} from "@/types/supabase";
 import type {ReactNode} from "react";
 
@@ -124,6 +125,7 @@ interface PanelDatos {
     precio: number,
     plazo: string,
     alcance: string,
+    hitos: HitosPropuesta,
   ) => Promise<void>;
   cancelar: (leadId: string) => void;
   cerrarProyecto: (leadId: string) => void;
@@ -352,8 +354,25 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
 
   // Fija los términos y dispara el envío de la propuesta. Es el paso que antes
   // no existía: la propuesta salía sola con el importe del formulario público.
-  async function enviarPropuesta(leadId: string, precio: number, plazo: string, alcance: string) {
+  // Con hitos (etapa 11), primero se guardan en la base: definir_cobro()
+  // valida quién llama y cada hito, y n8n toma el total de ahí. Sin hitos
+  // también se llama, para volver a la factura única si antes había hitos.
+  async function enviarPropuesta(
+    leadId: string,
+    precio: number,
+    plazo: string,
+    alcance: string,
+    hitos: HitosPropuesta,
+  ) {
     try {
+      if (!supabase) throw new Error("Falta la conexión con la base.");
+      const {error: errorCobro} = await supabase.rpc("definir_cobro", {
+        p_lead: leadId,
+        p_hitos: hitos,
+      });
+
+      if (errorCobro) throw new Error(errorCobro.message);
+
       const res = await fetch("/api/crm/propuesta-enviar", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
