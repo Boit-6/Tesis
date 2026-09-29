@@ -10,113 +10,18 @@ import type {
   Trabajo,
 } from "./dashboard-types";
 import type {HitosPropuesta} from "./form-propuesta";
-import type {Database} from "@/types/supabase";
 import type {ReactNode} from "react";
 
 import {createContext, useCallback, useContext, useEffect, useState} from "react";
 
-import {LEADS_LIMITE} from "./dashboard-types";
 import LeadDetalle from "./lead-detalle";
+import {cargarPanel} from "./panel-loader";
 
 import {useConfirm} from "@/app/components/confirm-dialog";
 import {createClient} from "@/lib/supabase/client";
 
-// Facturas pendientes que trae el tablero. A la escala actual no debería
-// alcanzarse nunca, pero una consulta sin límite no debería depender de eso.
-const FACTURAS_LIMITE = 200;
-
 // Ventana para agrupar los eventos de tiempo real en una sola recarga.
 const RECARGA_AGRUPADA_MS = 400;
-
-// Las vistas (`metrics_mensuales`, `facturas_pendientes`) declaran todas sus
-// columnas nullable en los tipos generados —ninguna vista puede garantizar
-// NOT NULL—, aunque acá vengan siempre de columnas NOT NULL de la tabla base.
-// Estos adaptadores son el único lugar que reconcilia esa diferencia, en vez
-// de un `as Metrics`/`as FacturaPendiente[]` a ciegas sobre toda la fila.
-function aMetrics(
-  row: Database["public"]["Views"]["metrics_mensuales"]["Row"] | undefined,
-): Metrics | null {
-  if (!row) return null;
-
-  return {
-    mes: row.mes ?? "",
-    total_leads: row.total_leads ?? 0,
-    conversion_pct: row.conversion_pct ?? 0,
-    facturacion: row.facturacion ?? 0,
-    cobrado: row.cobrado ?? 0,
-    pendiente: row.pendiente ?? 0,
-    facturas_vencidas: row.facturas_vencidas ?? 0,
-    tasa_cobro_pct: row.tasa_cobro_pct ?? 0,
-    cobrado_cierre_manual: row.cobrado_cierre_manual ?? 0,
-  };
-}
-
-function aFacturaPendiente(
-  row: Database["public"]["Views"]["facturas_pendientes"]["Row"],
-): FacturaPendiente | null {
-  // `factura_id`, `fecha_vencimiento` y `dias_al_vencimiento` no pueden faltar
-  // en la práctica (columnas NOT NULL o calculadas a partir de una): si algún
-  // día lo hacen, se descarta la fila en vez de mostrar un dato roto.
-  if (
-    !row.factura_id ||
-    !row.cliente ||
-    !row.servicio ||
-    row.monto == null ||
-    !row.moneda ||
-    !row.fecha_vencimiento ||
-    row.dias_al_vencimiento == null
-  ) {
-    return null;
-  }
-
-  return {
-    estado: "PENDIENTE",
-    factura_id: row.factura_id,
-    cliente: row.cliente,
-    servicio: row.servicio,
-    monto: row.monto,
-    moneda: row.moneda,
-    fecha_vencimiento: row.fecha_vencimiento,
-    dias_al_vencimiento: row.dias_al_vencimiento,
-  };
-}
-
-// Días entre hoy y la fecha de vencimiento, con la misma cuenta que la vista
-// `facturas_pendientes` (fecha_vencimiento::date - now()::date).
-function diasHasta(fecha: string): number {
-  const hoy = new Date();
-  const vence = new Date(fecha);
-
-  hoy.setHours(0, 0, 0, 0);
-  vence.setHours(0, 0, 0, 0);
-
-  return Math.round((vence.getTime() - hoy.getTime()) / 86_400_000);
-}
-
-function aFacturaVencida(
-  row: Pick<
-    Database["public"]["Tables"]["facturas"]["Row"],
-    "factura_id" | "cliente" | "servicio" | "monto" | "moneda" | "fecha_vencimiento"
-  >,
-): FacturaPendiente {
-  return {
-    estado: "VENCIDA",
-    factura_id: row.factura_id,
-    cliente: row.cliente,
-    servicio: row.servicio ?? "",
-    monto: row.monto,
-    moneda: row.moneda,
-    fecha_vencimiento: row.fecha_vencimiento,
-    dias_al_vencimiento: diasHasta(row.fecha_vencimiento),
-  };
-}
-
-// Los estados de un hito que esperan algo del desarrollador.
-const ESTADOS_PENDIENTES: HitoPendiente["estado"][] = ["FONDEADO", "EN_DISPUTA"];
-
-function esEstadoPendiente(estado: string): estado is HitoPendiente["estado"] {
-  return (ESTADOS_PENDIENTES as string[]).includes(estado);
-}
 
 interface PanelDatos {
   // true hasta que llega la primera carga: cada página muestra su esqueleto.
@@ -192,131 +97,20 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
     }
 
     try {
-      setError(null);
+      const {datos, errores} = await cargarPanel(supabase);
 
-      const [
-        resMetrics,
-        resEstados,
-        resLeads,
-        resFacturas,
-        resVencidas,
-        resTrabajos,
-        resPedidos,
-        resPorEnviar,
-        resHitos,
-      ] = await Promise.all([
-        supabase.from("metrics_mensuales").select("*").order("mes", {ascending: false}).limit(1),
-        // Cuenta el embudo histórico completo (no solo el mes en curso), a
-        // propósito: es la única lectura de todo el tablero que no puede
-        // acotarse a metrics_mensuales, que agrupa por mes y no trae todos
-        // los estados. A la escala actual (decenas de filas) traer solo la
-        // columna `estado` de cada lead no es un costo real.
-        supabase.from("leads").select("estado"),
-        supabase
-          .from("leads")
-          .select(
-            "lead_id,nombre,email,servicio,estado,tier,presupuesto,presupuesto_rango,fecha_ingreso",
-          )
-          .order("fecha_ingreso", {ascending: false})
-          .limit(LEADS_LIMITE),
-        supabase
-          .from("facturas_pendientes")
-          .select("*")
-          .order("dias_al_vencimiento")
-          .limit(FACTURAS_LIMITE),
-        // La vista sólo trae PENDIENTE (alimenta los recordatorios): las que
-        // el cron ya marcó VENCIDA se leen aparte para que no desaparezcan
-        // del tablero justo cuando más urge cobrarlas.
-        supabase
-          .from("facturas")
-          .select("factura_id,cliente,servicio,monto,moneda,fecha_vencimiento")
-          .eq("estado_pago", "VENCIDA")
-          .order("fecha_vencimiento")
-          .limit(FACTURAS_LIMITE),
-        supabase
-          .from("leads")
-          .select("lead_id,nombre,servicio,estado_trabajo")
-          .in("estado", ["ACEPTADO", "FACTURADO"])
-          .order("fecha_ingreso", {ascending: false}),
-        // Un pedido de cambios pendiente es un lead que está EN_SEGUIMIENTO y
-        // tiene el mensaje del cliente en `notas`. Filtrar sólo por `notas`
-        // no alcanza: nada la limpia al resolver el pedido, así que la
-        // bandeja se llenaba de leads ya facturados, cerrados o perdidos que
-        // alguna vez pidieron un cambio, con sus botones activos y sin forma
-        // de sacarlos de la lista. Al resolverse, el lead vuelve a
-        // PROPUESTA_ENVIADA y desaparece de acá, que es lo esperable.
-        supabase
-          .from("leads")
-          .select("lead_id,nombre,servicio,notas")
-          .eq("estado", "EN_SEGUIMIENTO")
-          .not("notas", "is", null)
-          .order("fecha_ingreso", {ascending: false}),
-        supabase
-          .from("leads")
-          .select(
-            "lead_id,nombre,email,servicio,tier,score,presupuesto,presupuesto_rango,fecha_ingreso",
-          )
-          .eq("estado", "NUEVO")
-          .in("tier", ["HOT", "WARM"])
-          .order("score", {ascending: false}),
-        // Etapa 11: los hitos que esperan algo del desarrollador. Los que ya
-        // entregó esperan al cliente, así que no se cuentan.
-        supabase
-          .from("hitos")
-          .select("id,lead_id,orden,titulo,monto,estado,disputa_motivo,leads(nombre)")
-          .in("estado", ESTADOS_PENDIENTES)
-          .order("creado_en"),
-      ]);
-
-      const fallo =
-        resMetrics.error ??
-        resEstados.error ??
-        resLeads.error ??
-        resFacturas.error ??
-        resVencidas.error ??
-        resTrabajos.error ??
-        resPedidos.error ??
-        resPorEnviar.error ??
-        resHitos.error;
-
-      if (fallo) throw fallo;
-
-      setMetrics(aMetrics(resMetrics.data?.[0]));
-
-      const counts: Record<string, number> = {};
-
-      for (const row of resEstados.data ?? []) {
-        counts[row.estado] = (counts[row.estado] ?? 0) + 1;
-      }
-
-      setFunnel(counts);
-      setLeads(resLeads.data ?? []);
-      setFacturas(
-        [
-          ...(resVencidas.data ?? []).map(aFacturaVencida),
-          ...(resFacturas.data ?? []).map(aFacturaPendiente).filter((f) => f !== null),
-        ].sort((a, b) => a.dias_al_vencimiento - b.dias_al_vencimiento),
-      );
-      setTrabajos(resTrabajos.data ?? []);
-      setPedidos(resPedidos.data ?? []);
-      setPorEnviar(resPorEnviar.data ?? []);
-      setHitosPendientes(
-        (resHitos.data ?? []).flatMap((h) =>
-          esEstadoPendiente(h.estado)
-            ? [
-                {
-                  id: h.id,
-                  lead_id: h.lead_id,
-                  orden: h.orden,
-                  titulo: h.titulo,
-                  monto: h.monto,
-                  estado: h.estado,
-                  disputa_motivo: h.disputa_motivo,
-                  cliente: h.leads?.nombre ?? h.lead_id,
-                },
-              ]
-            : [],
-        ),
+      if ("metrics" in datos) setMetrics(datos.metrics ?? null);
+      if (datos.funnel) setFunnel(datos.funnel);
+      if (datos.leads) setLeads(datos.leads);
+      if (datos.facturas) setFacturas(datos.facturas);
+      if (datos.trabajos) setTrabajos(datos.trabajos);
+      if (datos.pedidos) setPedidos(datos.pedidos);
+      if (datos.porEnviar) setPorEnviar(datos.porEnviar);
+      if (datos.hitosPendientes) setHitosPendientes(datos.hitosPendientes);
+      setError(
+        errores.length
+          ? `No pudimos actualizar ${errores.join("; ")}. Se muestran los últimos datos disponibles.`
+          : null,
       );
     } catch (err) {
       console.error(err);
@@ -371,7 +165,11 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
   // credencial del lado del servidor.
   // El body es genérico (no siempre es `lead_id`: factura-anular manda
   // `factura_id`) porque el route handler sólo reenvía lo que reciba.
-  async function accionPanel(accion: string, body: Record<string, unknown>, mensajeError: string) {
+  async function accionPanel(
+    accion: string,
+    body: Record<string, unknown>,
+    mensajeError: string,
+  ): Promise<boolean> {
     try {
       const res = await fetch(`/api/crm/${accion}`, {
         method: "POST",
@@ -384,10 +182,14 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
         throw new Error(json.error ?? json.mensaje ?? `Error ${res.status}`);
       }
 
-      cargarDatos();
+      void cargarDatos();
+
+      return true;
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : mensajeError);
+
+      return false;
     }
   }
 
@@ -503,14 +305,13 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
       textoConfirmar: "Aceptar y reenviar",
     });
 
-    if (ok)
-      await accionPanel(
-        "cambio-aceptar",
-        {lead_id: leadId},
-        "No se pudo procesar el pedido de cambio.",
-      );
+    if (!ok) return false;
 
-    return ok;
+    return accionPanel(
+      "cambio-aceptar",
+      {lead_id: leadId},
+      "No se pudo procesar el pedido de cambio.",
+    );
   }
 
   async function rechazarCambio(leadId: string): Promise<boolean> {
@@ -521,15 +322,13 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
       peligroso: true,
     });
 
-    if (ok) {
-      await accionPanel(
-        "cambio-rechazar",
-        {lead_id: leadId},
-        "No se pudo procesar el pedido de cambio.",
-      );
-    }
+    if (!ok) return false;
 
-    return ok;
+    return accionPanel(
+      "cambio-rechazar",
+      {lead_id: leadId},
+      "No se pudo procesar el pedido de cambio.",
+    );
   }
 
   // Cierra la transición ANULADA del enum `pago_estado` (§4.8 y Cap. 8, punto

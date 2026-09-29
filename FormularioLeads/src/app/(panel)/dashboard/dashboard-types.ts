@@ -88,8 +88,8 @@ export interface PorEnviar {
   fecha_ingreso: string;
 }
 
-// Cuántos leads trae la consulta del coordinador (dashboard-client.tsx) y,
-// por lo tanto, a cuántos alcanza la búsqueda en dashboard-leads-table.tsx.
+// La consulta de panel-datos.tsx y la búsqueda de dashboard-leads-table.tsx
+// comparten este tope para no prometer resultados que la tabla no recibió.
 export const LEADS_LIMITE = 200;
 
 export const FUNNEL_ORDER: LeadEstado[] = [
