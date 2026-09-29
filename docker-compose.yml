@@ -14,7 +14,9 @@ services:
     container_name: n8n
     restart: unless-stopped
     ports:
-      - "5678:5678"
+      # Sólo loopback. Para acceso externo, publicar un proxy HTTPS con auth
+      # y controles de origen; no abrir directamente el editor de n8n.
+      - "127.0.0.1:5678:5678"
     environment:
       - N8N_HOST=localhost
       - N8N_PORT=5678
@@ -45,7 +47,8 @@ services:
       - N8N_PUBLIC_URL=${N8N_PUBLIC_URL:-http://localhost:5678/}
       - FRONTEND_URL=${FRONTEND_URL:-https://formulario-leads-psi.vercel.app}
       - GOTENBERG_URL=${GOTENBERG_URL:-http://gotenberg:3000/forms/chromium/convert/html}
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:3000,https://formulario-leads-psi.vercel.app}
+      # CORS_ORIGINS no se inyecta: webhook.options.allowedOrigins en n8n 2.34.6
+      # requiere literales. Renderizar e importar copias con `workflow:render`.
       # ── Seguridad ─────────────────────────────────────────────────────────
       # Días que vale el enlace de aceptación desde que se envía la propuesta.
       - TOKEN_VIGENCIA_DIAS=${TOKEN_VIGENCIA_DIAS:-14}
