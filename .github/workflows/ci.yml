@@ -60,7 +60,7 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '20'
+          node-version-file: .nvmrc
 
       # Nodos Code de los dos workflows, scoring (regresión contra la Tabla 4),
       # envejecimiento de tickets y afirmaciones de la tesis.
@@ -96,7 +96,7 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          node-version: '20'
+          node-version-file: .nvmrc
           cache: npm
           cache-dependency-path: FormularioLeads/package-lock.json
 
