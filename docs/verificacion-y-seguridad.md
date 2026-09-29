@@ -3,6 +3,11 @@
 Este documento reúne lo que se agregó para responder, con evidencia ejecutable,
 las observaciones del `dictamen-tesisv4.md` y las cuestiones de la defensa oral.
 
+> **Alcance temporal:** las cifras y corridas de la defensa son evidencia de su
+> fecha, no garantías del despliegue actual. Para los permisos vigentes del
+> artefacto versionado, consultar `db/schema.sql` y volver a ejecutar los tests;
+> este documento no verifica credenciales ni políticas aplicadas en producción.
+
 La idea de fondo: **todo lo que la tesis afirma sobre el artefacto tiene que
 poder re-ejecutarlo otra persona**. Donde antes había una descripción en prosa
 más una captura, ahora hay además un comando.
@@ -22,6 +27,10 @@ más una captura, ahora hay además un comando.
 | Cuestión 5 — ¿cómo se aseguró la reproducibilidad de E1–E10? | — | La suite escribe `docs/evidencia-validacion.md` en cada corrida |
 | Deriva entre documento y código | — | `tests/verificar_afirmaciones.mjs` recalcula los números que afirma la tesis |
 
+La evidencia archivada de E7 está en `docs/evidencia-realtime.md`: es una
+corrida histórica, no un resultado del medidor actual ni una garantía de
+Realtime en una instancia desplegada hoy.
+
 ---
 
 ## 2. Comandos
@@ -31,6 +40,37 @@ npm test                # suite offline: nodos Code, scoring, tickets, parámetr
 npm run test:docker     # SQL, RLS e idempotencia sobre un PostgreSQL desechable (necesita Docker)
 npm run test:escenarios # validación funcional de punta a punta (necesita el sistema levantado)
 ```
+
+Para repetir **E7 / RNF6**, el medidor canónico es
+`FormularioLeads/scripts/medir-realtime.mjs`; `scripts/medir-realtime.mjs` de
+la raíz sólo reenvía a él. Necesita una cuenta de prueba con sesión y espacio
+propio (`REALTIME_TEST_EMAIL` / `REALTIME_TEST_PASSWORD`), URL y anon key de
+Supabase y `SUPABASE_SERVICE_ROLE_KEY` para crear y eliminar **su propio lead
+ficticio**. La suscripción usa la sesión de esa cuenta, no una anon key sin
+sesión. El script informa si falla la limpieza y el ID afectado. No se debe
+ejecutar sobre producción sin planificar ese dato de prueba. La tabla `leads`
+debe estar publicada para Realtime. Una ejecución directa desde la raíz,
+sin sobrescribir la evidencia archivada, sería:
+
+```bash
+node FormularioLeads/scripts/medir-realtime.mjs --n 5
+```
+
+`npm run test:realtime` sí reemplaza el archivo de evidencia. Ninguna de esas
+mediciones se ejecutó al actualizar esta guía.
+
+`npm run --silent manifest:deployment` emite huellas SHA-256 locales de
+`db/schema.sql` y `workflow/*.json`; `npm run --silent manifest:verify -- <manifiesto.json>`
+compara ese manifiesto con los archivos **locales**. Sirve
+para cotejar la fuente transferida antes de importar/aplicar, no para demostrar el
+estado de n8n o Supabase remotos. Para el navegador fuera de la máquina local,
+el compose exige un proxy HTTPS/túnel hacia `127.0.0.1:5678`: configurar
+`N8N_PUBLIC_URL` no publica ese puerto por sí mismo.
+Para CORS, `npm run workflow:render -- --out <directorio-nuevo>` requiere
+`CORS_ORIGINS` explícito y genera copias JSON importables con literales y un
+`render-manifest.json` separado (SHA-256 de fuente y copia). No incluye el
+esquema, no importa a n8n y no valida el despliegue. Cambiar la variable
+requiere volver a renderizar e importar; no basta reiniciar.
 
 Las dos primeras corren en CI (`.github/workflows/ci.yml`) en cada push, con los
 tres pasos de Docker por separado para que el informe diga cuál falló. La
@@ -58,22 +98,25 @@ alguna. Como ambas vistas existen en el proyecto de Supabase, la instancia real
 es 15 o superior. Esa corrida no se versiona, justamente porque falla a
 propósito: la evidencia archivada es siempre la de la imagen por defecto.
 
-Los 33 casos cubren:
+En el corte de la defensa, los 33 casos resumidos aquí cubrían:
 
 - **El público (`anon`) no accede a nada**: ni tablas ni vistas.
-- **Estar logueado no alcanza**: un usuario sin rol `admin` ve 0 filas — la RLS
-  filtra, no da error, que es justamente lo que hace difícil detectarla a ojo.
-- **El admin lee el tablero**, incluidas las vistas `security_invoker`.
+- **Estar logueado no alcanza**: en el modelo original, un usuario sin rol
+  `admin` veía 0 filas. El esquema actual usa propiedad del espacio para los
+  datos del desarrollador; ser `admin` no concede acceso a espacios ajenos.
+- **Las vistas respetan RLS** mediante `security_invoker`.
 - **La auditoría está cerrada**: ni siquiera el admin puede leer `logs`.
-- **Nadie escribe desde el navegador**: no hay políticas de INSERT/UPDATE/DELETE
-  para `authenticated`, así que el admin tampoco puede modificar un lead.
+- **Los leads no se escriben desde el navegador**; el esquema actual sí permite
+  operaciones acotadas de `authenticated` sobre tickets y el espacio propio.
 - **No hay escalada de privilegios**: un usuario no puede darse el rol `admin`.
 - **`profiles` es privada**: cada uno ve sólo su fila.
-- **`service_role` escribe y lee todo**, que sigue siendo su diseño declarado
-  (uso administrativo, ya no la conexión de n8n — ver §5.4).
-- **`n8n_writer` (nueve casos) puede exactamente lo que el flujo necesita y
-  nada más**: lee y escribe `leads`, `facturas`, `seguimientos` y `logs`; no
-  puede borrar ninguna fila ni leer `profiles` ni `auth.users`.
+- **`service_role` evita la RLS**; debe reservarse para administración, no
+  asumirse como credencial operativa del flujo a partir del repositorio.
+- **`n8n_writer`** se probó entonces con nueve casos sobre las tablas iniciales.
+  El esquema actual le concede además permisos para espacios, rate limiting,
+  tickets, avisos, bolsa, mensajes e hitos; la lista anterior de cuatro tablas
+  ya no define su radio de acceso. Sus permisos exactos dependen de los `GRANT`
+  y políticas de `db/schema.sql`, no de este resumen histórico.
 
 La respuesta a la cuestión 2 de la defensa pasa a ser: *«está aplicada, y así se
 verifica — mirá»*.
@@ -254,16 +297,21 @@ completo (`BYPASSRLS`) y alcanza más que las cinco tablas de este esquema. Si
 esa credencial se filtraba —ya ocurrió una vez, ver S7 y §6.3 de la tesis—, el
 radio de daño era el de un superusuario de facto.
 
-`n8n_writer` es el rol que debe usar la credencial Postgres del nodo homónimo
-de n8n en su lugar (`db/schema.sql`, sección 5.1):
+`n8n_writer` es el rol previsto para la credencial Postgres del nodo homónimo
+de n8n (`db/schema.sql`, sección 5.1):
 
 - Sin `BYPASSRLS`. Sujeto a políticas de fila propias
   (`leads_rw_n8n_writer`, `facturas_rw_n8n_writer`, `seguimientos_rw_n8n_writer`,
   `logs_rw_n8n_writer`), sin las cuales no podría hacer nada aunque tuviera el
   `GRANT` — la RLS deniega por omisión.
-- `GRANT SELECT, INSERT, UPDATE` sobre exactamente las cuatro tablas que las
-  35 consultas Postgres del flujo tocan (`leads`, `facturas`, `seguimientos`,
-  `logs`). Nunca `profiles`, nunca el esquema `auth`.
+- En el corte original, `GRANT SELECT, INSERT, UPDATE` sobre cuatro tablas
+  (`leads`, `facturas`, `seguimientos`, `logs`). El esquema vigente también
+  concede operaciones específicas sobre `espacios`, `rate_limit_log`, `avisos`,
+  `tickets`, `bolsa_pedidos`, `mensajes`, `hitos`,
+  `checkout_revisiones` y `hitos_movimientos_revision`, entre otros objetos, además
+  de funciones y vistas;
+  no tiene acceso directo a `profiles` ni al esquema `auth`. No se debe inferir
+  un radio de daño de sólo cuatro tablas.
 - Sin `DELETE`: ningún nodo del flujo borra una fila.
 
 La mitigación de código que la Tabla 11 proponía originalmente para S4
@@ -295,60 +343,31 @@ veces: primero, con la contraseña todavía desactualizada en n8n, el nodo
 usuario de la conexión, confirmando que la credencial apuntaba al rol
 correcto—; corregida la contraseña, un alta de lead disparada contra el
 webhook real (`POST /webhook/lead/nuevo`) se persistió en `leads` sin error.
-La instancia real de n8n escribe hoy con `n8n_writer`, no con `service_role`.
+Ese resultado acredita la instancia y fecha de aquella prueba; no permite
+afirmar qué credencial usa una instancia desplegada hoy sin comprobarla allí.
 
-### 5.3.1 Rate limiting básico en los cinco webhooks públicos (01-sep-2026, S1 parcial)
+### 5.3.1 Rate limiting de los cinco webhooks públicos (artefacto actual)
 
-Los cinco webhooks sin autenticación de origen (`lead/nuevo`, `lead-propuesta`,
-`lead-acepta`, `lead-rechaza`, `lead-modifica`) no admiten un secreto
-compartido por el motivo ya expuesto en 5.2: los invoca el navegador de un
-tercero. La mitigación que la Tabla 11 recomienda para ese caso es limitar el
-abuso, no autenticar el origen. Se agregó dentro del propio flujo, delante de
-cada uno de los cinco:
+El esquema/workflow versionado usa `rate_limit_cuotas`: un `INSERT ... ON
+CONFLICT DO UPDATE` incrementa el contador de `(ip_o_clave, ruta,
+ventana_inicio)` atómicamente dentro de una ventana fija. `rate_limit_log`
+conserva intentos para auditoría, pero **ya no** determina el cupo. Las cinco
+rutas son `lead/nuevo`, `lead-propuesta`, `lead-acepta`, `lead-rechaza` y
+`lead-modifica`. Los umbrales son 5 por minuto para `lead/nuevo`, 30 cada
+5 minutos para `lead-propuesta` y 10 cada 5 minutos para aceptar, rechazar y
+modificar. La ventana fija permite ráfagas al cruzar su límite temporal.
 
-1. **`Code - Clave Rate Limit (...)`**: calcula la clave de conteo — el email
-   declarado en el propio formulario si vino (`lead/nuevo`), o si no la IP de
-   origen (`headers['x-forwarded-for']` / `x-real-ip`) para los otros cuatro.
-2. **`Postgres - Rate Limit (...)`**: en una sola sentencia (`WITH ... INSERT
-   ... RETURNING ... SELECT count(*)`), registra el intento en la tabla nueva
-   `rate_limit_log` (§7) y cuenta cuántos hubo desde esa clave y esa ruta en la
-   ventana reciente.
-3. **`Code - Rate Limit Resultado (...)`**: recompone el item original (el
-   nodo Postgres devuelve sólo las columnas de su consulta) con el conteo,
-   para que los nodos de siempre —`Code - Normalizar Lead`, `Code - Leer
-   Query`, etc.— seguían recibiendo `body`/`query`/`headers` intactos.
-4. **`IF - Rate Limit Excedido (...)`**: corta la cadena si el conteo superó
-   el umbral.
-5. Nodo terminal: **`Respond - Rate Limit (...)`** con `429` para
-   `lead-propuesta`, `lead-acepta`, `lead-rechaza` y `lead-modifica` (los
-   cuatro usan `responseMode: responseNode`, así que hay un `Respond` real que
-   reemplazar); y **`Postgres - Log Rate Limit (Nuevo Lead)`** para `lead/nuevo`.
+La clave usa el último tramo de `X-Forwarded-For` y **sólo es fiable detrás
+de un proxy que controle ese encabezado**. `lead/nuevo` corta el proceso
+interno al exceder el cupo pero conserva el acuse inmediato; las otras cuatro
+rutas responden 429. No hay captcha validado por el servidor. Estos son
+contratos del código actual: no consta aquí una medición contra un despliegue.
 
-Umbrales: 5 intentos por minuto por clave en `lead/nuevo` (la mayor superficie
-de abuso, según la propia tesis); 30 cada 5 minutos en `lead-propuesta` (GET de
-lectura, tolera más); 10 cada 5 minutos en `lead-acepta`/`lead-rechaza`/
-`lead-modifica`.
-
-**Por qué `lead/nuevo` no devuelve 429.** Es el único de los cinco sin
-`responseMode: responseNode`: responde de inmediato al recibir la petición
-(ack genérico), antes de que corra el resto del flujo, y no hay ningún nodo
-`Respond` en su rama para reemplazar por uno de 429. Lo que sí logra la
-mitigación ahí es cortar el procesamiento interno —no se normaliza, no se
-puntúa, no se persiste el lead, no salen avisos— y queda una fila en `logs`
-(`evento = 'rate_limit_excedido'`, `nivel = 'WARN'`). Devolver un 429 real
-para esta ruta exigiría convertirla a `responseNode` con un `Respond` en cada
-rama terminal (éxito, duplicado, HOT/WARM, COLD), una reestructuración mayor
-que no se hizo acá — ver el caveat de verificación al final de esta sección.
-
-**No verificado en vivo.** Este cambio se hizo sin una instancia de n8n
-levantada: se comprobó que el JSON es válido, que los nodos nuevos quedan
-insertados en el grafo de conexiones (ningún nodo huérfano) y que las 41
-consultas Postgres del flujo pasan `npm run test:parametros` (arreglo de
-parámetros, sin interpolación). Lo que falta comprobar contra una instancia
-real: que `WITH ... INSERT ... RETURNING ... SELECT` compile tal cual contra
-`rate_limit_log`, que el índice `idx_rate_limit_clave_ruta_fecha` se use, y que
-el 429 llegue efectivamente al navegador en los cuatro webhooks que sí pueden
-devolverlo.
+La implementación inicial del 01-sep-2026 contaba entradas en
+`rate_limit_log` con `SELECT + INSERT` y no era atómica. Las evidencias de
+esa fecha describen aquel artefacto, no el contador actual. Para comprobar
+el vigente hacen falta esquema aplicado antes del workflow, pruebas de
+concurrencia y verificación del proxy/429 en el entorno concreto.
 
 ### 5.3.2 Enmascarado del accept_token en la tabla de auditoría (01-sep-2026, S3 remanente)
 
@@ -434,39 +453,31 @@ Gotenberg. Contra el workflow anterior da 36 fallos.
 
 ### 5.4 Qué sigue abierto
 
-- **Rate limiting real, verificado en vivo.** El 01-sep-2026 se implementó
-  rate limiting (§5.3.1) delante de los cinco webhooks públicos sin
-  autenticación de origen (`lead-nuevo`, `lead-propuesta`, `lead-acepta`,
-  `lead-rechaza`, `lead-modifica`), como mitigación de S1 en lugar de un
-  secreto compartido. Lo que falta es verificarlo contra una instancia de n8n
-  corriendo: confirmar que la consulta a `rate_limit_log` compile tal cual
-  contra Postgres real y que el 429 llegue efectivamente al navegador en los
-  cuatro webhooks que usan `responseNode`. Para `lead/nuevo` puntualmente,
-  falta además la reestructuración a `responseNode` si se quiere que también
-  devuelva 429 en vez de sólo cortar el procesamiento interno y dejar
-  constancia en `logs` (hoy responde con el ack inmediato por defecto).
-- **El rate limit depende de un proxy propio delante de n8n.** La clave es
-  el último tramo de `X-Forwarded-For` (§5.3.1), que sólo es confiable si lo
-  escribe un proxy de confianza. Expuesto directo, quien llama pone la IP que
-  quiera, y los pedidos sin ese header comparten la clave `ip-desconocida`:
-  el límite castiga a los usuarios legítimos y no frena al que abusa. El
-  conteo (SELECT + INSERT en una sentencia) tampoco es atómico: una ráfaga
-  concurrente puede pasar algunos pedidos de más.
-- **El acuse del lead frío sigue yendo a un email sin verificar.** Aunque ya
-  no admite HTML ni enlaces en el nombre (5.3.3), el formulario público puede
-  hacer que la cuenta del negocio le escriba a cualquier dirección, cinco veces
-  por minuto por IP. Cerrarlo del todo requiere un captcha (por ejemplo
-  Cloudflare Turnstile) validado del lado de n8n, que depende de una cuenta
-  externa.
-- **El token viaja en la query string** del `GET /lead-propuesta` (y, desde el
-  31-ago-2026, también `pago_token` en el `GET /webhook/pago-confirmado`), con
-  lo que puede quedar en logs de intermediarios (proxies, CDN, el servidor de
-  n8n) fuera del control de este repositorio. La vigencia de `accept_token`
-  acota esa ventana; `pago_token` no vence —vive tanto como la factura— porque
-  su rol es identificar el recurso ante quien ya lo recibió por el único canal
-  legítimo (el PDF adjunto), no autorizar una acción repetible en el tiempo.
-  Lo que sí se cerró el 01-sep-2026 (5.3.2) es que ese token no se propague,
-  además, a la propia tabla de auditoría de la aplicación.
+- **Despliegue y proxy no verificados:** el contador del artefacto es atómico,
+  pero depende del último tramo de `X-Forwarded-For` escrito por un proxy de
+  confianza. Sin él, un cliente puede alterar la clave o varios usuarios
+  compartir `ip-desconocida`. No se ha comprobado aquí el 429 del despliegue;
+  `lead/nuevo` conserva el acuse inmediato y sólo corta el procesamiento.
+- **Abuso del formulario:** el acuse de un lead frío aún puede dirigirse a un
+  email no verificado. Falta captcha validado por el servidor y su operación.
+- **Tokens en URL:** `accept_token` y `pago_token` pueden quedar en logs de
+  intermediarios. El enmascarado de auditoría propia no controla esos logs.
+- **Cobros y movimientos externos:** la reserva de Checkout con UUID de intento y los `UPDATE` condicionales
+  protegen estados de base, no garantizan ausencia de doble cargo en Stripe.
+  No hay renovación automática de sesiones inciertas o expiradas: los
+  resultados de creación sin ID se insertan en `checkout_revisiones` y un
+  cron incorpora reservas de más de 15 minutos sin ID o ya vencidas. Esto
+  requiere que el workflow esté activo; no confirma cobertura en despliegue. `pagos_no_aplicados` y los movimientos sin ID
+  (`hitos_movimientos_revision`) exigen conciliación manual; ver [`modulo-pagos.md`](modulo-pagos.md) y
+  [`modulo-hitos.md`](modulo-hitos.md). No hay evidencia aquí de pagos reales
+  ni del estado de credenciales/despliegue.
+- **Entrega de avisos:** el ACK del subworkflow confirma persistencia duradera
+  del aviso en el panel, no entrega opcional por Gmail o Telegram. Un envío
+  externo seguido de fallo al marcar puede producir duplicados.
+- **Datos públicos de contacto:** el esquema versionado rechaza indicios de
+  contacto en algunos campos de publicación (`bolsa_publicar` y
+  `publicar_proyecto`). Son validaciones acotadas, no una garantía general de
+  ausencia de PII ni de cumplimiento normativo.
 
 ---
 

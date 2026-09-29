@@ -3,7 +3,12 @@
 > Re-ejecución del protocolo adversarial de `prompt-maestro-reconstruido.md` (el mismo que produjo
 > el dictamen v5 externo, 4,4/10, 2 de agosto de 2026) sobre el estado **actual** de
 > `FormularioLeads/tesis.docx`, tras la reconciliación del documento corregido (rondas 1–5) y las
-> correcciones aplicadas en esta misma sesión. Fecha del informe: **21 de agosto de 2026**.
+> correcciones aplicadas en esa sesión. Fecha del informe: **21 de agosto de 2026**.
+> Es evidencia histórica. La prevención versionada actual no depende de que
+> n8n evalúe expresiones en `allowedOrigins`: `npm run workflow:render -- --out
+> <directorio-nuevo>` genera copias con literales desde `CORS_ORIGINS` antes
+> de importar. La prueba de navegador de 2026-08-22 no valida esos artefactos
+> ni un despliegue actual.
 
 ---
 

@@ -1,5 +1,10 @@
 # Pago protegido por hitos (etapa 11, RAMA 14)
 
+> **Alcance:** contrato del esquema y workflow versionados, no garantía de un
+> despliegue remoto. Aplicar `db/schema.sql` antes de importar/activar el
+> workflow que usa reservas, `checkout_revisiones`, marcas de intento y `pagos_no_aplicados`. No se
+> ejecutan pagos reales en esta guía.
+
 Desde el 28-sep-2026 un proyecto se puede cobrar **por hitos**. El
 desarrollador divide el trabajo en hasta 10 partes. El cliente paga cada una
 por adelantado y la plataforma **retiene** la plata hasta que el cliente
@@ -37,6 +42,8 @@ PENDIENTE ──pago──▶ FONDEADO ──entrega──▶ ENTREGADO ──ap
 - Un hito cerrado reparte el monto entero (`monto_liberado + monto_reembolsado
   = monto`, con un CHECK en la tabla).
 - Con todos los hitos cerrados, el proyecto pasa a CERRADO y se puede calificar.
+  Ese cierre de proyecto no demuestra por sí solo que cada transferencia o
+  reembolso posterior se haya asentado en Stripe.
 
 Nadie escribe `hitos` ni `hitos_eventos` directo: todo pasa por funciones
 SECURITY DEFINER que deciden quién llama (desarrollador, cliente o admin) y qué
@@ -55,6 +62,35 @@ línea de tiempo que ven las partes y la cola de los avisos.
 | Resuelve una disputa | admin, en `/dashboard/disputas` | `resolver_disputa()` |
 | Libera lo vencido y mueve la plata | 💸 Cron - Hitos (cada 5 min) | `liberar_vencidos()`, `hitos_por_mover()`, `hito_movido()` |
 
+`definir_cobro()` sólo permite fijar el plan mientras el lead está `NUEVO` y
+no hay reclamo de envío (`propuesta_envio_iniciado_en` e
+`propuesta_envio_intento_id` nulos). El envío reclama atómicamente la
+propuesta y congela sus términos **antes** de Gmail. Si Gmail falla, no se
+reabre automáticamente: primero hay que verificar si salió el correo. Si un
+pedido de bolsa rechazado se reasigna, el workflow limpia ese reclamo junto
+con los términos previos y rota el token de aceptación para que la propuesta
+anterior no pueda aceptarse. El paso final devuelve una fila con `aplico` y sólo cambia el estado si
+coinciden el UUID `propuesta_envio_intento_id`, token y espacio capturados antes de Gmail; ante
+reasignación concurrente devuelve conflicto diagnóstico 409 sin cambiar
+el lead del nuevo dueño. Esto no acredita entrega atómica del correo.
+
+Para pagar un hito, el workflow reclama un UUID de intento, guarda ID, URL y
+vencimiento sólo si ese intento sigue vigente y reutiliza la URL únicamente
+hasta un minuto antes de `stripe_checkout_expira_en`. Sin URL, con sesión
+expirada o con un `stripe_checkout_id` heredado sin vencimiento verificable,
+no crea otra sesión automáticamente: registra/espera conciliación en
+`checkout_revisiones`. Si Stripe no devuelve ID o el guardado falla, el
+flujo intenta insertar la revisión; el cron barre reservas de más de 15
+minutos sin ID o con sesión vencida, incluso sin otra visita del cliente.
+La fila de revisión persiste en la base. El cron lee también las filas
+preexistentes pendientes sin ACK, espera la persistencia del aviso en el panel
+y luego marca `aviso_avisado_en`. Un fallo reintenta en el cron siguiente;
+una caída después de persistir y antes de marcar puede duplicar el aviso.
+Es entrega al menos una vez al panel, no exactamente una vez ni prueba de
+Gmail/Telegram.
+Incluso una expiración normal sin pago requiere
+resolución operativa para volver a ofrecer Checkout.
+
 La base **decide y registra**; la plata la mueve n8n. Una decisión que mueve
 plata deja una marca pendiente (`monto_liberado` sin `stripe_transfer_id`,
 `monto_reembolsado` sin `stripe_reembolso_id`) y el cron la ejecuta:
@@ -63,10 +99,56 @@ plata deja una marca pendiente (`monto_liberado` sin `stripe_transfer_id`,
   (`POST /v1/transfers`);
 - **reembolsar** al cliente sobre el pago original (`POST /v1/refunds`).
 
-La clave de idempotencia es el id del hito más el movimiento: si el cron corre
-dos veces, Stripe devuelve el mismo objeto, y `hito_movido()` lo registra una
-sola vez. Un movimiento que falla queda en `logs` y se reintenta en la próxima
-pasada.
+`hitos_por_mover(configurado)` no reclama movimientos cuando falta
+`STRIPE_SECRET_KEY`: la falta de configuración no consume el intento. Con la
+clave configurada, reclama cada transferencia/reembolso de forma atómica
+antes de llamar a Stripe, anotando `stripe_transfer_intentado_en` o
+`stripe_reembolso_intentado_en`. Un intento reclamado **no se reintenta
+automáticamente**, incluso si falló la red o la escritura posterior en la base:
+el resultado externo puede ser incierto. `hito_movido()` registra el ID externo
+sólo después de conocerlo. Tras 15 minutos sin ID, el cron añade el caso a
+`hitos_movimientos_revision` y genera un aviso crítico duradero para el panel;
+no se reintenta Stripe automáticamente. La clave de idempotencia del hito ayuda frente a
+reintentos cercanos, pero no garantiza «exactly once» ni permite reintentar a
+ciegas: [Stripe puede descartar claves después de al menos 24 horas](https://docs.stripe.com/api/idempotent_requests).
+
+### Recuperación manual de movimientos inciertos
+
+Con acceso administrativo autorizado, listar los intentos sin ID asentado y
+las revisiones registradas (sólo lectura; no dispara movimientos):
+
+```sql
+SELECT hito_id, movimiento, detectado_en
+FROM hitos_movimientos_revision WHERE resuelto_en IS NULL ORDER BY detectado_en;
+
+SELECT tipo, referencia_id, identidad, stripe_checkout_id, motivo, detectado_en
+FROM checkout_revisiones WHERE tipo = 'hito' AND resuelto_en IS NULL;
+
+SELECT id, lead_id, stripe_pago_id, monto_liberado, monto_reembolsado,
+       stripe_transfer_intentado_en, stripe_transfer_id,
+       stripe_reembolso_intentado_en, stripe_reembolso_id
+FROM hitos
+WHERE (stripe_transfer_intentado_en IS NOT NULL AND stripe_transfer_id IS NULL)
+   OR (stripe_reembolso_intentado_en IS NOT NULL AND stripe_reembolso_id IS NULL);
+```
+
+Para el Checkout de un hito, consultar además `hitos.stripe_checkout_intento_id`,
+`stripe_checkout_id`, `stripe_checkout_expira_en` y `stripe_pago_id`; buscar la
+sesión por ID o UUID de intento en metadata. No renovar una sesión hasta
+confirmar externamente que expiró sin pago o nunca se creó. Liberar los campos
+de Checkout y resolver la revisión sólo en una transacción con bloqueo de la
+fila, por un operador autorizado; no se ofrece un `UPDATE` genérico.
+
+Para movimientos, verificar en Stripe el PaymentIntent de origen y las [transferencias](https://docs.stripe.com/api/transfers/retrieve)
+o [devoluciones](https://docs.stripe.com/api/refunds) relacionadas; cotejar
+importe, moneda, destino, hito y estado con la base y los logs. Si se confirma
+el movimiento y su ID, un operador puede registrar el ID mediante
+`hito_movido(hito, 'transferir'|'reembolsar', id_stripe)` tras validar el caso.
+Si no hay certeza, **no** borrar marcas de intento, reintentar un `POST` ni
+dar por asentada la plata. Toda nueva acción externa o corrección de estado
+requiere decisión manual documentada. Los pagos confirmados pero no aplicados
+se revisan además en `pagos_no_aplicados` según
+[`modulo-pagos.md`](modulo-pagos.md#4-conciliación-manual-sin-ejecutar-cargos-desde-esta-guía).
 
 ## 3. Disputas (paso 5)
 
@@ -131,11 +213,18 @@ elegida; los mensajes con otros postulantes del mismo pedido quedan afuera
 `resolver_disputa()` deja un evento `resuelto` y las marcas de transferencia y
 reembolso. En su próxima pasada, la RAMA 14:
 
-1. transfiere y reembolsa en Stripe;
-2. le manda al cliente «Resolvimos la disputa del hito N» y «Te reembolsamos
-   US$ X», con la marca del espacio;
+1. reclama los movimientos pendientes y trata de transferir o reembolsar en Stripe; si el resultado es incierto, requiere conciliación manual;
+2. intenta el correo al cliente con el resultado de la disputa; su texto
+   puede anteceder la confirmación de la transferencia o devolución externa,
+   por lo que no debe tomarse como comprobante de liquidación;
 3. le deja al desarrollador el aviso en el panel (y por correo o Telegram, si
    los tiene activos).
+
+El ACK del subworkflow acredita el **aviso duradero en el panel**, no la
+entrega opcional por Gmail/Telegram. Esos canales pueden fallar sin invalidar
+el ACK del panel. Cuando un canal externo sí envía y falla el marcado
+posterior, puede llegar un duplicado. Un evento o aviso de «liberado»
+no prueba que la transferencia o devolución externa ya se haya confirmado.
 
 ## 4. «Requiere tu atención»
 
@@ -172,6 +261,11 @@ Internas, sin permiso para nadie de afuera: `proyecto_rol()`, `hito_cerrar()`
 y `exigir_admin()`.
 
 ## 6. Pruebas
+
+La evidencia siguiente es histórica y local: no valida el estado de Stripe ni
+un despliegue actual. `tests/backend_financiero.mjs` comprueba offline el
+contrato versionado; no sustituye una prueba de integración con Stripe.
+
 
 - `npm run test:rls`, sección 30: el ciclo completo de un proyecto con tres
   hitos (pago en orden, entrega, aprobación, disputa partida, liberación sola)
