@@ -79,6 +79,20 @@ export async function getPanelUser(): Promise<{
   return {user, espacio};
 }
 
+// ¿La cuenta con sesión es el admin de la plataforma? Sólo le suma la
+// sección de disputas (etapa 11): no le da acceso a los datos de nadie. Cada
+// uno lee sólo su fila de profiles; la base vuelve a exigir el rol en cada
+// función de disputas.
+export async function esAdminPlataforma(userId: string): Promise<boolean> {
+  const supabase = await createClient();
+
+  if (!supabase) return false;
+
+  const {data} = await supabase.from("profiles").select("role").eq("id", userId).maybeSingle();
+
+  return data?.role === "admin";
+}
+
 export type TipoCuenta = "desarrollador" | "cliente";
 
 // El tipo de la cuenta con sesión (lo fija la base al crearla), o null sin

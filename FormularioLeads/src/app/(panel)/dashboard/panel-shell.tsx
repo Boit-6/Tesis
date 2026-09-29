@@ -42,6 +42,13 @@ const SECCIONES = [
   },
 ];
 
+// Sólo para el admin de la plataforma (etapa 11): las disputas de los hitos.
+const DISPUTAS = {
+  href: "/dashboard/disputas",
+  etiqueta: "Disputas",
+  icono: "M12 4v16M8 20h8M5 7h14M7 7l-3 6.5a3 3 0 0 0 6 0zM17 7l-3 6.5a3 3 0 0 0 6 0z",
+};
+
 function Icono({d}: {d: string}) {
   return (
     <svg
@@ -108,12 +115,35 @@ function useMensajesSinLeer(pathname: string) {
   return total;
 }
 
-function Contador({cantidad}: {cantidad: number}) {
+// Disputas abiertas, para el contador de «Disputas». Se recuenta al cambiar
+// de página: el admin no recibe los cambios de hitos ajenos por tiempo real.
+function useDisputasAbiertas(pathname: string, admin: boolean) {
+  const [supabase] = useState(() => createClient());
+  const [total, setTotal] = useState(0);
+
+  useEffect(() => {
+    if (!supabase || !admin) return;
+
+    let vigente = true;
+
+    supabase.rpc("disputas_abiertas").then(({data}) => {
+      if (vigente) setTotal(data?.length ?? 0);
+    });
+
+    return () => {
+      vigente = false;
+    };
+  }, [supabase, pathname, admin]);
+
+  return total;
+}
+
+function Contador({cantidad, que}: {cantidad: number; que: string}) {
   if (!cantidad) return null;
 
   return (
     <span className="bg-ochre text-paper ml-auto min-w-5 px-1.5 text-center text-[10.5px] leading-5">
-      <span className="sr-only">, mensajes sin leer: </span>
+      <span className="sr-only">, {que}: </span>
       {cantidad}
     </span>
   );
@@ -153,15 +183,24 @@ export default function PanelShell({
   espacio,
   email,
   configurado,
+  admin = false,
   children,
 }: {
   espacio: {nombre: string; slug: string};
   email: string;
   configurado: boolean;
+  admin?: boolean;
   children: ReactNode;
 }) {
   const pathname = usePathname();
   const sinLeer = useMensajesSinLeer(pathname);
+  const disputas = useDisputasAbiertas(pathname, admin);
+  const secciones = admin ? [...SECCIONES, DISPUTAS] : SECCIONES;
+  // Qué contador lleva cada sección.
+  const contadores: Partial<Record<string, {cantidad: number; que: string}>> = {
+    "/dashboard/bolsa": {cantidad: sinLeer, que: "mensajes sin leer"},
+    "/dashboard/disputas": {cantidad: disputas, que: "disputas abiertas"},
+  };
 
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[232px_minmax(0,1fr)]">
@@ -175,8 +214,9 @@ export default function PanelShell({
 
         {configurado && (
           <nav aria-label="Secciones del panel" className="mt-10 flex flex-col gap-1">
-            {SECCIONES.map((s) => {
+            {secciones.map((s) => {
               const activa = esActiva(pathname, s.href);
+              const contador = contadores[s.href];
 
               return (
                 <Link
@@ -189,7 +229,7 @@ export default function PanelShell({
                 >
                   <Icono d={s.icono} />
                   {s.etiqueta}
-                  {s.href === "/dashboard/bolsa" && <Contador cantidad={sinLeer} />}
+                  {contador && <Contador {...contador} />}
                 </Link>
               );
             })}
@@ -231,10 +271,13 @@ export default function PanelShell({
       {configurado && (
         <nav
           aria-label="Secciones del panel"
-          className="border-rule-soft bg-card fixed inset-x-0 bottom-0 z-20 grid grid-cols-6 border-t pb-[env(safe-area-inset-bottom)] lg:hidden"
+          className={`border-rule-soft bg-card fixed inset-x-0 bottom-0 z-20 grid border-t pb-[env(safe-area-inset-bottom)] lg:hidden ${
+            admin ? "grid-cols-7" : "grid-cols-6"
+          }`}
         >
-          {SECCIONES.map((s) => {
+          {secciones.map((s) => {
             const activa = esActiva(pathname, s.href);
+            const contador = contadores[s.href];
 
             return (
               <Link
@@ -248,9 +291,9 @@ export default function PanelShell({
                 <Icono d={s.icono} />
                 <span className="relative">
                   {s.etiqueta}
-                  {s.href === "/dashboard/bolsa" && sinLeer > 0 && (
+                  {contador && contador.cantidad > 0 && (
                     <span className="bg-ochre absolute -top-6 -right-3 size-2 rounded-full">
-                      <span className="sr-only">(mensajes sin leer)</span>
+                      <span className="sr-only">({contador.que})</span>
                     </span>
                   )}
                 </span>

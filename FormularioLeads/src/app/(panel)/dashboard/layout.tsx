@@ -2,7 +2,7 @@ import type {ReactNode} from "react";
 
 import PanelShell from "./panel-shell";
 
-import {getPanelUser} from "@/lib/auth";
+import {esAdminPlataforma, getPanelUser} from "@/lib/auth";
 
 // El gate del panel tiene que correr en cada request, no una sola vez al
 // buildear: sin esto, si createClient() devuelve null (env vars de Supabase
@@ -14,9 +14,11 @@ export const dynamic = "force-dynamic";
 // Envuelve también /dashboard/espacio, que es donde cae una cuenta nueva.
 export default async function PanelLayout({children}: {children: ReactNode}) {
   const {user, espacio} = await getPanelUser();
+  const admin = await esAdminPlataforma(user.id);
 
   return (
     <PanelShell
+      admin={admin}
       configurado={Boolean(espacio.configurado_en)}
       email={user.email ?? ""}
       espacio={{nombre: espacio.nombre, slug: espacio.slug}}

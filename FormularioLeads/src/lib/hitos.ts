@@ -107,3 +107,32 @@ export const COLOR_HITO: Record<HitoEstado, string> = {
   REEMBOLSADO: "text-muted",
   ANULADO: "text-mist line-through",
 };
+
+// Cómo resuelve el admin una disputa (etapa 11, paso 5): todo al
+// desarrollador, todo de vuelta al cliente o una parte para cada uno.
+export type OpcionDisputa = "liberar" | "reembolsar" | "partir";
+
+// Lo que se libera al desarrollador y lo que vuelve al cliente, o null si el
+// monto de «partir» no es válido: más de 0 y menos que el total, con hasta
+// dos decimales (con 0 o con el total, es reembolsar o liberar todo).
+export function repartoDisputa(
+  opcion: OpcionDisputa,
+  parteTexto: string,
+  total: number,
+): {liberar: number; reembolsar: number} | null {
+  if (opcion === "liberar") return {liberar: total, reembolsar: 0};
+  if (opcion === "reembolsar") return {liberar: 0, reembolsar: total};
+
+  const limpio = parteTexto.trim().replace(",", ".");
+
+  if (!/^\d{1,9}(\.\d{1,2})?$/.test(limpio)) return null;
+  const centavos = Math.round(Number(limpio) * 100);
+  const totalCentavos = Math.round(total * 100);
+
+  if (centavos <= 0 || centavos >= totalCentavos) return null;
+
+  return {
+    liberar: centavos / 100,
+    reembolsar: (totalCentavos - centavos) / 100,
+  };
+}

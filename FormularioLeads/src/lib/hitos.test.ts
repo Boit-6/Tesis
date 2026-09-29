@@ -1,6 +1,6 @@
 import {describe, expect, it} from "vitest";
 
-import {hitosParaEnviar, leerMonto, problemaHitos, totalHitos, usd} from "./hitos";
+import {hitosParaEnviar, leerMonto, problemaHitos, repartoDisputa, totalHitos, usd} from "./hitos";
 
 describe("leerMonto", () => {
   it("acepta enteros, punto y coma decimal", () => {
@@ -66,5 +66,37 @@ describe("usd", () => {
   it("sin centavos no muestra decimales; con centavos, siempre dos", () => {
     expect(usd(1000)).toMatch(/^US\$\s?1\.000$/);
     expect(usd(500.5)).toMatch(/^US\$\s?500,50$/);
+  });
+});
+
+describe("repartoDisputa", () => {
+  it("liberar y reembolsar reparten el monto entero", () => {
+    expect(repartoDisputa("liberar", "", 500.5)).toEqual({
+      liberar: 500.5,
+      reembolsar: 0,
+    });
+    expect(repartoDisputa("reembolsar", "", 500.5)).toEqual({
+      liberar: 0,
+      reembolsar: 500.5,
+    });
+  });
+
+  it("partir acepta la coma decimal y cuenta en centavos", () => {
+    expect(repartoDisputa("partir", "250,25", 500.5)).toEqual({
+      liberar: 250.25,
+      reembolsar: 250.25,
+    });
+    expect(repartoDisputa("partir", "0.1", 0.3)).toEqual({
+      liberar: 0.1,
+      reembolsar: 0.2,
+    });
+  });
+
+  it("partir necesita más de 0 y menos que el total, con hasta dos decimales", () => {
+    expect(repartoDisputa("partir", "0", 500.5)).toBeNull();
+    expect(repartoDisputa("partir", "500,50", 500.5)).toBeNull();
+    expect(repartoDisputa("partir", "600", 500.5)).toBeNull();
+    expect(repartoDisputa("partir", "10.555", 500.5)).toBeNull();
+    expect(repartoDisputa("partir", "", 500.5)).toBeNull();
   });
 });

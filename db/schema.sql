@@ -2129,6 +2129,9 @@ CREATE TABLE IF NOT EXISTS hitos (
 CREATE INDEX IF NOT EXISTS idx_hitos_lead ON hitos (lead_id, orden);
 CREATE INDEX IF NOT EXISTS idx_hitos_espacio ON hitos (espacio_id);
 CREATE INDEX IF NOT EXISTS idx_hitos_a_liberar ON hitos (libera_en) WHERE estado = 'ENTREGADO';
+-- Paso 5: quién resolvió la disputa (el admin de la plataforma). Aparte de
+-- la tabla porque se sumó con las bases ya creadas.
+ALTER TABLE hitos ADD COLUMN IF NOT EXISTS resuelto_por UUID REFERENCES profiles(id) ON DELETE SET NULL;
 
 DROP TRIGGER IF EXISTS trg_hitos_espacio ON hitos;
 CREATE TRIGGER trg_hitos_espacio
@@ -2458,6 +2461,7 @@ BEGIN
     RAISE EXCEPTION 'Explicá la resolución (de 5 a 2000 caracteres)';
   END IF;
   PERFORM hito_cerrar(p_hito, p_liberar, p_nota, 'resuelto', 'admin');
+  UPDATE hitos SET resuelto_por = auth.uid() WHERE id = p_hito;
 END;
 $$;
 
@@ -2597,6 +2601,92 @@ BEGIN
 END;
 $$;
 
+-- Las disputas ya cerradas, las últimas primero: las que resolvió el admin y
+-- las que se cerraron antes porque el desarrollador devolvió la plata.
+CREATE OR REPLACE FUNCTION public.disputas_resueltas(p_limite int DEFAULT 50)
+RETURNS TABLE (
+  id uuid, lead_id text, titulo text, monto numeric, disputa_motivo text,
+  monto_liberado numeric, monto_reembolsado numeric, resolucion_nota text, cerrado_en timestamptz,
+  cierre text, resuelto_por text, transferido_en timestamptz, reembolsado_en timestamptz,
+  espacio_nombre text, cliente_nombre text, servicio servicio_tipo
+)
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND role = 'admin') THEN
+    RAISE EXCEPTION 'Sólo el admin de la plataforma ve las disputas';
+  END IF;
+  RETURN QUERY
+    SELECT h.id, h.lead_id, h.titulo, h.monto, h.disputa_motivo,
+           h.monto_liberado, h.monto_reembolsado, h.resolucion_nota, h.cerrado_en,
+           (SELECT ev.tipo FROM hitos_eventos ev WHERE ev.hito_id = h.id AND ev.tipo IN ('resuelto','devuelto')
+            ORDER BY ev.creado_en DESC, ev.id DESC LIMIT 1),
+           (SELECT p.email FROM profiles p WHERE p.id = h.resuelto_por),
+           h.transferido_en, h.reembolsado_en,
+           e.nombre, split_part(btrim(l.nombre), ' ', 1), l.servicio
+    FROM hitos h JOIN leads l ON l.lead_id = h.lead_id JOIN espacios e ON e.id = h.espacio_id
+    WHERE h.estado IN ('LIBERADO','REEMBOLSADO')
+      AND EXISTS (SELECT 1 FROM hitos_eventos ev WHERE ev.hito_id = h.id AND ev.tipo = 'disputado')
+    ORDER BY h.cerrado_en DESC
+    LIMIT least(greatest(coalesce(p_limite, 50), 1), 200);
+END;
+$$;
+
+-- Todo lo que el admin necesita para decidir una disputa: el hito, el resto
+-- de los hitos del proyecto, la línea de tiempo y la conversación entre las
+-- partes (la de la postulación elegida; un cliente propio no tiene). Es el
+-- único acceso del admin a mensajes ajenos y se limita a los proyectos con
+-- un hito que se disputó.
+CREATE OR REPLACE FUNCTION public.disputa_detalle(p_hito uuid)
+RETURNS json
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  h hitos%ROWTYPE;
+  l leads%ROWTYPE;
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND role = 'admin') THEN
+    RAISE EXCEPTION 'Sólo el admin de la plataforma ve las disputas';
+  END IF;
+  SELECT * INTO h FROM hitos WHERE hitos.id = p_hito;
+  IF NOT FOUND OR NOT EXISTS (SELECT 1 FROM hitos_eventos ev WHERE ev.hito_id = h.id AND ev.tipo = 'disputado') THEN
+    RAISE EXCEPTION 'Este hito no tuvo una disputa';
+  END IF;
+  SELECT * INTO l FROM leads WHERE leads.lead_id = h.lead_id;
+
+  RETURN json_build_object(
+    'hito', json_build_object(
+      'id', h.id, 'orden', h.orden, 'titulo', h.titulo, 'descripcion', h.descripcion,
+      'monto', h.monto, 'estado', h.estado, 'comision_porcentaje', h.comision_porcentaje,
+      'fondeado_en', h.fondeado_en, 'entrega_nota', h.entrega_nota, 'entregado_en', h.entregado_en,
+      'disputa_motivo', h.disputa_motivo, 'disputa_abierta_en', h.disputa_abierta_en,
+      'monto_liberado', h.monto_liberado, 'monto_reembolsado', h.monto_reembolsado,
+      'comision', h.comision, 'resolucion_nota', h.resolucion_nota, 'cerrado_en', h.cerrado_en,
+      'transferido_en', h.transferido_en, 'reembolsado_en', h.reembolsado_en,
+      'resuelto_por', (SELECT p.email FROM profiles p WHERE p.id = h.resuelto_por)),
+    'proyecto', json_build_object(
+      'lead_id', l.lead_id, 'servicio', l.servicio, 'cliente_nombre', split_part(btrim(l.nombre), ' ', 1),
+      'espacio_nombre', (SELECT e.nombre FROM espacios e WHERE e.id = h.espacio_id),
+      'espacio_slug', (SELECT e.slug FROM espacios e WHERE e.id = h.espacio_id),
+      'de_plataforma', lead_de_plataforma(l.lead_id),
+      'hitos', (SELECT json_agg(json_build_object('orden', o.orden, 'titulo', o.titulo, 'monto', o.monto,
+                                                  'estado', o.estado) ORDER BY o.orden)
+                FROM hitos o WHERE o.lead_id = h.lead_id)),
+    'eventos', COALESCE((
+      SELECT json_agg(json_build_object('tipo', ev.tipo, 'actor', ev.actor, 'detalle', ev.detalle,
+                                        'creado_en', ev.creado_en) ORDER BY ev.creado_en, ev.id)
+      FROM hitos_eventos ev WHERE ev.hito_id = h.id), '[]'::json),
+    'mensajes', COALESCE((
+      SELECT json_agg(json_build_object('autor', m.autor, 'texto', m.texto, 'creado_en', m.creado_en)
+                      ORDER BY m.creado_en, m.id)
+      FROM mensajes m
+      JOIN postulaciones po ON po.id = m.postulacion_id
+      JOIN bolsa_pedidos b ON b.id = po.pedido_id
+      WHERE b.lead_id = h.lead_id AND po.espacio_id = h.espacio_id), '[]'::json),
+    -- Una disputa de un proyecto propio no la resuelve el admin.
+    'puede_resolver', h.estado = 'EN_DISPUTA' AND proyecto_rol(h.lead_id, NULL) IS DISTINCT FROM 'desarrollador'
+  );
+END;
+$$;
+
 -- Permisos. Las internas (proyecto_rol, hito_cerrar) no se exponen.
 REVOKE ALL ON FUNCTION public.lead_de_plataforma(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.proyecto_rol(text, uuid) FROM PUBLIC;
@@ -2615,6 +2705,8 @@ REVOKE ALL ON FUNCTION public.hitos_por_mover() FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.hito_movido(uuid, text, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.ver_proyecto(text, uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.disputas_abiertas() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.disputas_resueltas(int) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.disputa_detalle(uuid) FROM PUBLIC;
 -- El desarrollador, desde el panel.
 GRANT EXECUTE ON FUNCTION public.definir_cobro(text, jsonb) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.entregar_hito(uuid, text) TO authenticated;
@@ -2627,6 +2719,8 @@ GRANT EXECUTE ON FUNCTION public.ver_proyecto(text, uuid) TO anon, authenticated
 -- El admin.
 GRANT EXECUTE ON FUNCTION public.resolver_disputa(uuid, numeric, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.disputas_abiertas() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.disputas_resueltas(int) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.disputa_detalle(uuid) TO authenticated;
 -- n8n: cobra, libera las vencidas y mueve la plata.
 GRANT EXECUTE ON FUNCTION public.lead_de_plataforma(text) TO n8n_writer;
 GRANT EXECUTE ON FUNCTION public.hito_para_cobrar(uuid, uuid) TO n8n_writer;

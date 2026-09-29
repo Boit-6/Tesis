@@ -41,7 +41,11 @@
  *   STRIPE_API_BASE=http://stripe-doble:12111
  *   STRIPE_SECRET_KEY=sk_test_<cualquier cosa>
  *
- * Auxiliares (no son de Stripe): GET /__estado, POST /__reset.
+ * Auxiliares (no son de Stripe): GET /__estado, POST /__reset y POST
+ * /__sembrar. El estado vive en memoria: si el contenedor se reinicia, con
+ * /__sembrar (JSON `{cuentas: ["acct_x"], pagos: [{payment_intent, amount_total}]}`,
+ * montos en centavos) se vuelven a registrar las cuentas y los pagos que la
+ * base ya tiene, para poder transferir y reembolsar sobre ellos.
  */
 
 import {createHmac, randomBytes} from 'node:crypto';
@@ -137,6 +141,22 @@ createServer(async (req, res) => {
   if (ruta === '/__estado') {
     return responder(res, 200, {cuentas: [...cuentas.values()], sesiones: [...sesiones.values()], eventos,
       transferencias, reembolsos});
+  }
+  if (ruta === '/__sembrar' && req.method === 'POST') {
+    const {cuentas: nuevas = [], pagos = []} = JSON.parse(cuerpo || '{}');
+
+    for (const acct of nuevas) {
+      cuentas.set(acct, {id: acct, object: 'account', type: 'express', email: null, business_profile: {}, metadata: {},
+        details_submitted: true, charges_enabled: true, payouts_enabled: true});
+    }
+    for (const p of pagos) {
+      const cs = id('cs');
+
+      sesiones.set(cs, {id: cs, object: 'checkout.session', status: 'complete', payment_status: 'paid',
+        payment_intent: p.payment_intent, amount_total: Number(p.amount_total), currency: 'usd', metadata: {}});
+    }
+
+    return responder(res, 200, {cuentas: nuevas.length, pagos: pagos.length});
   }
   if (ruta === '/__reset' && req.method === 'POST') {
     cuentas = new Map(); links = new Map(); sesiones = new Map(); eventos = [];

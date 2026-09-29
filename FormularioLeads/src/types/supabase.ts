@@ -111,6 +111,38 @@ export interface Proyecto {
   hitos: Hito[];
 }
 
+// Lo que devuelve disputa_detalle(): lo que ve el admin para decidir una
+// disputa (etapa 11, paso 5).
+export interface DisputaDetalle {
+  hito: Omit<Hito, "libera_en" | "puede_pagar" | "eventos"> & {
+    disputa_abierta_en: string | null;
+    resuelto_por: string | null;
+  };
+  proyecto: {
+    lead_id: string;
+    servicio: ServicioTipo;
+    cliente_nombre: string;
+    espacio_nombre: string;
+    espacio_slug: string;
+    de_plataforma: boolean;
+    hitos: {
+      orden: number;
+      titulo: string;
+      monto: number;
+      estado: HitoEstado;
+    }[];
+  };
+  eventos: HitoEvento[];
+  // La conversación de la postulación elegida; vacía con un cliente propio.
+  mensajes: {
+    autor: "cliente" | "desarrollador";
+    texto: string;
+    creado_en: string;
+  }[];
+  // Sigue abierta y no es un proyecto del propio admin.
+  puede_resolver: boolean;
+}
+
 export type TierTipo = "HOT" | "WARM" | "COLD";
 
 export type LeadEstadoDb =
@@ -749,6 +781,32 @@ export interface Database {
       resolver_disputa: {
         Args: {p_hito: string; p_liberar: number; p_nota: string};
         Returns: undefined;
+      };
+      disputas_resueltas: {
+        Args: {p_limite?: number};
+        Returns: {
+          id: string;
+          lead_id: string;
+          titulo: string;
+          monto: number;
+          disputa_motivo: string | null;
+          monto_liberado: number;
+          monto_reembolsado: number;
+          resolucion_nota: string | null;
+          cerrado_en: string;
+          // "resuelto": la resolvió el admin. "devuelto": el desarrollador devolvió la plata.
+          cierre: "resuelto" | "devuelto" | null;
+          resuelto_por: string | null;
+          transferido_en: string | null;
+          reembolsado_en: string | null;
+          espacio_nombre: string;
+          cliente_nombre: string;
+          servicio: ServicioTipo;
+        }[];
+      };
+      disputa_detalle: {
+        Args: {p_hito: string};
+        Returns: DisputaDetalle;
       };
       disputas_abiertas: {
         Args: Record<string, never>;
