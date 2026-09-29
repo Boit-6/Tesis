@@ -188,6 +188,37 @@ export interface Database {
         Update: {leido_en?: string | null};
         Relationships: [];
       };
+      // Hitos del pago protegido (etapa 11): el desarrollador lee los de su
+      // espacio (Inicio y tiempo real); se escriben sólo por las funciones.
+      hitos: {
+        Row: {
+          id: string;
+          lead_id: string;
+          espacio_id: string;
+          orden: number;
+          titulo: string;
+          monto: number;
+          estado: HitoEstado;
+          fondeado_en: string | null;
+          entregado_en: string | null;
+          libera_en: string | null;
+          disputa_motivo: string | null;
+          disputa_abierta_en: string | null;
+          cerrado_en: string | null;
+          creado_en: string;
+        };
+        Insert: never;
+        Update: never;
+        Relationships: [
+          {
+            foreignKeyName: "hitos_lead_id_fkey";
+            columns: ["lead_id"];
+            isOneToOne: false;
+            referencedRelation: "leads";
+            referencedColumns: ["lead_id"];
+          },
+        ];
+      };
       espacios: {
         Row: {
           id: string;

@@ -6,6 +6,7 @@ import {KpiCard, SectionHeader, formatMoney, formatPct} from "../dashboard-share
 import {EsqueletoInicio} from "../esqueletos";
 import {usePanelDatos} from "../panel-datos";
 
+import {usd} from "@/lib/hitos";
 import {presupuestoDeclarado} from "@/lib/presupuesto";
 
 // Algo que espera una acción del desarrollador. `accion` es un enlace a la
@@ -25,7 +26,15 @@ const DIAS_AVISO_VENCIMIENTO = 3;
 const botonAccionClass =
   "ease border-ink text-ink hover:border-ochre hover:text-ochre shrink-0 border px-3.5 py-2 text-[11px] tracking-[0.12em] uppercase transition duration-200";
 
-export default function InicioSecciones({cobrosActivos}: {cobrosActivos: boolean}) {
+// `disputasAbiertas`: sólo para el admin de la plataforma (etapa 11); null
+// para el resto.
+export default function InicioSecciones({
+  cobrosActivos,
+  disputasAbiertas = null,
+}: {
+  cobrosActivos: boolean;
+  disputasAbiertas?: number | null;
+}) {
   const d = usePanelDatos();
 
   if (d.cargando) return <EsqueletoInicio />;
@@ -40,6 +49,34 @@ export default function InicioSecciones({cobrosActivos}: {cobrosActivos: boolean
         detalle: `${formatMoney(f.monto)} · venció hace ${Math.abs(f.dias_al_vencimiento)} días`,
         urgente: true,
         accion: {etiqueta: "Ver facturas", href: "/dashboard/facturas"},
+      })),
+    ...(disputasAbiertas
+      ? [
+          {
+            clave: "disputas",
+            tipo: "Disputas por resolver",
+            titulo:
+              disputasAbiertas === 1
+                ? "Un cliente disputó un hito"
+                : `${disputasAbiertas} hitos en disputa`,
+            detalle: "La plata queda retenida hasta que decidas cuánto va a cada parte.",
+            urgente: true,
+            accion: {etiqueta: "Revisar", href: "/dashboard/disputas"},
+          },
+        ]
+      : []),
+    ...d.hitos
+      .filter((h) => h.estado === "EN_DISPUTA")
+      .map((h) => ({
+        clave: `disputa-${h.id}`,
+        tipo: "Hito en disputa",
+        titulo: h.cliente,
+        detalle: `${h.orden}. ${h.titulo} · ${usd(h.monto)}${h.disputa_motivo ? ` · “${h.disputa_motivo}”` : ""}`,
+        urgente: true,
+        accion: {
+          etiqueta: "Ver proyecto",
+          onClick: () => d.abrirLead(h.lead_id),
+        },
       })),
     ...d.pedidos.map((p) => ({
       clave: `cambio-${p.lead_id}`,
@@ -60,6 +97,18 @@ export default function InicioSecciones({cobrosActivos}: {cobrosActivos: boolean
         onClick: () => d.abrirLead(l.lead_id),
       },
     })),
+    ...d.hitos
+      .filter((h) => h.estado === "FONDEADO")
+      .map((h) => ({
+        clave: `hito-${h.id}`,
+        tipo: "Hito pagado",
+        titulo: h.cliente,
+        detalle: `${h.orden}. ${h.titulo} · ${usd(h.monto)} retenidos hasta que entregues`,
+        accion: {
+          etiqueta: "Marcar entregado",
+          onClick: () => d.abrirLead(h.lead_id),
+        },
+      })),
     ...d.trabajos
       .filter((t) => t.estado_trabajo === "ENTREGADO")
       .map((t) => ({

@@ -2,6 +2,7 @@
 
 import type {
   FacturaPendiente,
+  HitoPendiente,
   Lead,
   Metrics,
   PedidoCambio,
@@ -120,6 +121,7 @@ interface PanelDatos {
   trabajos: Trabajo[];
   pedidos: PedidoCambio[];
   porEnviar: PorEnviar[];
+  hitos: HitoPendiente[];
   enviarPropuesta: (
     leadId: string,
     precio: number,
@@ -170,6 +172,7 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
   const [trabajos, setTrabajos] = useState<Trabajo[]>([]);
   const [pedidos, setPedidos] = useState<PedidoCambio[]>([]);
   const [porEnviar, setPorEnviar] = useState<PorEnviar[]>([]);
+  const [hitos, setHitos] = useState<HitoPendiente[]>([]);
   const [confirmar, ConfirmDialog] = useConfirm();
   const [leadAbierto, setLeadAbierto] = useState<string | null>(null);
 
@@ -193,6 +196,7 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
         resTrabajos,
         resPedidos,
         resPorEnviar,
+        resHitos,
       ] = await Promise.all([
         supabase.from("metrics_mensuales").select("*").order("mes", {ascending: false}).limit(1),
         // Cuenta el embudo histórico completo (no solo el mes en curso), a
@@ -248,6 +252,13 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
           .eq("estado", "NUEVO")
           .in("tier", ["HOT", "WARM"])
           .order("score", {ascending: false}),
+        // Etapa 11: los hitos que esperan algo del desarrollador. Los que ya
+        // entregó esperan al cliente, así que no se cuentan.
+        supabase
+          .from("hitos")
+          .select("id,lead_id,orden,titulo,monto,estado,disputa_motivo,leads(nombre)")
+          .in("estado", ["FONDEADO", "EN_DISPUTA"])
+          .order("creado_en"),
       ]);
 
       const fallo =
@@ -258,7 +269,8 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
         resVencidas.error ??
         resTrabajos.error ??
         resPedidos.error ??
-        resPorEnviar.error;
+        resPorEnviar.error ??
+        resHitos.error;
 
       if (fallo) throw fallo;
 
@@ -281,6 +293,18 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
       setTrabajos(resTrabajos.data ?? []);
       setPedidos(resPedidos.data ?? []);
       setPorEnviar(resPorEnviar.data ?? []);
+      setHitos(
+        (resHitos.data ?? []).map((h) => ({
+          id: h.id,
+          lead_id: h.lead_id,
+          orden: h.orden,
+          titulo: h.titulo,
+          monto: h.monto,
+          estado: h.estado as HitoPendiente["estado"],
+          disputa_motivo: h.disputa_motivo,
+          cliente: h.leads?.nombre ?? h.lead_id,
+        })),
+      );
     } catch (err) {
       console.error(err);
       setError(err instanceof Error ? err.message : "No pudimos cargar el dashboard.");
@@ -319,6 +343,8 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
       .channel("tablero-rt")
       .on("postgres_changes", {event: "*", schema: "public", table: "leads"}, recargarAgrupado)
       .on("postgres_changes", {event: "*", schema: "public", table: "facturas"}, recargarAgrupado)
+      // El cliente paga o disputa un hito sin tocar el lead.
+      .on("postgres_changes", {event: "*", schema: "public", table: "hitos"}, recargarAgrupado)
       .subscribe();
 
     return () => {
@@ -519,6 +545,7 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
     trabajos,
     pedidos,
     porEnviar,
+    hitos,
     enviarPropuesta,
     cancelar,
     cerrarProyecto,

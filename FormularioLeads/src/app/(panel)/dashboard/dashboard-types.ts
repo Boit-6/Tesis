@@ -60,6 +60,19 @@ export interface PedidoCambio {
   notas: string | null;
 }
 
+// Un hito que espera algo del desarrollador (etapa 11): pagado y sin
+// entregar, o disputado por el cliente.
+export interface HitoPendiente {
+  id: string;
+  lead_id: string;
+  orden: number;
+  titulo: string;
+  monto: number;
+  estado: "FONDEADO" | "EN_DISPUTA";
+  disputa_motivo: string | null;
+  cliente: string;
+}
+
 // Lead calificado HOT o WARM que todavía espera que el profesional fije los
 // términos. Hasta que existió esta pantalla, la propuesta salía sola con el
 // importe que el propio interesado había elegido en el formulario.
