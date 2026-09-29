@@ -61,6 +61,3 @@ export function translateAuthError(error: unknown, fallback: string): string {
 
   return error instanceof Error ? error.message : fallback;
 }
-
-/** Códigos con traducción declarada. Lo consume la verificación del RNF5. */
-export const CODIGOS_TRADUCIDOS = Object.keys(MESSAGES_BY_CODE);
