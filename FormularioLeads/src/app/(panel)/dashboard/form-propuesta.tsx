@@ -11,6 +11,7 @@ import {
   totalHitos,
   usd,
 } from "@/lib/hitos";
+import {leerImporte} from "@/lib/moneda";
 
 export type HitosPropuesta = {titulo: string; monto: number}[] | null;
 
@@ -43,9 +44,10 @@ export default function FormPropuesta({
   const [error, setError] = useState<string | null>(null);
 
   const conHitos = dePlataforma || porHitos;
-  const valor = conHitos ? totalHitos(hitos) : Number(precio);
+  const importe = conHitos ? null : leerImporte(precio);
+  const valor = conHitos ? totalHitos(hitos) : (importe ?? 0);
   const problema = conHitos ? problemaHitos(hitos) : null;
-  const valido = conHitos ? problema === null : Number.isFinite(valor) && valor > 0;
+  const valido = conHitos ? problema === null : importe !== null;
   // El problema se muestra recién cuando el hito ya tiene algo escrito: un
   // formulario recién abierto no arranca con un error en rojo.
   const tocado = hitos.some((h) => h.titulo.trim() || h.monto.trim());

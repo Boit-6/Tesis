@@ -5,6 +5,8 @@
 // vuelve a validar igual.
 import type {HitoEstado, HitoEvento} from "@/types/supabase";
 
+import {leerCentavos as leerCentavosMoneda} from "@/lib/moneda";
+
 export const MAX_HITOS = 10;
 
 export interface HitoBorrador {
@@ -32,11 +34,8 @@ export function usd(valor: number): string {
 // Un importe escrito a mano, en centavos. Admite la coma decimal («1500,50»)
 // y hasta dos decimales; sin separador de miles. null = no es un importe.
 function leerCentavos(texto: string): number | null {
-  const normalizado = texto.trim().replace(",", ".");
-
-  if (!/^\d{1,9}(\.\d{1,2})?$/.test(normalizado)) return null;
-
-  return Math.round(Number(normalizado) * 100);
+  // Se conserva el tope histórico de nueve dígitos para hitos y disputas.
+  return leerCentavosMoneda(texto, {minimo: 0, maxDigitosEnteros: 9});
 }
 
 // El monto de un hito tal como lo escribió el desarrollador: al menos US$ 1.

@@ -3,6 +3,7 @@
 import {useState} from "react";
 
 import {ghostButtonClass} from "@/lib/constants";
+import {leerImporte} from "@/lib/moneda";
 
 const MENSAJE_MIN = 10;
 const MENSAJE_MAX = 1000;
@@ -23,14 +24,10 @@ export default function FormPostulacion({
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const valor = Number(precio);
+  const importe = leerImporte(precio);
   const largo = mensaje.trim().length;
   const valido =
-    largo >= MENSAJE_MIN &&
-    largo <= MENSAJE_MAX &&
-    Number.isFinite(valor) &&
-    valor > 0 &&
-    plazo.trim().length > 0;
+    largo >= MENSAJE_MIN && largo <= MENSAJE_MAX && importe !== null && plazo.trim().length > 0;
 
   const campoClass =
     "ease border-rule bg-paper text-ink placeholder-mist focus:border-ochre w-full border px-3 py-2.5 text-[14px] transition duration-200 outline-none";
@@ -41,11 +38,11 @@ export default function FormPostulacion({
       className="border-rule-soft mt-4 flex flex-col gap-4 border-t pt-4"
       onSubmit={async (e) => {
         e.preventDefault();
-        if (!valido || enviando) return;
+        if (!valido || enviando || importe === null) return;
         setEnviando(true);
         setError(null);
         try {
-          await onEnviar(mensaje.trim(), valor, plazo.trim());
+          await onEnviar(mensaje.trim(), importe, plazo.trim());
         } catch (err) {
           setError(err instanceof Error ? err.message : "No se pudo enviar la postulación.");
         } finally {
