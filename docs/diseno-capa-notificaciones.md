@@ -62,9 +62,10 @@ credencial propia para Gmail y Telegram, HTTP Request crudo con headers manuales
 Gotenberg), lo que hace más frágil cualquier cambio (por ejemplo, rotar la versión de la API de
 Notion exige tocar los 8 nodos HTTP uno por uno).
 
-`workflow/tickets_notion.json` (el flujo separado de tickets, 38 nodos) tiene sus propias llamadas
-a Notion; queda fuera del alcance de este documento, que se concentra en `crm_postgres.json` por
-ser el que enumera la tesis.
+En aquel corte, el flujo separado de tickets era `workflow/tickets_notion.json`
+(38 nodos) y llamaba a Notion; queda fuera del alcance de este análisis
+histórico. Ese archivo ya no forma parte del repositorio: el flujo vigente es
+`workflow/tickets.json`, sobre la tabla `tickets`.
 
 ## 2. Diseño propuesto: una interfaz común de notificación y generación documental
 

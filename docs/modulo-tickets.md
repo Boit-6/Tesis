@@ -36,8 +36,8 @@ día 17  nadie lo tocó → sube            ALTA      score 84
 día 21  nadie lo tocó → sube            CRITICA   score 100
 ```
 
-Después de escalar, el cron manda por Telegram lo que subió y lo que sigue en
-`CRITICA` sin resolver (`TICKETS_TELEGRAM_CHAT_ID`, o `TELEGRAM_CHAT_ID`).
+Después de escalar, el cron pasa el resumen por `workflow/avisos.json`, que
+registra el aviso del espacio y lo distribuye por los canales configurados.
 
 La escala está en `db/schema.sql`: los enums `ticket_estado` y
 `ticket_prioridad` (el orden del enum es la escala) y las funciones
@@ -47,17 +47,18 @@ La escala está en `db/schema.sql`: los enums `ticket_estado` y
 
 | Quién | Cómo |
 |---|---|
-| El tablero | `POST /api/tickets` (crear) y `POST /api/tickets/estado` (mover o cambiar prioridad), con la sesión del admin. La RLS vuelve a exigir el rol `admin` en la base. |
+| El tablero | `POST /api/tickets` (crear) y `POST /api/tickets/estado` (mover o cambiar prioridad), con la sesión de un desarrollador que tiene espacio. La RLS exige que el ticket pertenezca a ese espacio; el rol `admin` no concede acceso a tickets ajenos. |
 | El CRM | Al aceptarse una propuesta, `Postgres - Crear Tickets Proyecto` siembra los tickets del proyecto con la plantilla `TICKETS_PLANTILLA_PROYECTO` (`Titulo\|PRIORIDAD\|dias_hasta_vencer;…`, con `{cliente}` y `{servicio}`). No duplica si la aceptación se repite. |
 | El cron | Sube la prioridad (ver arriba). |
 
-Nadie borra tickets: no hay política ni privilegio de `DELETE`.
+Ni el panel ni `n8n_writer` borran tickets: esos roles no tienen política ni
+privilegio de `DELETE`. Esto no restringe a `service_role` administrativo.
 
 ## 3. Pruebas
 
-- `npm run test:rls`: que `anon` y un usuario sin rol no lean ni escriban
-  tickets, que el admin sí, que nadie los borre y que `n8n_writer` pueda
-  sembrarlos.
+- `npm run test:rls`: que `anon` no lea ni escriba tickets, que cada
+  desarrollador opere sólo los de su espacio, que nadie los borre y que
+  `n8n_writer` pueda sembrarlos.
 - `npm run test:idempotencia`: la siembra sin duplicados, el score, el SQL real
   del cron (quién escala y quién no, el tope en `CRITICA`, que una segunda
   corrida no escale) y el cierre al pasar a `HECHO`.

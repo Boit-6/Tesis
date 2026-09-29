@@ -3,6 +3,11 @@
 Este documento resume qué se hizo, por qué, y qué queda pendiente, para que cualquiera
 que retome el proyecto tenga el contexto completo sin tener que reconstruirlo.
 
+> **Registro histórico:** describe la incorporación inicial de Auth, no la estructura
+> ni el estado operativo actual. Hoy `/` es la portada, los formularios están en
+> `/f/<slug>`, el panel exige un espacio propio y el gestor de paquetes del repo
+> es npm (`package-lock.json`). Para instrucciones vigentes, ver los README.
+
 ## 1. Contexto / problema original
 
 El dashboard interno (`/dashboard`) mostraba métricas, leads (nombre, email, presupuesto)
@@ -64,10 +69,11 @@ Tailwind que `lead-form.tsx`).
   `supabase.auth.getUser()` y hace `redirect("/login")` si no hay usuario (defensa en
   profundidad, además del proxy). Muestra el email del usuario logueado y el botón
   "Salir".
-- `src/app/dashboard/dashboard-client.tsx` — se migró del cliente viejo
-  (`@/lib/supabase`) al nuevo cliente de navegador (`@/lib/supabase/client`). El resto de
-  la lógica (queries a `metrics_mensuales`, `leads`, `facturas_pendientes`, canal
-  realtime) no cambió.
+- El entonces `src/app/dashboard/dashboard-client.tsx` — se migró del cliente
+  viejo (`@/lib/supabase`) al nuevo cliente de navegador
+  (`@/lib/supabase/client`). Ese archivo ya no existe: la carga y el canal
+  Realtime viven hoy en `src/app/(panel)/dashboard/panel-datos.tsx`, con vistas
+  separadas por sección.
 
 ### 2.5 Bug corregido en el formulario de leads
 
@@ -213,7 +219,7 @@ producción.
 **Local:**
 
 ```bash
-pnpm dev
+npm run dev
 ```
 
 - `/` y `/aceptar/[leadId]` — públicas, sin cambios funcionales (salvo que necesitan que
@@ -242,10 +248,10 @@ mismas pruebas contra `https://formulario-leads-psi.vercel.app`.
 **Modificados:**
 
 - `src/app/dashboard/page.tsx`
-- `src/app/dashboard/dashboard-client.tsx`
+- `src/app/dashboard/dashboard-client.tsx` (nombre histórico; ya retirado)
 - `src/app/components/lead-form.tsx` (fix de la URL hardcodeada)
 - `.env.example`
-- `package.json` / `pnpm-lock.yaml` (dependencia `@supabase/ssr`)
+- `package.json` / `package-lock.json` (dependencia `@supabase/ssr`; lockfile actual)
 
 **Borrado:**
 

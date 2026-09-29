@@ -1,5 +1,10 @@
 # Propuestas pendientes y transiciones de facturas (01-sep-2026)
 
+> **Registro histórico:** las rutas y pantallas citadas corresponden a ese
+> cambio. El tablero vigente se divide entre `panel-datos.tsx` y componentes
+> bajo `FormularioLeads/src/app/(panel)/dashboard/`; no existe ya
+> `dashboard-client.tsx`.
+
 Dos deudas declaradas explícitamente en el documento de la tesis, cerradas en esta sesión:
 
 1. **§4.3.1 y §4.9 (riesgo abierto):** un lead HOT/WARM calificado queda en `NUEVO`
@@ -102,8 +107,9 @@ un webhook del panel:
 
 ### Frontend
 
-Se agregó el botón **"Anular"** en la sección IV ("Facturas pendientes") del tablero
-(`FormularioLeads/src/app/dashboard/dashboard-client.tsx`), que llama a
+Se agregó el botón **"Anular"** en la sección de facturas del tablero
+(hoy en `FormularioLeads/src/app/(panel)/dashboard/dashboard-invoices.tsx`, con
+la acción en `panel-datos.tsx`; antes todo vivía en `dashboard-client.tsx`), que llama a
 `POST /api/crm/factura-anular` con `{factura_id}` — mismo patrón `/api/crm/[accion]`
 que usan `cancelar`, `cerrar`, `cambio-aceptar` y `cambio-rechazar`
 (`FormularioLeads/src/app/api/crm/[accion]/route.ts`, que sólo necesitó sumar

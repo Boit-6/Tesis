@@ -2,16 +2,18 @@
 
 Capa de presentación del proyecto (ver el [README de la raíz](../README.md) para
 la arquitectura completa). Next.js 16 (App Router) + React 19 + Tailwind v4 +
-Supabase Auth/Realtime. Habla con la orquestación (n8n) por HTTP; nunca
-escribe directo en la base.
+Supabase Auth/Realtime. Las operaciones autorizadas del panel (por ejemplo,
+tickets y datos del espacio) usan Supabase con RLS; las acciones del CRM pasan
+por n8n, directamente desde páginas públicas o mediante el proxy del servidor.
 
 ## Stack
 
 - **Next.js 16** (App Router, Turbopack) · **React 19** · **Tailwind v4**
 - **Supabase** — Auth, Realtime y cliente `anon` bajo sesión (nunca la
   `service_role` desde el front)
-- Consumidor HTTP de los webhooks de **n8n** (`workflow/crm_postgres.json` y
-  `workflow/tickets_notion.json`, en la raíz del monorepo)
+- Consumidor HTTP de los webhooks de **n8n** (`workflow/crm_postgres.json`, en
+  la raíz del monorepo). El backend usa además `workflow/tickets.json` y
+  `workflow/avisos.json`; el frontend no consume esos subflujos directamente.
 
 ## Levantar el entorno de desarrollo
 
@@ -33,14 +35,13 @@ Detalladas y comentadas en [`.env.example`](.env.example). Resumen:
 | `NEXT_PUBLIC_N8N_BASE`                 | Sí        | Base de los webhooks de n8n para llamadas desde el navegador                                                                       |
 | `NEXT_PUBLIC_SUPABASE_URL`             | Sí        | Project URL de Supabase                                                                                                            |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY`        | Sí        | anon/publishable key (no es secreta; RLS protege los datos)                                                                        |
-| `N8N_BASE`                             | No        | Base de n8n para llamadas server-side; si falta, cae a `NEXT_PUBLIC_N8N_BASE`                                                      |
+| `N8N_BASE`                             | No        | Base de n8n para llamadas server-side del proxy `/api/crm`; si falta, cae a `NEXT_PUBLIC_N8N_BASE`                                 |
 | `CRM_PANEL_HEADER` / `CRM_PANEL_TOKEN` | No\*      | Credencial de los webhooks internos del panel (`/api/crm/*`) — debe coincidir con la credencial `CRM - Header Auth (panel)` de n8n |
-| `TICKETS_API_KEY`                      | No\*      | Secreto del módulo de tickets; debe coincidir con `TICKETS_API_KEY` del `.env` de n8n. Vacío = módulo sin auth                     |
 | `NEXT_PUBLIC_EMAIL_CONTACTO`           | No        | Dirección que se muestra en enlaces vencidos/inválidos de la página de aceptación                                                  |
 
-\* Sin configurar, las rutas que dependen de estas credenciales devuelven
-`503` en vez de operar sin autenticar (ver `src/app/api/crm/[accion]/route.ts`
-y `src/lib/tickets.ts`).
+\* Sin configurar la credencial del panel, `/api/crm/[accion]` devuelve `503`
+en vez de reenviar una mutación sin autenticar. `/api/tickets` usa la sesión
+del desarrollador y RLS del espacio; no utiliza `TICKETS_API_KEY`.
 
 ## Scripts
 
@@ -60,14 +61,15 @@ la suite del repo + lint + typecheck del front).
 
 ```
 src/app/
-├── components/lead-form.tsx   # Formulario de captación (público)
-├── aceptar/[leadId]/          # Página de aceptación de propuesta
-├── dashboard/                 # Tablero interno (gate admin + Realtime)
-├── dashboard/tickets/         # Tablero de tickets (columnas + drag & drop)
+├── f/[slug]/                   # Formulario de captación de cada desarrollador
+├── (plataforma)/aceptar/[leadId]/ # Página de aceptación de propuesta
+├── (panel)/dashboard/         # Panel del desarrollador (sesión + espacio)
+├── (panel)/dashboard/(secciones)/tickets/ # Tickets (columnas + drag & drop)
 ├── api/crm/[accion]/          # Proxy server-side hacia los webhooks internos del panel
-├── api/tickets/               # Proxy server-side hacia el módulo de tickets
-├── login/ · register/ · auth/ # Autenticación (Supabase)
-└── lib/supabase/              # Clientes de Supabase (client / server / middleware)
+├── api/tickets/               # Route handlers con sesión + RLS
+├── (plataforma)/login/ · (plataforma)/register/ # Autenticación (Supabase)
+└── auth/                      # Confirmación y salida de sesión
+src/lib/supabase/               # Clientes de Supabase (client / server / middleware)
 ```
 
 ## Despliegue
@@ -75,3 +77,28 @@ src/app/
 Pensado para Vercel. El build no necesita credenciales configuradas: los
 clientes de Supabase devuelven `null` cuando faltan las variables en vez de
 romper (ver `src/lib/supabase/client.ts` y `server.ts`).
+
+El `docker-compose.yml` de la raíz expone n8n sólo en `127.0.0.1:5678`.
+`NEXT_PUBLIC_N8N_BASE` debe ser una URL HTTPS realmente accesible desde el
+navegador remoto, publicada mediante un proxy/túnel con controles de acceso
+al editor; definir `N8N_PUBLIC_URL` por sí solo no abre ese puerto.
+
+### Medición E7 de Realtime
+
+El medidor canónico es `scripts/medir-realtime.mjs` de este directorio; el
+script homónimo de la raíz es sólo una entrada compatible. Requiere una cuenta
+de prueba autenticable (`REALTIME_TEST_EMAIL` y `REALTIME_TEST_PASSWORD`) con
+espacio propio legible, la URL y anon key de Supabase, y
+`SUPABASE_SERVICE_ROLE_KEY` **sólo para el script**. Se suscribe como esa
+cuenta, crea un lead ficticio en su espacio, mide actualizaciones y lo elimina
+al terminar. Si la limpieza falla, informa el ID: revisarlo manualmente.
+La tabla `leads` debe estar en la publicación de Realtime. No ejecutar contra
+producción sin planificar la creación y eliminación del dato de prueba.
+
+```bash
+node scripts/medir-realtime.mjs --n 5
+```
+
+`npm run test:realtime` desde la raíz archiva la salida en
+`docs/evidencia-realtime.md` y reemplaza ese registro; usarlo sólo para una
+nueva corrida de evidencia, no para inspeccionar el resultado histórico.
