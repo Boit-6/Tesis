@@ -9,7 +9,7 @@ import {EsqueletoTickets} from "../../esqueletos";
 import {esEstado} from "@/lib/tickets";
 
 // Tablero tipo Trello sobre la tabla `tickets`. Se pinta la vista
-// tickets_tablero y los cambios van por /api/tickets (sesión del admin + RLS).
+// tickets_tablero y los cambios van por /api/tickets (sesión del desarrollador y RLS por espacio).
 // La prioridad la sube sola el cron de envejecimiento: por eso cada card
 // muestra hace cuánto no se mueve y cuánto le falta para escalar.
 //
@@ -65,10 +65,10 @@ function TicketCard({
 
   return (
     <article
-      draggable
       className={`ease bg-card border-l-2 p-3.5 shadow-[0_1px_2px_rgba(25,23,19,0.04)] transition duration-200 lg:cursor-grab lg:active:cursor-grabbing ${
         moviendo || arrastrando ? "opacity-40" : ""
       } ${colorPrioridad(ticket.prioridad, prioridades).split(" ")[1]}`}
+      draggable={!moviendo}
       onDragEnd={() => onArrastre(null)}
       onDragStart={(e) => {
         e.dataTransfer.setData("text/plain", ticket.ticket_id);
@@ -133,7 +133,12 @@ export default function TicketsBoard() {
   const [datos, setDatos] = useState<TicketsResponse | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [moviendo, setMoviendo] = useState<string | null>(null);
+  const [moviendo, setMoviendo] = useState<Set<string>>(() => new Set());
+  const movimientosPendientes = useRef(new Set<string>());
+  const huboMovimientoExitoso = useRef(false);
+  const errorMovimiento = useRef<string | null>(null);
+  const recargaEnCurso = useRef(false);
+  const [recargandoMovimiento, setRecargandoMovimiento] = useState(false);
   const [columnaActiva, setColumnaActiva] = useState<string | null>(null);
   const [arrastrando, setArrastrando] = useState<string | null>(null);
   // Estado que muestra el celular (una columna por vez).
@@ -174,11 +179,15 @@ export default function TicketsBoard() {
   const tickets = datos?.tickets ?? [];
 
   async function mover(ticketId: string, estado: string) {
-    if (!esEstado(estado)) return;
+    if (!esEstado(estado) || recargaEnCurso.current || movimientosPendientes.current.has(ticketId))
+      return;
 
-    const previo = datos;
+    const previo = datos?.tickets.find((t) => t.ticket_id === ticketId)?.estado;
 
-    setMoviendo(ticketId);
+    if (!previo || previo === estado) return;
+
+    movimientosPendientes.current.add(ticketId);
+    setMoviendo(new Set(movimientosPendientes.current));
 
     // Optimista: movemos la card en pantalla y revertimos si la API falla.
     setDatos((actual) =>
@@ -200,14 +209,42 @@ export default function TicketsBoard() {
 
       if (!res.ok || !json.ok) throw new Error(json.error ?? `Error ${res.status}`);
 
-      // Recargamos: el score y el reloj los calcula la base, no los adivinamos acá.
-      await cargar();
+      huboMovimientoExitoso.current = true;
     } catch (err) {
       console.error(err);
-      setDatos(previo);
-      setError(err instanceof Error ? err.message : "No se pudo mover el ticket.");
+      // No restaurar toda la lista: otra tarjeta puede haberse movido mientras tanto.
+      setDatos((actual) =>
+        actual
+          ? {
+              ...actual,
+              tickets: actual.tickets.map((t) =>
+                t.ticket_id === ticketId ? {...t, estado: previo} : t,
+              ),
+            }
+          : actual,
+      );
+      errorMovimiento.current = err instanceof Error ? err.message : "No se pudo mover el ticket.";
+      setError(errorMovimiento.current);
     } finally {
-      setMoviendo(null);
+      movimientosPendientes.current.delete(ticketId);
+      setMoviendo(new Set(movimientosPendientes.current));
+      if (movimientosPendientes.current.size === 0) {
+        // Recargar una sola vez tras la ráfaga; antes, una respuesta tardía podía
+        // pisar el cambio optimista de otra tarjeta. La base recalcula score/reloj.
+        if (huboMovimientoExitoso.current) {
+          recargaEnCurso.current = true;
+          setRecargandoMovimiento(true);
+          try {
+            await cargar();
+          } finally {
+            recargaEnCurso.current = false;
+            setRecargandoMovimiento(false);
+          }
+        }
+        if (errorMovimiento.current) setError(errorMovimiento.current);
+        huboMovimientoExitoso.current = false;
+        errorMovimiento.current = null;
+      }
     }
   }
 
@@ -360,7 +397,7 @@ export default function TicketsBoard() {
                     key={ticket.ticket_id}
                     arrastrando={arrastrando === ticket.ticket_id}
                     estados={estados}
-                    moviendo={moviendo === ticket.ticket_id}
+                    moviendo={recargandoMovimiento || moviendo.has(ticket.ticket_id)}
                     prioridades={prioridades}
                     ticket={ticket}
                     onArrastre={setArrastrando}

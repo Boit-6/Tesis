@@ -1,6 +1,6 @@
 import type {Ticket} from "@/lib/tickets";
 
-import {render, screen, within} from "@testing-library/react";
+import {render, screen, waitFor, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {beforeAll, beforeEach, describe, expect, it, vi} from "vitest";
 
@@ -142,5 +142,59 @@ describe("TicketsBoard", () => {
       }),
     );
     expect(dialogo).not.toHaveAttribute("open");
+  });
+
+  it("con movimientos simultáneos y respuestas fuera de orden conserva el éxito aunque otro falle", async () => {
+    let resolverA!: (response: Response) => void;
+    let resolverB!: (response: Response) => void;
+    const respuestaA = new Promise<Response>((resolve) => {
+      resolverA = resolve;
+    });
+    const respuestaB = new Promise<Response>((resolve) => {
+      resolverB = resolve;
+    });
+    let recargas = 0;
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/tickets/estado") {
+        const id = JSON.parse(String(init?.body)).ticket_id;
+
+        return id === "a" ? respuestaA : respuestaB;
+      }
+      recargas++;
+
+      return respuesta([
+        ticket("a", "Primero", recargas > 1 ? "EN_CURSO" : "BACKLOG"),
+        ticket("b", "Segundo", "BACKLOG"),
+      ]);
+    });
+
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<TicketsBoard />);
+
+    const primero = (await screen.findByText("Primero")).closest("article")!;
+    const segundo = screen.getByText("Segundo").closest("article")!;
+
+    await user.selectOptions(within(primero).getByRole("combobox"), "EN_CURSO");
+    await user.selectOptions(within(segundo).getByRole("combobox"), "HECHO");
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/tickets/estado")).toHaveLength(2);
+
+    resolverB(
+      new Response(JSON.stringify({ok: false, error: "Falló segundo"}), {
+        status: 500,
+      }),
+    );
+    await screen.findByRole("alert");
+    resolverA(new Response(JSON.stringify({ok: true})));
+
+    await waitFor(() => expect(recargas).toBe(2));
+    expect(
+      within(screen.getByRole("region", {name: "EN CURSO"})).getByText("Primero"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", {name: "BACKLOG"})).getByText("Segundo"),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Falló segundo");
   });
 });
