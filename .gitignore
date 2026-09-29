@@ -2,6 +2,7 @@
 node_modules/
 .next/
 out/
+rendered-workflow/
 
 # Husky regenera este helper interno con el hook "prepare" en cada npm install
 .husky/_/
