@@ -4,6 +4,7 @@ import {beforeEach, describe, expect, it, vi} from "vitest";
 
 const abrirLead = vi.fn();
 let hitosPendientes: unknown[] = [];
+let porEnviar: unknown[] = [];
 
 vi.mock("../panel-datos", () => ({
   usePanelDatos: () => ({
@@ -11,7 +12,7 @@ vi.mock("../panel-datos", () => ({
     metrics: null,
     facturas: [],
     pedidos: [],
-    porEnviar: [],
+    porEnviar,
     trabajos: [],
     hitosPendientes,
     abrirLead,
@@ -41,6 +42,7 @@ describe("Requiere tu atención", () => {
   beforeEach(() => {
     abrirLead.mockClear();
     hitosPendientes = [];
+    porEnviar = [];
   });
 
   it("un hito pagado dice cuánto está retenido hasta la entrega", () => {
@@ -114,5 +116,23 @@ describe("Requiere tu atención", () => {
     render(<InicioSecciones cobrosActivos cantidadDisputasAbiertas={0} />);
 
     expect(screen.getByText("Estás al día.")).toBeInTheDocument();
+  });
+
+  it("muestra el nombre legible del servicio en propuestas por enviar", () => {
+    porEnviar = [
+      {
+        lead_id: "LD-2",
+        nombre: "Marta",
+        servicio: "ecommerce",
+        tier: "HOT",
+        score: 80,
+        presupuesto: 1000,
+        presupuesto_rango: "1000_2000",
+        fecha_ingreso: "2026-09-01",
+      },
+    ];
+    render(<InicioSecciones cobrosActivos />);
+
+    expect(listaAtencion().getByText(/HOT · Tienda online · declaró/)).toBeInTheDocument();
   });
 });

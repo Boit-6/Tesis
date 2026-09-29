@@ -1,5 +1,7 @@
 "use client";
 
+import type {ServicioTipo} from "@/types/supabase";
+
 import Link from "next/link";
 
 import {KpiCard, SectionHeader, formatMoney, formatPct} from "../dashboard-shared";
@@ -8,6 +10,7 @@ import {usePanelDatos} from "../panel-datos";
 
 import {usd} from "@/lib/hitos";
 import {presupuestoDeclarado} from "@/lib/presupuesto";
+import {SERVICIO_LEGIBLE} from "@/lib/servicios";
 
 // Algo que espera una acción del desarrollador. `accion` es un enlace a la
 // sección que lo resuelve o un botón que lo resuelve acá mismo.
@@ -90,7 +93,7 @@ export default function InicioSecciones({
       clave: `propuesta-${l.lead_id}`,
       tipo: "Propuesta por enviar",
       titulo: l.nombre,
-      detalle: `${l.tier} · ${l.servicio.replace(/_/g, " ")} · declaró ${presupuestoDeclarado(l.presupuesto_rango, l.presupuesto)}`,
+      detalle: `${l.tier} · ${SERVICIO_LEGIBLE[l.servicio as ServicioTipo] ?? l.servicio.replace(/_/g, " ")} · declaró ${presupuestoDeclarado(l.presupuesto_rango, l.presupuesto)}`,
       urgente: l.tier === "HOT",
       accion: {
         etiqueta: "Fijar términos",
