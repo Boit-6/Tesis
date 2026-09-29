@@ -1090,6 +1090,26 @@ INSERT INTO mensajes (postulacion_id, autor, texto)
 SELECT po.id, 'cliente', 'El carrito no suma el envío a Córdoba.'
 FROM postulaciones po JOIN bolsa_pedidos b ON b.id = po.pedido_id
 WHERE b.lead_id = 'LD-HITOS-0001' AND po.espacio_id = (SELECT id FROM espacios WHERE slug = 'estudio-pepe');
+-- Otro postulante del mismo pedido (el admin) también le había escrito: esa
+-- conversación no es de las partes y no tiene que aparecer en el detalle.
+INSERT INTO postulaciones (pedido_id, espacio_id, mensaje, precio_estimado, plazo)
+SELECT b.id, (SELECT id FROM espacios WHERE dueno_id = '11111111-1111-4111-8111-111111111111'),
+       'Puedo armar la tienda en dos semanas.', 900, '2 semanas'
+FROM bolsa_pedidos b WHERE b.lead_id = 'LD-HITOS-0001'
+ON CONFLICT (pedido_id, espacio_id) DO NOTHING;
+INSERT INTO mensajes (postulacion_id, autor, texto)
+SELECT po.id, 'cliente', 'Mensaje a otro postulante que no se eligió.'
+FROM postulaciones po JOIN bolsa_pedidos b ON b.id = po.pedido_id
+WHERE b.lead_id = 'LD-HITOS-0001'
+  AND po.espacio_id = (SELECT id FROM espacios WHERE dueno_id = '11111111-1111-4111-8111-111111111111');
+SELECT probar('(existe el mensaje al otro postulante)',
+  'service_role', NULL, $q$SELECT count(*) FROM mensajes WHERE texto LIKE '%otro postulante%'$q$, '1 filas');
+SELECT probar('anon no abre el detalle de una disputa',
+  'anon', NULL,
+  format('SELECT count(*) FROM (SELECT disputa_detalle(%L) AS d) x WHERE d IS NOT NULL', (SELECT h2 FROM ph)),
+  'permiso denegado');
+SELECT probar('ni lista las resueltas',
+  'anon', NULL, 'SELECT count(*) FROM disputas_resueltas()', 'permiso denegado');
 SELECT probar('el desarrollador no abre el detalle de una disputa',
   'authenticated', '22222222-2222-4222-8222-222222222222',
   format('SELECT count(*) FROM (SELECT disputa_detalle(%L) AS d) x WHERE d IS NOT NULL', (SELECT h2 FROM ph)),
@@ -1098,15 +1118,16 @@ SELECT probar('el admin ve el detalle: historial, conversación y que la puede r
   'authenticated', '11111111-1111-4111-8111-111111111111',
   format($q$SELECT count(*) FROM (SELECT disputa_detalle(%L) AS d) x
             WHERE json_array_length(d->'eventos') = 2 AND json_array_length(d->'mensajes') >= 1
+              AND (d->'mensajes')::text NOT LIKE '%%otro postulante%%'
               AND json_array_length(d->'proyecto'->'hitos') = 3 AND (d->>'puede_resolver')::boolean$q$, (SELECT h2 FROM ph)),
   '1 filas');
 SELECT probar('un hito que nunca se disputó no abre la conversación',
   'authenticated', '11111111-1111-4111-8111-111111111111',
   format('SELECT count(*) FROM (SELECT disputa_detalle(%L) AS d) x WHERE d IS NOT NULL', (SELECT h1 FROM ph)),
   'error: Este hito no tuvo una disputa');
-SELECT probar('el admin ve la disputa abierta',
+SELECT probar('el admin ve la disputa abierta y la puede resolver',
   'authenticated', '11111111-1111-4111-8111-111111111111',
-  'SELECT count(*) FROM disputas_abiertas() WHERE espacio_nombre IS NOT NULL', '1 filas');
+  'SELECT count(*) FROM disputas_abiertas() WHERE espacio_nombre IS NOT NULL AND puede_resolver', '1 filas');
 SELECT probar('y la ve en el proyecto como admin',
   'authenticated', '11111111-1111-4111-8111-111111111111',
   $q$SELECT count(*) FROM (SELECT ver_proyecto('LD-HITOS-0001') AS p) x WHERE p->>'rol' = 'admin'$q$, '1 filas');
@@ -1122,10 +1143,12 @@ SELECT probar('queda registrado quién la resolvió',
   'authenticated', '11111111-1111-4111-8111-111111111111',
   $q$SELECT count(*) FROM disputas_resueltas() WHERE cierre = 'resuelto' AND resuelto_por = 'admin@gmail.com' AND monto_liberado = 200 AND monto_reembolsado = 300.50$q$,
   '1 filas');
-SELECT probar('ya no está entre las abiertas y el detalle no deja resolverla otra vez',
+SELECT probar('ya no está entre las abiertas',
   'authenticated', '11111111-1111-4111-8111-111111111111',
-  format($q$SELECT count(*) FROM (SELECT disputa_detalle(%L) AS d) x
-            WHERE NOT (d->>'puede_resolver')::boolean AND NOT EXISTS (SELECT 1 FROM disputas_abiertas())$q$, (SELECT h2 FROM ph)),
+  'SELECT count(*) FROM disputas_abiertas()', '0 filas');
+SELECT probar('y el detalle no deja resolverla otra vez',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  format($q$SELECT count(*) FROM (SELECT disputa_detalle(%L) AS d) x WHERE NOT (d->>'puede_resolver')::boolean$q$, (SELECT h2 FROM ph)),
   '1 filas');
 SELECT probar('el desarrollador tampoco ve las resueltas',
   'authenticated', '22222222-2222-4222-8222-222222222222',
@@ -1165,6 +1188,10 @@ UPDATE leads SET estado = 'ACEPTADO' WHERE lead_id = 'LD-HITOS-0002';
 SELECT hito_fondeado((SELECT id FROM hitos WHERE lead_id = 'LD-HITOS-0002' AND orden = 1), 'cs_4', 'pi_4');
 SELECT disputar_hito((SELECT id FROM hitos WHERE lead_id = 'LD-HITOS-0002' AND orden = 1), 'No se entregó nada todavía.',
                      (SELECT proyecto_token FROM leads WHERE lead_id = 'LD-HITOS-0002'));
+SELECT probar('en la lista del admin figura, pero como no resoluble',
+  'authenticated', '11111111-1111-4111-8111-111111111111',
+  $q$SELECT count(*) FROM disputas_abiertas() WHERE lead_id = 'LD-HITOS-0002' AND NOT puede_resolver$q$,
+  '1 filas');
 SELECT probar('el detalle ya le avisa al admin que es un proyecto suyo',
   'authenticated', '11111111-1111-4111-8111-111111111111',
   $q$SELECT count(*) FROM (SELECT disputa_detalle((SELECT id FROM hitos WHERE lead_id = 'LD-HITOS-0002' AND orden = 1)) AS d) x

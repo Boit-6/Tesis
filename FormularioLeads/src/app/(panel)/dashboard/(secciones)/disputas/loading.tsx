@@ -1,10 +1,10 @@
-import {EsqueletoEncabezado, EsqueletoListado} from "../../esqueletos";
+import {EsqueletoDisputas, EsqueletoEncabezado} from "../../esqueletos";
 
 export default function DisputasLoading() {
   return (
     <>
       <EsqueletoEncabezado />
-      <EsqueletoListado />
+      <EsqueletoDisputas />
     </>
   );
 }

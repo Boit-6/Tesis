@@ -111,6 +111,13 @@ function aFacturaVencida(
   };
 }
 
+// Los estados de un hito que esperan algo del desarrollador.
+const ESTADOS_PENDIENTES: HitoPendiente["estado"][] = ["FONDEADO", "EN_DISPUTA"];
+
+function esEstadoPendiente(estado: string): estado is HitoPendiente["estado"] {
+  return (ESTADOS_PENDIENTES as string[]).includes(estado);
+}
+
 interface PanelDatos {
   // true hasta que llega la primera carga: cada página muestra su esqueleto.
   cargando: boolean;
@@ -121,7 +128,7 @@ interface PanelDatos {
   trabajos: Trabajo[];
   pedidos: PedidoCambio[];
   porEnviar: PorEnviar[];
-  hitos: HitoPendiente[];
+  hitosPendientes: HitoPendiente[];
   enviarPropuesta: (
     leadId: string,
     precio: number,
@@ -172,7 +179,7 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
   const [trabajos, setTrabajos] = useState<Trabajo[]>([]);
   const [pedidos, setPedidos] = useState<PedidoCambio[]>([]);
   const [porEnviar, setPorEnviar] = useState<PorEnviar[]>([]);
-  const [hitos, setHitos] = useState<HitoPendiente[]>([]);
+  const [hitosPendientes, setHitosPendientes] = useState<HitoPendiente[]>([]);
   const [confirmar, ConfirmDialog] = useConfirm();
   const [leadAbierto, setLeadAbierto] = useState<string | null>(null);
 
@@ -257,7 +264,7 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
         supabase
           .from("hitos")
           .select("id,lead_id,orden,titulo,monto,estado,disputa_motivo,leads(nombre)")
-          .in("estado", ["FONDEADO", "EN_DISPUTA"])
+          .in("estado", ESTADOS_PENDIENTES)
           .order("creado_en"),
       ]);
 
@@ -293,17 +300,23 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
       setTrabajos(resTrabajos.data ?? []);
       setPedidos(resPedidos.data ?? []);
       setPorEnviar(resPorEnviar.data ?? []);
-      setHitos(
-        (resHitos.data ?? []).map((h) => ({
-          id: h.id,
-          lead_id: h.lead_id,
-          orden: h.orden,
-          titulo: h.titulo,
-          monto: h.monto,
-          estado: h.estado as HitoPendiente["estado"],
-          disputa_motivo: h.disputa_motivo,
-          cliente: h.leads?.nombre ?? h.lead_id,
-        })),
+      setHitosPendientes(
+        (resHitos.data ?? []).flatMap((h) =>
+          esEstadoPendiente(h.estado)
+            ? [
+                {
+                  id: h.id,
+                  lead_id: h.lead_id,
+                  orden: h.orden,
+                  titulo: h.titulo,
+                  monto: h.monto,
+                  estado: h.estado,
+                  disputa_motivo: h.disputa_motivo,
+                  cliente: h.leads?.nombre ?? h.lead_id,
+                },
+              ]
+            : [],
+        ),
       );
     } catch (err) {
       console.error(err);
@@ -321,13 +334,13 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
     const client = supabase;
     let pendiente: ReturnType<typeof setTimeout> | null = null;
 
-    // Refresca en vivo cuando entra o cambia un lead o una factura, agrupando
+    // Refresca en vivo cuando entra o cambia un lead, una factura o un hito, agrupando
     // la ráfaga. Las facturas cambian solas sin tocar su lead: el pago de
     // Stripe, el cron que las marca VENCIDA o una anulación.
     //
     // Cada evento de `postgres_changes` obliga a recargar el tablero entero, que
-    // son seis consultas. Sin agrupar, un proceso programado que actualiza N
-    // leads de una vez —el de seguimiento de las 9:00 lo hace— disparaba 6N
+    // son nueve consultas. Sin agrupar, un proceso programado que actualiza N
+    // leads de una vez —el de seguimiento de las 9:00 lo hace— disparaba 9N
     // consultas en ráfaga, más de las que costaría sondear. La espera es corta
     // frente al umbral de 3 s del RNF6, así que no compromete la actualidad del
     // dato: sólo evita repetir la misma recarga N veces.
@@ -545,7 +558,7 @@ export default function PanelDatosProvider({children}: {children: ReactNode}) {
     trabajos,
     pedidos,
     porEnviar,
-    hitos,
+    hitosPendientes,
     enviarPropuesta,
     cancelar,
     cerrarProyecto,

@@ -6,6 +6,7 @@ import Link from "next/link";
 import {usePathname} from "next/navigation";
 import {useEffect, useState} from "react";
 
+import {EVENTO_DISPUTAS_CAMBIARON} from "@/lib/hitos";
 import {createClient} from "@/lib/supabase/client";
 
 const SECCIONES = [
@@ -43,7 +44,7 @@ const SECCIONES = [
 ];
 
 // Sólo para el admin de la plataforma (etapa 11): las disputas de los hitos.
-const DISPUTAS = {
+const SECCION_DISPUTAS = {
   href: "/dashboard/disputas",
   etiqueta: "Disputas",
   icono: "M12 4v16M8 20h8M5 7h14M7 7l-3 6.5a3 3 0 0 0 6 0zM17 7l-3 6.5a3 3 0 0 0 6 0z",
@@ -115,35 +116,46 @@ function useMensajesSinLeer(pathname: string) {
   return total;
 }
 
-// Disputas abiertas, para el contador de «Disputas». Se recuenta al cambiar
-// de página: el admin no recibe los cambios de hitos ajenos por tiempo real.
-function useDisputasAbiertas(pathname: string, admin: boolean) {
+// Disputas que el admin puede resolver, para el contador de «Disputas». Se
+// recuenta al cambiar de página y cuando el tablero avisa que resolvió una:
+// el admin no recibe los cambios de hitos ajenos por tiempo real.
+function useDisputasAbiertas(pathname: string, habilitado: boolean) {
   const [supabase] = useState(() => createClient());
   const [total, setTotal] = useState(0);
+  const [version, setVersion] = useState(0);
 
   useEffect(() => {
-    if (!supabase || !admin) return;
+    if (!habilitado) return;
+    const recontar = () => setVersion((v) => v + 1);
+
+    window.addEventListener(EVENTO_DISPUTAS_CAMBIARON, recontar);
+
+    return () => window.removeEventListener(EVENTO_DISPUTAS_CAMBIARON, recontar);
+  }, [habilitado]);
+
+  useEffect(() => {
+    if (!supabase || !habilitado) return;
 
     let vigente = true;
 
     supabase.rpc("disputas_abiertas").then(({data}) => {
-      if (vigente) setTotal(data?.length ?? 0);
+      if (vigente) setTotal((data ?? []).filter((d) => d.puede_resolver).length);
     });
 
     return () => {
       vigente = false;
     };
-  }, [supabase, pathname, admin]);
+  }, [supabase, pathname, habilitado, version]);
 
   return total;
 }
 
-function Contador({cantidad, que}: {cantidad: number; que: string}) {
+function Contador({cantidad, descripcion}: {cantidad: number; descripcion: string}) {
   if (!cantidad) return null;
 
   return (
     <span className="bg-ochre text-paper ml-auto min-w-5 px-1.5 text-center text-[10.5px] leading-5">
-      <span className="sr-only">, {que}: </span>
+      <span className="sr-only">, {descripcion}: </span>
       {cantidad}
     </span>
   );
@@ -194,12 +206,14 @@ export default function PanelShell({
 }) {
   const pathname = usePathname();
   const sinLeer = useMensajesSinLeer(pathname);
-  const disputas = useDisputasAbiertas(pathname, admin);
-  const secciones = admin ? [...SECCIONES, DISPUTAS] : SECCIONES;
-  // Qué contador lleva cada sección.
-  const contadores: Partial<Record<string, {cantidad: number; que: string}>> = {
-    "/dashboard/bolsa": {cantidad: sinLeer, que: "mensajes sin leer"},
-    "/dashboard/disputas": {cantidad: disputas, que: "disputas abiertas"},
+  const cantidadDisputas = useDisputasAbiertas(pathname, admin);
+  const secciones = admin ? [...SECCIONES, SECCION_DISPUTAS] : SECCIONES;
+  const contadores: Partial<Record<string, {cantidad: number; descripcion: string}>> = {
+    "/dashboard/bolsa": {cantidad: sinLeer, descripcion: "mensajes sin leer"},
+    [SECCION_DISPUTAS.href]: {
+      cantidad: cantidadDisputas,
+      descripcion: "disputas abiertas",
+    },
   };
 
   return (
@@ -293,7 +307,9 @@ export default function PanelShell({
                   {s.etiqueta}
                   {contador && contador.cantidad > 0 && (
                     <span className="bg-ochre absolute -top-6 -right-3 size-2 rounded-full">
-                      <span className="sr-only">({contador.que})</span>
+                      <span className="sr-only">
+                        ({contador.cantidad} {contador.descripcion})
+                      </span>
                     </span>
                   )}
                 </span>

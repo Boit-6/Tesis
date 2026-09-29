@@ -230,6 +230,33 @@ export function EsqueletoBolsa() {
   );
 }
 
+// Disputas del admin: pestañas y tarjetas en una columna, con el motivo y
+// la entrega lado a lado.
+export function EsqueletoDisputas() {
+  return (
+    <Cargando className="flex flex-col gap-6" etiqueta="Cargando las disputas…">
+      <div className="border-rule flex gap-4 border-b pb-3">
+        <Esqueleto className="h-3 w-24" />
+        <Esqueleto className="h-3 w-24" />
+      </div>
+      {Array.from({length: 2}, (_, i) => (
+        <div key={i} className={`${tarjetaClass} flex flex-col gap-4 px-5 py-5`}>
+          <div className="flex justify-between gap-4">
+            <Esqueleto className="h-6 w-48" />
+            <Esqueleto className="h-6 w-24" />
+          </div>
+          <Esqueleto className="h-3 w-72 max-w-full" />
+          <div className="grid gap-5 sm:grid-cols-2">
+            <Esqueleto className="h-12 w-full" />
+            <Esqueleto className="h-12 w-full" />
+          </div>
+          <Esqueleto className="h-9 w-40" />
+        </div>
+      ))}
+    </Cargando>
+  );
+}
+
 export function EsqueletoLeadDetalle() {
   return (
     <Cargando className="flex flex-col gap-8 px-6 py-7" etiqueta="Cargando el lead…">

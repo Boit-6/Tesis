@@ -852,6 +852,8 @@ export interface Database {
           espacio_nombre: string;
           cliente_nombre: string;
           servicio: ServicioTipo;
+          // No es de un proyecto del propio admin (esas las ve, pero no las resuelve).
+          puede_resolver: boolean;
         }[];
       };
       // Los proyectos del cliente con sesión y sus postulaciones.

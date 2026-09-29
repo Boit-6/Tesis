@@ -3,20 +3,47 @@
 import type {OpcionDisputa} from "@/lib/hitos";
 import type {Database, DisputaDetalle} from "@/types/supabase";
 
-import {useEffect, useState} from "react";
+import {useEffect, useId, useRef, useState} from "react";
 
-import {EsqueletoBolsa} from "../../esqueletos";
+import {EsqueletoDisputas} from "../../esqueletos";
 
-import {ghostButtonClass} from "@/lib/constants";
-import {COLOR_HITO, ESTADO_HITO, EVENTO_HITO, repartoDisputa, usd} from "@/lib/hitos";
+import {campoClass, ghostButtonClass, peligroClass, primarioClass} from "@/lib/constants";
+import {
+  COLOR_HITO,
+  ESTADO_HITO,
+  EVENTO_DISPUTAS_CAMBIARON,
+  EVENTO_HITO,
+  NOTA_RESOLUCION_MAX,
+  NOTA_RESOLUCION_MIN,
+  comisionDe,
+  repartoDisputa,
+  usd,
+} from "@/lib/hitos";
 import {SERVICIO_LEGIBLE} from "@/lib/servicios";
 import {createClient} from "@/lib/supabase/client";
 
-type Abierta = Database["public"]["Functions"]["disputas_abiertas"]["Returns"][number];
-type Resuelta = Database["public"]["Functions"]["disputas_resueltas"]["Returns"][number];
+type DisputaAbierta = Database["public"]["Functions"]["disputas_abiertas"]["Returns"][number];
+type DisputaResuelta = Database["public"]["Functions"]["disputas_resueltas"]["Returns"][number];
 type Pestana = "abiertas" | "resueltas";
 
-const fecha = (iso: string) =>
+const SIN_SUPABASE =
+  "Faltan las variables NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY.";
+
+const PESTANAS: Record<Pestana, {etiqueta: string; vacio: string}> = {
+  abiertas: {etiqueta: "Abiertas", vacio: "No hay disputas abiertas."},
+  resueltas: {
+    etiqueta: "Resueltas",
+    vacio: "Todavía no se resolvió ninguna disputa.",
+  },
+};
+
+const OPCIONES: {clave: OpcionDisputa; etiqueta: string}[] = [
+  {clave: "liberar", etiqueta: "Liberar todo al desarrollador"},
+  {clave: "reembolsar", etiqueta: "Reembolsar todo al cliente"},
+  {clave: "partir", etiqueta: "Partir"},
+];
+
+const formatearFecha = (iso: string) =>
   new Date(iso).toLocaleString("es-AR", {
     day: "numeric",
     month: "short",
@@ -25,17 +52,16 @@ const fecha = (iso: string) =>
   });
 
 const tarjetaClass = "border-rule-soft bg-card border";
-const campoClass =
-  "ease border-rule bg-card text-ink placeholder-mist focus:border-ochre w-full border px-3 py-2.5 text-[14px] transition duration-200 outline-none";
-const primarioClass =
-  "ease bg-ink text-paper hover:bg-ochre px-4 py-2.5 text-[11px] tracking-[0.14em] uppercase transition duration-200 disabled:cursor-not-allowed disabled:opacity-40";
 const rotuloClass = "text-faint mb-2 text-[10px] tracking-[0.16em] uppercase";
 
-const OPCIONES: {clave: OpcionDisputa; etiqueta: string}[] = [
-  {clave: "liberar", etiqueta: "Liberar todo al desarrollador"},
-  {clave: "reembolsar", etiqueta: "Reembolsar todo al cliente"},
-  {clave: "partir", etiqueta: "Partir"},
-];
+// La plata ya se movió en Stripe: cada parte que recibe algo tiene su
+// movimiento registrado.
+function yaSeMovioEnStripe(disputa: DisputaResuelta): boolean {
+  const transferido = disputa.monto_liberado === 0 || disputa.transferido_en !== null;
+  const reembolsado = disputa.monto_reembolsado === 0 || disputa.reembolsado_en !== null;
+
+  return transferido && reembolsado;
+}
 
 // Una cita de lo que dijo cada parte.
 function Cita({
@@ -53,7 +79,7 @@ function Cita({
     <div>
       <p className={rotuloClass}>
         {quien}
-        {cuando && ` · ${fecha(cuando)}`}
+        {cuando && ` · ${formatearFecha(cuando)}`}
       </p>
       <p className="text-ink-soft border-rule border-l-2 pl-3 text-[14px] leading-relaxed whitespace-pre-wrap">
         {texto || <span className="text-mist">{vacio}</span>}
@@ -67,15 +93,33 @@ function Cita({
 function FormResolver({detalle, onResuelta}: {detalle: DisputaDetalle; onResuelta: () => void}) {
   const [supabase] = useState(() => createClient());
   const [opcion, setOpcion] = useState<OpcionDisputa | null>(null);
-  const [parte, setParte] = useState("");
+  const [montoDesarrollador, setMontoDesarrollador] = useState("");
   const [nota, setNota] = useState("");
   const [confirmando, setConfirmando] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const botonResolver = useRef<HTMLButtonElement>(null);
+  const botonVolver = useRef<HTMLButtonElement>(null);
+  const idError = useId();
+  const idAyudaNota = useId();
+  const idConfirmar = useId();
   const {hito} = detalle;
-  const reparto = opcion ? repartoDisputa(opcion, parte, hito.monto) : null;
-  const comision = reparto ? Math.round(reparto.liberar * hito.comision_porcentaje) / 100 : 0;
-  const listo = reparto !== null && nota.trim().length >= 5;
+  const reparto = opcion ? repartoDisputa(opcion, montoDesarrollador, hito.monto) : null;
+  const comision = reparto ? comisionDe(reparto.liberar, hito.comision_porcentaje) : 0;
+  const montoInvalido = opcion === "partir" && montoDesarrollador.trim() !== "" && !reparto;
+  const puedeResolver = reparto !== null && nota.trim().length >= NOTA_RESOLUCION_MIN;
+  const rango = `más de US$ 0 y menos de ${usd(hito.monto)}`;
+
+  // Al pedir la confirmación, el foco va a «Volver» (la opción segura); al
+  // volver, regresa a «Resolver».
+  useEffect(() => {
+    if (confirmando) botonVolver.current?.focus();
+  }, [confirmando]);
+
+  function volver() {
+    setConfirmando(false);
+    requestAnimationFrame(() => botonResolver.current?.focus());
+  }
 
   async function resolver() {
     if (!supabase || !reparto) return;
@@ -90,7 +134,7 @@ function FormResolver({detalle, onResuelta}: {detalle: DisputaDetalle; onResuelt
     setEnviando(false);
     if (err) {
       setError(err.message);
-      setConfirmando(false);
+      volver();
 
       return;
     }
@@ -99,14 +143,17 @@ function FormResolver({detalle, onResuelta}: {detalle: DisputaDetalle; onResuelt
 
   return (
     <div className="border-rule flex flex-col gap-4 border-t pt-5">
-      <p className={rotuloClass}>Resolver</p>
-      <fieldset className="flex flex-col gap-2.5 text-[14px]" disabled={confirmando}>
+      <h3 className={rotuloClass}>Resolver</h3>
+      <fieldset className="flex flex-col gap-1 text-[14px]" disabled={confirmando}>
         <legend className="sr-only">Cómo se reparte el monto</legend>
         {OPCIONES.map((o) => (
-          <label key={o.clave} className="text-ink-soft flex cursor-pointer items-center gap-2.5">
+          <label
+            key={o.clave}
+            className="text-ink-soft flex min-h-10 cursor-pointer items-center gap-2.5"
+          >
             <input
               checked={opcion === o.clave}
-              className="accent-ochre"
+              className="accent-ochre size-4"
               name={`opcion-${hito.id}`}
               type="radio"
               onChange={() => setOpcion(o.clave)}
@@ -116,13 +163,15 @@ function FormResolver({detalle, onResuelta}: {detalle: DisputaDetalle; onResuelt
         ))}
         {opcion === "partir" && (
           <label className="text-muted flex flex-col gap-1.5 pl-6 text-[13px]">
-            Para el desarrollador (entre 0 y {usd(hito.monto)})
+            Para el desarrollador ({rango})
             <input
+              aria-describedby={montoInvalido ? idError : undefined}
+              aria-invalid={montoInvalido}
               className={`${campoClass} max-w-40 tabular-nums`}
               inputMode="decimal"
               placeholder="250,00"
-              value={parte}
-              onChange={(e) => setParte(e.target.value)}
+              value={montoDesarrollador}
+              onChange={(e) => setMontoDesarrollador(e.target.value)}
             />
           </label>
         )}
@@ -136,28 +185,37 @@ function FormResolver({detalle, onResuelta}: {detalle: DisputaDetalle; onResuelt
           . Vuelve al cliente: <strong className="text-ink">{usd(reparto.reembolsar)}</strong>.
         </p>
       )}
-      {opcion === "partir" && parte.trim() !== "" && !reparto && (
-        <p className="text-brick text-[13px]">
-          Tiene que ser más de 0 y menos que {usd(hito.monto)}, con hasta dos decimales.
+      {montoInvalido && (
+        <p className="text-brick text-[13px]" id={idError}>
+          Tiene que ser {rango}, con hasta dos decimales.
         </p>
       )}
 
-      <textarea
-        aria-label="Por qué se resuelve así"
-        className={`${campoClass} resize-y`}
-        disabled={confirmando}
-        maxLength={2000}
-        placeholder="Por qué se resuelve así: les llega a las dos partes"
-        rows={3}
-        value={nota}
-        onChange={(e) => setNota(e.target.value)}
-      />
+      <div className="flex flex-col gap-1.5">
+        <label className="text-muted flex flex-col gap-1.5 text-[13px]">
+          Nota para las dos partes
+          <textarea
+            aria-describedby={idAyudaNota}
+            className={`${campoClass} resize-y`}
+            disabled={confirmando}
+            maxLength={NOTA_RESOLUCION_MAX}
+            placeholder="Por qué se resuelve así"
+            rows={3}
+            value={nota}
+            onChange={(e) => setNota(e.target.value)}
+          />
+        </label>
+        <p className="text-faint text-[12px]" id={idAyudaNota}>
+          Les llega a las dos. Mínimo {NOTA_RESOLUCION_MIN} caracteres.
+        </p>
+      </div>
 
       {!confirmando ? (
         <div>
           <button
+            ref={botonResolver}
             className={primarioClass}
-            disabled={!listo}
+            disabled={!puedeResolver}
             type="button"
             onClick={() => setConfirmando(true)}
           >
@@ -165,24 +223,24 @@ function FormResolver({detalle, onResuelta}: {detalle: DisputaDetalle; onResuelt
           </button>
         </div>
       ) : (
-        <div className="border-brick/40 flex flex-col gap-3 border-l-2 pl-3 text-[14px]">
-          <p className="text-ink-soft">
+        <div
+          aria-labelledby={idConfirmar}
+          className="border-brick/40 flex flex-col gap-3 border-l-2 pl-3 text-[14px]"
+          role="group"
+        >
+          <p className="text-ink-soft" id={idConfirmar}>
             ¿Confirmás? Se mueve la plata en Stripe y no se puede deshacer.
           </p>
           <div className="flex gap-4">
-            <button
-              className="ease bg-brick text-paper px-4 py-2.5 text-[11px] tracking-[0.14em] uppercase transition duration-200 hover:opacity-90 disabled:opacity-40"
-              disabled={enviando}
-              type="button"
-              onClick={resolver}
-            >
+            <button className={peligroClass} disabled={enviando} type="button" onClick={resolver}>
               {enviando ? "Resolviendo…" : "Sí, resolver"}
             </button>
             <button
+              ref={botonVolver}
               className={ghostButtonClass}
               disabled={enviando}
               type="button"
-              onClick={() => setConfirmando(false)}
+              onClick={volver}
             >
               Volver
             </button>
@@ -200,11 +258,17 @@ function FormResolver({detalle, onResuelta}: {detalle: DisputaDetalle; onResuelt
 }
 
 // Lo que se abre al revisar una disputa: los otros hitos, la línea de
-// tiempo, la conversación y, si sigue abierta, el formulario.
-function Detalle({hitoId, onResuelta}: {hitoId: string; onResuelta: () => void}) {
+// tiempo, la conversación y, si sigue abierta y hay cómo avisar, el
+// formulario. Al abrirse, toma el foco.
+function Detalle({hitoId, onResuelta}: {hitoId: string; onResuelta?: () => void}) {
   const [supabase] = useState(() => createClient());
   const [detalle, setDetalle] = useState<DisputaDetalle | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(supabase ? null : SIN_SUPABASE);
+  const contenedor = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    contenedor.current?.focus();
+  }, []);
 
   useEffect(() => {
     if (!supabase) return;
@@ -221,47 +285,74 @@ function Detalle({hitoId, onResuelta}: {hitoId: string; onResuelta: () => void})
     };
   }, [supabase, hitoId]);
 
-  if (error) {
-    return (
-      <p className="text-brick text-[13px]" role="alert">
-        {error}
-      </p>
-    );
-  }
-  if (!detalle) return <p className="text-muted text-[13px]">Cargando el detalle…</p>;
+  return (
+    <div ref={contenedor} className="flex flex-col gap-6 outline-none" tabIndex={-1}>
+      {error ? (
+        <p className="text-brick text-[13px]" role="alert">
+          {error}
+        </p>
+      ) : !detalle ? (
+        <p className="text-muted text-[13px]">Cargando el detalle…</p>
+      ) : (
+        <ContenidoDetalle detalle={detalle} onResuelta={onResuelta} />
+      )}
+    </div>
+  );
+}
 
+function ContenidoDetalle({
+  detalle,
+  onResuelta,
+}: {
+  detalle: DisputaDetalle;
+  onResuelta?: () => void;
+}) {
   const {proyecto, eventos, mensajes} = detalle;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <p className={rotuloClass}>
+    <>
+      <section>
+        <h3 className={rotuloClass}>
           Hitos del proyecto ·{" "}
           {proyecto.de_plataforma ? "llegó por la plataforma" : "cliente propio"}
-        </p>
+        </h3>
         <ol className="border-rule-soft divide-rule-soft divide-y border-y text-[13px]">
-          {proyecto.hitos.map((h) => (
-            <li
-              key={h.orden}
-              className={`flex items-baseline gap-3 py-2 ${h.orden === detalle.hito.orden ? "bg-ochre/5" : ""}`}
-            >
-              <span className="text-mist w-4 text-right tabular-nums">{h.orden}.</span>
-              <span className="text-ink-soft flex-1">{h.titulo}</span>
-              <span className={`text-[10.5px] tracking-[0.08em] uppercase ${COLOR_HITO[h.estado]}`}>
-                {ESTADO_HITO[h.estado]}
-              </span>
-              <span className="text-ink tabular-nums">{usd(h.monto)}</span>
-            </li>
-          ))}
-        </ol>
-      </div>
+          {proyecto.hitos.map((h) => {
+            const esteHito = h.orden === detalle.hito.orden;
 
-      <div>
-        <p className={rotuloClass}>Historial del hito</p>
+            return (
+              <li
+                key={h.orden}
+                aria-current={esteHito ? "true" : undefined}
+                className={`flex items-baseline gap-3 py-2 ${
+                  esteHito ? "border-ochre bg-ochre/5 -ml-2 border-l-2 pl-1.5" : ""
+                }`}
+              >
+                <span className="text-mist w-4 text-right tabular-nums">{h.orden}.</span>
+                <span className="text-ink-soft flex-1">
+                  {h.titulo}
+                  {esteHito && <span className="text-faint"> · el disputado</span>}
+                </span>
+                <span
+                  className={`text-[10.5px] tracking-[0.08em] uppercase ${COLOR_HITO[h.estado]}`}
+                >
+                  {ESTADO_HITO[h.estado]}
+                </span>
+                <span className="text-ink tabular-nums">{usd(h.monto)}</span>
+              </li>
+            );
+          })}
+        </ol>
+      </section>
+
+      <section>
+        <h3 className={rotuloClass}>Historial del hito</h3>
         <ol className="flex flex-col gap-2 text-[13px]">
           {eventos.map((ev, i) => (
             <li key={i} className="flex flex-col gap-0.5 sm:flex-row sm:gap-3">
-              <span className="text-faint w-32 shrink-0 tabular-nums">{fecha(ev.creado_en)}</span>
+              <span className="text-faint w-32 shrink-0 tabular-nums">
+                {formatearFecha(ev.creado_en)}
+              </span>
               <span className="text-ink-soft">
                 {EVENTO_HITO[ev.tipo]}
                 {ev.detalle && <span className="text-muted"> — «{ev.detalle}»</span>}
@@ -269,10 +360,10 @@ function Detalle({hitoId, onResuelta}: {hitoId: string; onResuelta: () => void})
             </li>
           ))}
         </ol>
-      </div>
+      </section>
 
-      <div>
-        <p className={rotuloClass}>Conversación entre las partes</p>
+      <section>
+        <h3 className={rotuloClass}>Conversación entre las partes</h3>
         {mensajes.length === 0 ? (
           <p className="text-muted text-[13px]">
             {proyecto.de_plataforma
@@ -285,16 +376,17 @@ function Detalle({hitoId, onResuelta}: {hitoId: string; onResuelta: () => void})
               <li key={i} className={m.autor === "cliente" ? "pr-8" : "pl-8 text-right"}>
                 <p className="text-faint text-[11px]">
                   {m.autor === "cliente" ? proyecto.cliente_nombre : proyecto.espacio_nombre} ·{" "}
-                  {fecha(m.creado_en)}
+                  {formatearFecha(m.creado_en)}
                 </p>
                 <p className="text-ink-soft leading-relaxed whitespace-pre-wrap">{m.texto}</p>
               </li>
             ))}
           </ol>
         )}
-      </div>
+      </section>
 
       {detalle.hito.estado === "EN_DISPUTA" &&
+        onResuelta &&
         (detalle.puede_resolver ? (
           <FormResolver detalle={detalle} onResuelta={onResuelta} />
         ) : (
@@ -303,12 +395,12 @@ function Detalle({hitoId, onResuelta}: {hitoId: string; onResuelta: () => void})
             devolverle la plata al cliente desde el detalle del lead.
           </p>
         ))}
-    </div>
+    </>
   );
 }
 
-function TarjetaAbierta({disputa, onResuelta}: {disputa: Abierta; onResuelta: () => void}) {
-  const [abierta, setAbierta] = useState(false);
+function TarjetaAbierta({disputa, onResuelta}: {disputa: DisputaAbierta; onResuelta: () => void}) {
+  const [expandida, setExpandida] = useState(false);
 
   return (
     <li className={`${tarjetaClass} flex flex-col gap-5 px-5 py-5`}>
@@ -316,7 +408,7 @@ function TarjetaAbierta({disputa, onResuelta}: {disputa: Abierta; onResuelta: ()
         <h2 className="text-ink font-serif text-[20px] leading-tight">{disputa.titulo}</h2>
         <span className="text-ink font-serif text-[20px] tabular-nums">{usd(disputa.monto)}</span>
       </div>
-      <p className="text-muted -mt-3 text-[12.5px]">
+      <p className="text-muted -mt-3 text-[12.5px] break-all">
         {disputa.espacio_nombre} ↔ {disputa.cliente_nombre} · {SERVICIO_LEGIBLE[disputa.servicio]} ·{" "}
         {disputa.lead_id}
       </p>
@@ -334,11 +426,11 @@ function TarjetaAbierta({disputa, onResuelta}: {disputa: Abierta; onResuelta: ()
         />
       </div>
 
-      {abierta ? (
+      {expandida ? (
         <Detalle hitoId={disputa.id} onResuelta={onResuelta} />
       ) : (
         <div>
-          <button className={primarioClass} type="button" onClick={() => setAbierta(true)}>
+          <button className={primarioClass} type="button" onClick={() => setExpandida(true)}>
             Revisar y resolver
           </button>
         </div>
@@ -347,19 +439,16 @@ function TarjetaAbierta({disputa, onResuelta}: {disputa: Abierta; onResuelta: ()
   );
 }
 
-function TarjetaResuelta({disputa}: {disputa: Resuelta}) {
-  const [abierta, setAbierta] = useState(false);
-  const movido =
-    (disputa.monto_liberado === 0 || disputa.transferido_en) &&
-    (disputa.monto_reembolsado === 0 || disputa.reembolsado_en);
+function TarjetaResuelta({disputa}: {disputa: DisputaResuelta}) {
+  const [expandida, setExpandida] = useState(false);
 
   return (
     <li className={`${tarjetaClass} flex flex-col gap-4 px-5 py-4`}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <h2 className="text-ink font-serif text-[18px] leading-tight">{disputa.titulo}</h2>
-        <span className="text-faint text-[12px]">{fecha(disputa.cerrado_en)}</span>
+        <span className="text-faint text-[12px]">{formatearFecha(disputa.cerrado_en)}</span>
       </div>
-      <p className="text-muted -mt-2 text-[12.5px]">
+      <p className="text-muted -mt-2 text-[12.5px] break-all">
         {disputa.espacio_nombre} ↔ {disputa.cliente_nombre} · {disputa.lead_id}
       </p>
       <p className="text-ink-soft text-[13.5px] leading-relaxed">
@@ -370,17 +459,17 @@ function TarjetaResuelta({disputa}: {disputa: Resuelta}) {
         <span className="text-ochre-deep">{usd(disputa.monto_reembolsado)} al cliente</span>
         {" · "}
         <span className="text-faint">
-          {movido ? "Ya se movió en Stripe" : "Pendiente de mover en Stripe"}
+          {yaSeMovioEnStripe(disputa) ? "Ya se movió en Stripe" : "Pendiente de mover en Stripe"}
         </span>
       </p>
       {disputa.resolucion_nota && (
         <Cita quien="Nota de la resolución" texto={disputa.resolucion_nota} />
       )}
-      {abierta ? (
-        <Detalle hitoId={disputa.id} onResuelta={() => undefined} />
+      {expandida ? (
+        <Detalle hitoId={disputa.id} />
       ) : (
         <div>
-          <button className={ghostButtonClass} type="button" onClick={() => setAbierta(true)}>
+          <button className={ghostButtonClass} type="button" onClick={() => setExpandida(true)}>
             Ver historial y conversación
           </button>
         </div>
@@ -393,22 +482,23 @@ function TarjetaResuelta({disputa}: {disputa: Resuelta}) {
 // con todo lo que hace falta para decidir, y las ya resueltas.
 export default function DisputasTablero() {
   const [supabase] = useState(() => createClient());
-  const [abiertas, setAbiertas] = useState<Abierta[] | null>(null);
-  const [resueltas, setResueltas] = useState<Resuelta[]>([]);
+  const [abiertas, setAbiertas] = useState<DisputaAbierta[] | null>(null);
+  const [resueltas, setResueltas] = useState<DisputaResuelta[]>([]);
   const [pestana, setPestana] = useState<Pestana>("abiertas");
   const [version, setVersion] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(supabase ? null : SIN_SUPABASE);
+  const [aviso, setAviso] = useState("");
 
   useEffect(() => {
     if (!supabase) return;
     let vigente = true;
 
     Promise.all([supabase.rpc("disputas_abiertas"), supabase.rpc("disputas_resueltas")]).then(
-      ([a, r]) => {
+      ([respAbiertas, respResueltas]) => {
         if (!vigente) return;
-        setError(a.error?.message ?? r.error?.message ?? null);
-        setAbiertas(a.data ?? []);
-        setResueltas(r.data ?? []);
+        setError(respAbiertas.error?.message ?? respResueltas.error?.message ?? null);
+        setAbiertas(respAbiertas.data ?? []);
+        setResueltas(respResueltas.data ?? []);
       },
     );
 
@@ -417,22 +507,16 @@ export default function DisputasTablero() {
     };
   }, [supabase, version]);
 
-  if (abiertas === null) return <EsqueletoBolsa />;
+  function alResolver() {
+    setVersion((v) => v + 1);
+    setPestana("resueltas");
+    setAviso("Disputa resuelta. La plata se mueve en Stripe en unos minutos.");
+    window.dispatchEvent(new Event(EVENTO_DISPUTAS_CAMBIARON));
+  }
 
-  const grupos = {abiertas, resueltas};
-  const PESTANAS: {clave: Pestana; etiqueta: string; vacio: string}[] = [
-    {
-      clave: "abiertas",
-      etiqueta: "Abiertas",
-      vacio: "No hay disputas abiertas.",
-    },
-    {
-      clave: "resueltas",
-      etiqueta: "Resueltas",
-      vacio: "Todavía no se resolvió ninguna disputa.",
-    },
-  ];
-  const actual = PESTANAS.find((p) => p.clave === pestana)!;
+  if (abiertas === null && !error) return <EsqueletoDisputas />;
+
+  const grupos = {abiertas: abiertas ?? [], resueltas};
 
   return (
     <div className="flex flex-col gap-6">
@@ -444,41 +528,37 @@ export default function DisputasTablero() {
           {error}
         </div>
       )}
+      <p aria-live="polite" className="text-moss text-[13px] empty:hidden" role="status">
+        {aviso}
+      </p>
 
       <div aria-label="Disputas" className="border-rule flex gap-1 border-b" role="tablist">
-        {PESTANAS.map((p) => {
-          const activa = pestana === p.clave;
+        {(Object.keys(PESTANAS) as Pestana[]).map((clave) => {
+          const activa = pestana === clave;
 
           return (
             <button
-              key={p.clave}
+              key={clave}
               aria-selected={activa}
               className={`-mb-px border-b-2 px-3 py-2.5 text-[11px] tracking-[0.08em] whitespace-nowrap uppercase transition duration-200 ${
                 activa ? "border-ochre text-ochre-deep" : "text-muted border-transparent"
               }`}
               role="tab"
               type="button"
-              onClick={() => setPestana(p.clave)}
+              onClick={() => setPestana(clave)}
             >
-              {p.etiqueta} · {grupos[p.clave].length}
+              {PESTANAS[clave].etiqueta} · {grupos[clave].length}
             </button>
           );
         })}
       </div>
 
-      {grupos[pestana].length === 0 ? (
-        <p className="text-muted text-[14px]">{actual.vacio}</p>
+      {error ? null : grupos[pestana].length === 0 ? (
+        <p className="text-muted text-[14px]">{PESTANAS[pestana].vacio}</p>
       ) : pestana === "abiertas" ? (
         <ul className="flex flex-col gap-5">
-          {abiertas.map((d) => (
-            <TarjetaAbierta
-              key={d.id}
-              disputa={d}
-              onResuelta={() => {
-                setVersion((v) => v + 1);
-                setPestana("resueltas");
-              }}
-            />
+          {grupos.abiertas.map((d) => (
+            <TarjetaAbierta key={d.id} disputa={d} onResuelta={alResolver} />
           ))}
         </ul>
       ) : (

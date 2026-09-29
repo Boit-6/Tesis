@@ -4,7 +4,7 @@ import type {Hito, Proyecto} from "@/types/supabase";
 
 import {useState} from "react";
 
-import {ghostButtonClass} from "@/lib/constants";
+import {campoClass, ghostButtonClass, peligroClass, primarioClass} from "@/lib/constants";
 import {COLOR_HITO, ESTADO_HITO, usd} from "@/lib/hitos";
 import {createClient} from "@/lib/supabase/client";
 
@@ -13,10 +13,6 @@ type Accion = "entregar" | "devolver" | "anular";
 const fecha = (iso: string) =>
   new Date(iso).toLocaleDateString("es-AR", {day: "numeric", month: "long"});
 
-const campoClass =
-  "ease border-rule bg-card text-ink placeholder-mist focus:border-ochre w-full resize-y border px-3 py-2.5 text-[14px] transition duration-200 outline-none";
-const primarioClass =
-  "ease bg-ink text-paper hover:bg-ochre px-4 py-2.5 text-[11px] tracking-[0.14em] uppercase transition duration-200 disabled:cursor-not-allowed disabled:opacity-40";
 const enlaceClass = "text-[11px] tracking-[0.14em] uppercase disabled:opacity-40";
 
 // Qué puede hacer el desarrollador con cada hito según su estado: lo mismo
@@ -165,7 +161,7 @@ function FilaHito({
           <div className="flex flex-col gap-2">
             <textarea
               aria-label={`Qué entregaste en el hito ${hito.orden}`}
-              className={campoClass}
+              className={`${campoClass} resize-y`}
               maxLength={2000}
               placeholder="Qué entregaste y dónde verlo (enlace, repositorio, archivo…)"
               rows={3}
@@ -198,7 +194,7 @@ function FilaHito({
             {abierta === "devolver" && (
               <textarea
                 aria-label="Motivo de la devolución (opcional)"
-                className={campoClass}
+                className={`${campoClass} resize-y`}
                 maxLength={2000}
                 placeholder="Motivo, opcional: le llega al cliente"
                 rows={2}
@@ -208,7 +204,7 @@ function FilaHito({
             )}
             <div className="flex gap-4">
               <button
-                className="ease bg-brick text-paper px-4 py-2.5 text-[11px] tracking-[0.14em] uppercase transition duration-200 hover:opacity-90 disabled:opacity-40"
+                className={peligroClass}
                 disabled={enviando}
                 type="button"
                 onClick={() => ejecutar(abierta)}

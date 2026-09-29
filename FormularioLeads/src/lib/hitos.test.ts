@@ -1,6 +1,14 @@
 import {describe, expect, it} from "vitest";
 
-import {hitosParaEnviar, leerMonto, problemaHitos, repartoDisputa, totalHitos, usd} from "./hitos";
+import {
+  comisionDe,
+  hitosParaEnviar,
+  leerMonto,
+  problemaHitos,
+  repartoDisputa,
+  totalHitos,
+  usd,
+} from "./hitos";
 
 describe("leerMonto", () => {
   it("acepta enteros, punto y coma decimal", () => {
@@ -92,11 +100,42 @@ describe("repartoDisputa", () => {
     });
   });
 
+  it("partir acepta los bordes válidos: un centavo de cada lado", () => {
+    expect(repartoDisputa("partir", "0,01", 500.5)).toEqual({
+      liberar: 0.01,
+      reembolsar: 500.49,
+    });
+    expect(repartoDisputa("partir", "500,49", 500.5)).toEqual({
+      liberar: 500.49,
+      reembolsar: 0.01,
+    });
+  });
+
+  it("partir ignora los espacios alrededor", () => {
+    expect(repartoDisputa("partir", " 250 ", 500.5)).toEqual({
+      liberar: 250,
+      reembolsar: 250.5,
+    });
+  });
+
+  it("partir no acepta negativos ni separador de miles", () => {
+    expect(repartoDisputa("partir", "-5", 500.5)).toBeNull();
+    expect(repartoDisputa("partir", "1.000,50", 2000)).toBeNull();
+  });
+
   it("partir necesita más de 0 y menos que el total, con hasta dos decimales", () => {
     expect(repartoDisputa("partir", "0", 500.5)).toBeNull();
     expect(repartoDisputa("partir", "500,50", 500.5)).toBeNull();
     expect(repartoDisputa("partir", "600", 500.5)).toBeNull();
     expect(repartoDisputa("partir", "10.555", 500.5)).toBeNull();
     expect(repartoDisputa("partir", "", 500.5)).toBeNull();
+  });
+});
+
+describe("comisionDe", () => {
+  it("redondea a centavos, como hito_cerrar()", () => {
+    expect(comisionDe(200, 5)).toBe(10);
+    expect(comisionDe(0.1, 5)).toBe(0.01);
+    expect(comisionDe(500.5, 5)).toBe(25.03);
   });
 });

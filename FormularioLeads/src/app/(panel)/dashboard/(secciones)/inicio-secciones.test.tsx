@@ -1,9 +1,9 @@
 import {render, screen, within} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {describe, expect, it, vi} from "vitest";
+import {beforeEach, describe, expect, it, vi} from "vitest";
 
 const abrirLead = vi.fn();
-let hitos: unknown[] = [];
+let hitosPendientes: unknown[] = [];
 
 vi.mock("../panel-datos", () => ({
   usePanelDatos: () => ({
@@ -13,7 +13,7 @@ vi.mock("../panel-datos", () => ({
     pedidos: [],
     porEnviar: [],
     trabajos: [],
-    hitos,
+    hitosPendientes,
     abrirLead,
     cerrarProyecto: vi.fn(),
   }),
@@ -21,7 +21,7 @@ vi.mock("../panel-datos", () => ({
 
 const {default: InicioSecciones} = await import("./inicio-secciones");
 
-const hito = (extra = {}) => ({
+const crearHito = (extra = {}) => ({
   id: "h1",
   lead_id: "LD-1",
   orden: 2,
@@ -33,55 +33,85 @@ const hito = (extra = {}) => ({
   ...extra,
 });
 
-function lista() {
+function listaAtencion() {
   return within(screen.getByRole("list"));
 }
 
 describe("Requiere tu atención", () => {
-  it("un hito pagado pide la entrega y abre el proyecto", async () => {
-    const user = userEvent.setup();
+  beforeEach(() => {
+    abrirLead.mockClear();
+    hitosPendientes = [];
+  });
 
-    hitos = [hito()];
+  it("un hito pagado dice cuánto está retenido hasta la entrega", () => {
+    hitosPendientes = [crearHito()];
     render(<InicioSecciones cobrosActivos />);
 
-    expect(lista().getByText("Hito pagado")).toBeInTheDocument();
-    expect(lista().getByText(/2\. Desarrollo · US\$ 500,50 retenidos/)).toBeInTheDocument();
-    await user.click(lista().getByRole("button", {name: "Marcar entregado"}));
+    expect(listaAtencion().getByText(/2\. Desarrollo · US\$ 500,50 retenidos/)).toBeInTheDocument();
+  });
+
+  it("«Entregar» abre el proyecto del hito pagado", async () => {
+    const user = userEvent.setup();
+
+    hitosPendientes = [crearHito()];
+    render(<InicioSecciones cobrosActivos />);
+    await user.click(listaAtencion().getByRole("button", {name: "Entregar"}));
+
     expect(abrirLead).toHaveBeenCalledWith("LD-1");
   });
 
   it("un hito disputado va primero, como urgente, con el motivo", () => {
-    hitos = [
-      hito(),
-      hito({
+    hitosPendientes = [
+      crearHito(),
+      crearHito({
         id: "h2",
         estado: "EN_DISPUTA",
         disputa_motivo: "No calcula los envíos",
       }),
     ];
     render(<InicioSecciones cobrosActivos />);
+    const filas = listaAtencion().getAllByRole("listitem");
 
-    const filas = lista().getAllByRole("listitem");
-
-    expect(filas[0]).toHaveTextContent("Hito en disputa");
-    expect(filas[0]).toHaveTextContent("“No calcula los envíos”");
-    expect(filas[1]).toHaveTextContent("Hito pagado");
+    expect(filas[0]).toHaveTextContent(/Hito en disputa.*“No calcula los envíos”/);
   });
 
-  it("al admin le avisa de las disputas abiertas de la plataforma", () => {
-    hitos = [];
-    render(<InicioSecciones cobrosActivos disputasAbiertas={2} />);
+  it("sin motivo, el hito disputado no muestra una cita vacía", () => {
+    hitosPendientes = [crearHito({estado: "EN_DISPUTA"})];
+    render(<InicioSecciones cobrosActivos />);
 
-    expect(lista().getByText("2 hitos en disputa")).toBeInTheDocument();
-    expect(lista().getByRole("link", {name: "Revisar"})).toHaveAttribute(
+    expect(listaAtencion().getByText("2. Desarrollo · US$ 500,50")).toBeInTheDocument();
+  });
+
+  it("«Ver proyecto» abre el proyecto del hito disputado", async () => {
+    const user = userEvent.setup();
+
+    hitosPendientes = [crearHito({estado: "EN_DISPUTA"})];
+    render(<InicioSecciones cobrosActivos />);
+    await user.click(listaAtencion().getByRole("button", {name: "Ver proyecto"}));
+
+    expect(abrirLead).toHaveBeenCalledWith("LD-1");
+  });
+
+  it("al admin le avisa de las disputas que puede resolver, con el enlace", () => {
+    render(<InicioSecciones cobrosActivos cantidadDisputasAbiertas={2} />);
+
+    expect(listaAtencion().getByRole("link", {name: "Revisar"})).toHaveAttribute(
       "href",
       "/dashboard/disputas",
     );
   });
 
+  it.each([
+    [1, "Un cliente disputó un hito"],
+    [2, "2 hitos en disputa"],
+  ])("con %i disputa(s) dice «%s»", (cantidad, texto) => {
+    render(<InicioSecciones cobrosActivos cantidadDisputasAbiertas={cantidad} />);
+
+    expect(listaAtencion().getByText(texto)).toBeInTheDocument();
+  });
+
   it("sin nada pendiente, está al día", () => {
-    hitos = [];
-    render(<InicioSecciones cobrosActivos disputasAbiertas={0} />);
+    render(<InicioSecciones cobrosActivos cantidadDisputasAbiertas={0} />);
 
     expect(screen.getByText("Estás al día.")).toBeInTheDocument();
   });

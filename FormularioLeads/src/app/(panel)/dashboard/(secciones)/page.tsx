@@ -6,14 +6,22 @@ import InicioSecciones from "./inicio-secciones";
 import {esAdminPlataforma, getPanelUser} from "@/lib/auth";
 import {createClient} from "@/lib/supabase/server";
 
-// Las disputas abiertas, sólo para el admin de la plataforma: null para el
-// resto (la base igual rechaza la consulta).
-async function disputasAbiertas(userId: string): Promise<number | null> {
+// Las disputas que el admin de la plataforma puede resolver; null para el
+// resto (la base igual rechaza la consulta) o si no se pudo contar.
+async function contarDisputasAbiertas(userId: string): Promise<number | null> {
   if (!(await esAdminPlataforma(userId))) return null;
   const supabase = await createClient();
-  const {data} = (await supabase?.rpc("disputas_abiertas")) ?? {data: null};
 
-  return data?.length ?? 0;
+  if (!supabase) return null;
+  const {data, error} = await supabase.rpc("disputas_abiertas");
+
+  if (error) {
+    console.error("No se pudieron contar las disputas abiertas:", error.message);
+
+    return null;
+  }
+
+  return data.filter((d) => d.puede_resolver).length;
 }
 
 export default async function InicioPage() {
@@ -23,8 +31,8 @@ export default async function InicioPage() {
     <>
       <EncabezadoPagina titulo="Inicio" />
       <InicioSecciones
+        cantidadDisputasAbiertas={await contarDisputasAbiertas(user.id)}
         cobrosActivos={espacio.stripe_cobros_activos}
-        disputasAbiertas={await disputasAbiertas(user.id)}
       />
       <div className="mt-14">
         <AvisosPanel />

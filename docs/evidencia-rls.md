@@ -3,12 +3,12 @@
 | campo | valor |
 | --- | --- |
 | comando | `node tests/verificar_rls.mjs` |
-| marca temporal (UTC) | 2026-09-29T13:46:24.084Z |
-| commit | 7f5fe1d2c3cad9ea91dd7dfba5a5469cc5900aeb |
-| commit (corto) | 7f5fe1d |
+| marca temporal (UTC) | 2026-09-29T14:25:40.202Z |
+| commit | e7c0b5bdb52a5d30b90f2c6348374b7d3e2daaf5 |
+| commit (corto) | e7c0b5b |
 | arbol de trabajo | CON CAMBIOS SIN CONFIRMAR |
 | codigo de salida | 0 |
-| duracion | 5.7 s |
+| duracion | 5.9 s |
 
 ## salida
 
@@ -300,37 +300,42 @@ Border style is 2.
 | 26 | OK     | la clienta disputa el hito 2                                                               | 1 filas                                                                                          | 1 filas                                                                                          |
 | 26 | OK     | el desarrollador no resuelve disputas                                                      | error: Sólo el admin de la plataforma resuelve disputas                                          | error: Sólo el admin de la plataforma resuelve disputas                                          |
 | 26 | OK     | ni ve la lista de disputas                                                                 | error: Sólo el admin de la plataforma ve las disputas                                            | error: Sólo el admin de la plataforma ve las disputas                                            |
+| 26 | OK     | (existe el mensaje al otro postulante)                                                     | 1 filas                                                                                          | 1 filas                                                                                          |
+| 26 | OK     | anon no abre el detalle de una disputa                                                     | permiso denegado                                                                                 | permiso denegado                                                                                 |
+| 26 | OK     | ni lista las resueltas                                                                     | permiso denegado                                                                                 | permiso denegado                                                                                 |
 | 26 | OK     | el desarrollador no abre el detalle de una disputa                                         | error: Sólo el admin de la plataforma ve las disputas                                            | error: Sólo el admin de la plataforma ve las disputas                                            |
 | 26 | OK     | el admin ve el detalle: historial, conversación y que la puede resolver                    | 1 filas                                                                                          | 1 filas                                                                                          |
 | 26 | OK     | un hito que nunca se disputó no abre la conversación                                       | error: Este hito no tuvo una disputa                                                             | error: Este hito no tuvo una disputa                                                             |
-| 26 | OK     | el admin ve la disputa abierta                                                             | 1 filas                                                                                          | 1 filas                                                                                          |
-| 26 | OK     | y la ve en el proyecto como admin                                                          | 1 filas                                                                                          | 1 filas                                                                                          |
-| 26 | OK     | no puede liberar más que el monto                                                          | error: Lo que se libera tiene que estar entre 0 y el monto del hito                              | error: Lo que se libera tiene que estar entre 0 y el monto del hito                              |
-| 26 | OK     | la resuelve en partes: 200 al desarrollador                                                | 1 filas                                                                                          | 1 filas                                                                                          |
+| 26 | OK     | el admin ve la disputa abierta y la puede resolver                                         | 1 filas                                                                                          | 1 filas                                                                                          |
+| 27 | OK     | y la ve en el proyecto como admin                                                          | 1 filas                                                                                          | 1 filas                                                                                          |
+| 27 | OK     | no puede liberar más que el monto                                                          | error: Lo que se libera tiene que estar entre 0 y el monto del hito                              | error: Lo que se libera tiene que estar entre 0 y el monto del hito                              |
+| 27 | OK     | la resuelve en partes: 200 al desarrollador                                                | 1 filas                                                                                          | 1 filas                                                                                          |
 | 27 | OK     | queda registrado quién la resolvió                                                         | 1 filas                                                                                          | 1 filas                                                                                          |
-| 27 | OK     | ya no está entre las abiertas y el detalle no deja resolverla otra vez                     | 1 filas                                                                                          | 1 filas                                                                                          |
+| 27 | OK     | ya no está entre las abiertas                                                              | 0 filas                                                                                          | 0 filas                                                                                          |
+| 27 | OK     | y el detalle no deja resolverla otra vez                                                   | 1 filas                                                                                          | 1 filas                                                                                          |
 | 27 | OK     | el desarrollador tampoco ve las resueltas                                                  | error: Sólo el admin de la plataforma ve las disputas                                            | error: Sólo el admin de la plataforma ve las disputas                                            |
 | 27 | OK     | n8n ve los dos movimientos: 190 al desarrollador y 300.50 a la clienta                     | 2 filas                                                                                          | 2 filas                                                                                          |
 | 27 | OK     | antes del plazo, el cron no libera nada                                                    | 0 filas                                                                                          | 0 filas                                                                                          |
 | 27 | OK     | vencido el plazo, el cron lo libera solo                                                   | 1 filas                                                                                          | 1 filas                                                                                          |
-| 27 | OK     | con todos los hitos cerrados, el proyecto termina                                          | 1 filas                                                                                          | 1 filas                                                                                          |
-| 27 | OK     | la línea de tiempo registra cada paso                                                      | 7 filas                                                                                          | 7 filas                                                                                          |
-| 27 | OK     | el detalle ya le avisa al admin que es un proyecto suyo                                    | 1 filas                                                                                          | 1 filas                                                                                          |
-| 27 | OK     | el admin no resuelve una disputa de un proyecto suyo                                       | error: No podés resolver una disputa de un proyecto tuyo                                         | error: No podés resolver una disputa de un proyecto tuyo                                         |
+| 28 | OK     | con todos los hitos cerrados, el proyecto termina                                          | 1 filas                                                                                          | 1 filas                                                                                          |
+| 28 | OK     | la línea de tiempo registra cada paso                                                      | 7 filas                                                                                          | 7 filas                                                                                          |
+| 28 | OK     | en la lista del admin figura, pero como no resoluble                                       | 1 filas                                                                                          | 1 filas                                                                                          |
+| 28 | OK     | el detalle ya le avisa al admin que es un proyecto suyo                                    | 1 filas                                                                                          | 1 filas                                                                                          |
+| 28 | OK     | el admin no resuelve una disputa de un proyecto suyo                                       | error: No podés resolver una disputa de un proyecto tuyo                                         | error: No podés resolver una disputa de un proyecto tuyo                                         |
 | 28 | OK     | pero como desarrollador puede devolver la plata                                            | 1 filas                                                                                          | 1 filas                                                                                          |
 | 28 | OK     | la disputa que cerró el desarrollador devolviendo figura entre las resueltas               | 1 filas                                                                                          | 1 filas                                                                                          |
 | 28 | OK     | no se anula un hito ajeno                                                                  | error: No tenés acceso a este hito                                                               | error: No tenés acceso a este hito                                                               |
 | 28 | OK     | el propio, sin pagar, sí                                                                   | 1 filas                                                                                          | 1 filas                                                                                          |
 | 28 | OK     | un pago que llega después de anulado queda para devolver entero                            | 1 filas                                                                                          | 1 filas                                                                                          |
-| 28 | OK     | (n8n ve el reembolso de 50 pendiente)                                                      | 1 filas                                                                                          | 1 filas                                                                                          |
-| 28 | OK     | y el proyecto del admin, con todo devuelto o anulado, queda cerrado                        | 1 filas                                                                                          | 1 filas                                                                                          |
+| 29 | OK     | (n8n ve el reembolso de 50 pendiente)                                                      | 1 filas                                                                                          | 1 filas                                                                                          |
+| 29 | OK     | y el proyecto del admin, con todo devuelto o anulado, queda cerrado                        | 1 filas                                                                                          | 1 filas                                                                                          |
 +----+--------+--------------------------------------------------------------------------------------------+--------------------------------------------------------------------------------------------------+--------------------------------------------------------------------------------------------------+
-(286 rows)
+(291 rows)
 
 +----------+-----------------+
 | casos ok | casos con falla |
 +----------+-----------------+
-|      286 |               0 |
+|      291 |               0 |
 +----------+-----------------+
 (1 row)
 

@@ -143,20 +143,31 @@ createServer(async (req, res) => {
       transferencias, reembolsos});
   }
   if (ruta === '/__sembrar' && req.method === 'POST') {
-    const {cuentas: nuevas = [], pagos = []} = JSON.parse(cuerpo || '{}');
+    let semilla;
 
-    for (const acct of nuevas) {
-      cuentas.set(acct, {id: acct, object: 'account', type: 'express', email: null, business_profile: {}, metadata: {},
-        details_submitted: true, charges_enabled: true, payouts_enabled: true});
+    try {
+      semilla = JSON.parse(cuerpo || '{}');
+    } catch {
+      return errorStripe(res, 400, 'El cuerpo no es JSON');
     }
-    for (const p of pagos) {
-      const cs = id('cs');
+    const {cuentas: cuentasNuevas = [], pagos = []} = semilla;
 
-      sesiones.set(cs, {id: cs, object: 'checkout.session', status: 'complete', payment_status: 'paid',
-        payment_intent: p.payment_intent, amount_total: Number(p.amount_total), currency: 'usd', metadata: {}});
+    if (!Array.isArray(cuentasNuevas) || !Array.isArray(pagos)
+        || pagos.some((pago) => !pago.payment_intent || !Number.isInteger(Number(pago.amount_total)))) {
+      return errorStripe(res, 400, 'Se esperan cuentas: [acct] y pagos: [{payment_intent, amount_total}]');
+    }
+    for (const cuentaId of cuentasNuevas) {
+      cuentas.set(cuentaId, {id: cuentaId, object: 'account', type: 'express', email: null, business_profile: {},
+        metadata: {}, details_submitted: true, charges_enabled: true, payouts_enabled: true});
+    }
+    for (const pago of pagos) {
+      const sesionId = id('cs');
+
+      sesiones.set(sesionId, {id: sesionId, object: 'checkout.session', status: 'complete', payment_status: 'paid',
+        payment_intent: pago.payment_intent, amount_total: Number(pago.amount_total), currency: 'usd', metadata: {}});
     }
 
-    return responder(res, 200, {cuentas: nuevas.length, pagos: pagos.length});
+    return responder(res, 200, {cuentas: cuentasNuevas.length, pagos: pagos.length});
   }
   if (ruta === '/__reset' && req.method === 'POST') {
     cuentas = new Map(); links = new Map(); sesiones = new Map(); eventos = [];

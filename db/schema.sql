@@ -2129,7 +2129,7 @@ CREATE TABLE IF NOT EXISTS hitos (
 CREATE INDEX IF NOT EXISTS idx_hitos_lead ON hitos (lead_id, orden);
 CREATE INDEX IF NOT EXISTS idx_hitos_espacio ON hitos (espacio_id);
 CREATE INDEX IF NOT EXISTS idx_hitos_a_liberar ON hitos (libera_en) WHERE estado = 'ENTREGADO';
--- Paso 5: quién resolvió la disputa (el admin de la plataforma). Aparte de
+-- Etapa 11, paso 5: quién resolvió la disputa (el admin de la plataforma). Aparte de
 -- la tabla porque se sumó con las bases ya creadas.
 ALTER TABLE hitos ADD COLUMN IF NOT EXISTS resuelto_por UUID REFERENCES profiles(id) ON DELETE SET NULL;
 
@@ -2437,6 +2437,17 @@ BEGIN
 END;
 $$;
 
+-- Corta con p_mensaje si quien llama no es el admin de la plataforma.
+-- Interna: la usan las funciones de disputas.
+CREATE OR REPLACE FUNCTION public.exigir_admin(p_mensaje text) RETURNS void
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM profiles p WHERE p.id = auth.uid() AND p.role = 'admin') THEN
+    RAISE EXCEPTION '%', p_mensaje;
+  END IF;
+END;
+$$;
+
 -- El admin de la plataforma resuelve una disputa: cuánto se libera al
 -- desarrollador (0 = se reembolsa todo, el monto entero = se libera todo). No
 -- puede resolver una disputa de un proyecto propio.
@@ -2446,9 +2457,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   h hitos%ROWTYPE;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'admin') THEN
-    RAISE EXCEPTION 'Sólo el admin de la plataforma resuelve disputas';
-  END IF;
+  PERFORM exigir_admin('Sólo el admin de la plataforma resuelve disputas');
   SELECT * INTO h FROM hitos WHERE id = p_hito FOR UPDATE;
   IF NOT FOUND OR h.estado <> 'EN_DISPUTA' THEN RAISE EXCEPTION 'Este hito no está en disputa'; END IF;
   IF proyecto_rol(h.lead_id, NULL) = 'desarrollador' THEN
@@ -2581,20 +2590,21 @@ BEGIN
 END;
 $$;
 
--- Las disputas abiertas, para el admin de la plataforma.
-CREATE OR REPLACE FUNCTION public.disputas_abiertas()
+-- Las disputas abiertas, para el admin de la plataforma. `puede_resolver`:
+-- no es de un proyecto suyo (esas las ve, pero no las resuelve).
+DROP FUNCTION IF EXISTS public.disputas_abiertas();
+CREATE FUNCTION public.disputas_abiertas()
 RETURNS TABLE (
   id uuid, lead_id text, titulo text, monto numeric, disputa_motivo text, disputa_abierta_en timestamptz,
-  entrega_nota text, espacio_nombre text, cliente_nombre text, servicio servicio_tipo
+  entrega_nota text, espacio_nombre text, cliente_nombre text, servicio servicio_tipo, puede_resolver boolean
 )
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND role = 'admin') THEN
-    RAISE EXCEPTION 'Sólo el admin de la plataforma ve las disputas';
-  END IF;
+  PERFORM exigir_admin('Sólo el admin de la plataforma ve las disputas');
   RETURN QUERY
     SELECT h.id, h.lead_id, h.titulo, h.monto, h.disputa_motivo, h.disputa_abierta_en,
-           h.entrega_nota, e.nombre, split_part(btrim(l.nombre), ' ', 1), l.servicio
+           h.entrega_nota, e.nombre, split_part(btrim(l.nombre), ' ', 1), l.servicio,
+           e.dueno_id IS DISTINCT FROM auth.uid()
     FROM hitos h JOIN leads l ON l.lead_id = h.lead_id JOIN espacios e ON e.id = h.espacio_id
     WHERE h.estado = 'EN_DISPUTA'
     ORDER BY h.disputa_abierta_en;
@@ -2612,9 +2622,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND role = 'admin') THEN
-    RAISE EXCEPTION 'Sólo el admin de la plataforma ve las disputas';
-  END IF;
+  PERFORM exigir_admin('Sólo el admin de la plataforma ve las disputas');
   RETURN QUERY
     SELECT h.id, h.lead_id, h.titulo, h.monto, h.disputa_motivo,
            h.monto_liberado, h.monto_reembolsado, h.resolucion_nota, h.cerrado_en,
@@ -2642,15 +2650,15 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = public AS $$
 DECLARE
   h hitos%ROWTYPE;
   l leads%ROWTYPE;
+  e espacios%ROWTYPE;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM profiles WHERE profiles.id = auth.uid() AND role = 'admin') THEN
-    RAISE EXCEPTION 'Sólo el admin de la plataforma ve las disputas';
-  END IF;
+  PERFORM exigir_admin('Sólo el admin de la plataforma ve las disputas');
   SELECT * INTO h FROM hitos WHERE hitos.id = p_hito;
   IF NOT FOUND OR NOT EXISTS (SELECT 1 FROM hitos_eventos ev WHERE ev.hito_id = h.id AND ev.tipo = 'disputado') THEN
     RAISE EXCEPTION 'Este hito no tuvo una disputa';
   END IF;
   SELECT * INTO l FROM leads WHERE leads.lead_id = h.lead_id;
+  SELECT * INTO e FROM espacios WHERE espacios.id = h.espacio_id;
 
   RETURN json_build_object(
     'hito', json_build_object(
@@ -2664,12 +2672,12 @@ BEGIN
       'resuelto_por', (SELECT p.email FROM profiles p WHERE p.id = h.resuelto_por)),
     'proyecto', json_build_object(
       'lead_id', l.lead_id, 'servicio', l.servicio, 'cliente_nombre', split_part(btrim(l.nombre), ' ', 1),
-      'espacio_nombre', (SELECT e.nombre FROM espacios e WHERE e.id = h.espacio_id),
-      'espacio_slug', (SELECT e.slug FROM espacios e WHERE e.id = h.espacio_id),
+      'espacio_nombre', e.nombre,
+      'espacio_slug', e.slug,
       'de_plataforma', lead_de_plataforma(l.lead_id),
-      'hitos', (SELECT json_agg(json_build_object('orden', o.orden, 'titulo', o.titulo, 'monto', o.monto,
-                                                  'estado', o.estado) ORDER BY o.orden)
-                FROM hitos o WHERE o.lead_id = h.lead_id)),
+      'hitos', (SELECT json_agg(json_build_object('orden', otro.orden, 'titulo', otro.titulo, 'monto', otro.monto,
+                                                  'estado', otro.estado) ORDER BY otro.orden)
+                FROM hitos otro WHERE otro.lead_id = h.lead_id)),
     'eventos', COALESCE((
       SELECT json_agg(json_build_object('tipo', ev.tipo, 'actor', ev.actor, 'detalle', ev.detalle,
                                         'creado_en', ev.creado_en) ORDER BY ev.creado_en, ev.id)
@@ -2682,16 +2690,17 @@ BEGIN
       JOIN bolsa_pedidos b ON b.id = po.pedido_id
       WHERE b.lead_id = h.lead_id AND po.espacio_id = h.espacio_id), '[]'::json),
     -- Una disputa de un proyecto propio no la resuelve el admin.
-    'puede_resolver', h.estado = 'EN_DISPUTA' AND proyecto_rol(h.lead_id, NULL) IS DISTINCT FROM 'desarrollador'
+    'puede_resolver', h.estado = 'EN_DISPUTA' AND e.dueno_id IS DISTINCT FROM auth.uid()
   );
 END;
 $$;
 
--- Permisos. Las internas (proyecto_rol, hito_cerrar) no se exponen.
+-- Permisos. Las internas (proyecto_rol, hito_cerrar, exigir_admin) no se exponen.
 REVOKE ALL ON FUNCTION public.lead_de_plataforma(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.proyecto_rol(text, uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.definir_cobro(text, jsonb) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.hito_cerrar(uuid, numeric, text, text, text) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.exigir_admin(text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.hito_para_cobrar(uuid, uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.hito_fondeado(uuid, text, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.entregar_hito(uuid, text) FROM PUBLIC;

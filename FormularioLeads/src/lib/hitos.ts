@@ -29,15 +29,22 @@ export function usd(valor: number): string {
   return (Math.round(valor * 100) % 100 ? formatoCentavos : formatoEntero).format(valor);
 }
 
-// El monto tal como lo escribió el desarrollador. Admite la coma decimal
-// («1500,50»). null = no es un monto válido.
+// Un importe escrito a mano, en centavos. Admite la coma decimal («1500,50»)
+// y hasta dos decimales; sin separador de miles. null = no es un importe.
+function leerCentavos(texto: string): number | null {
+  const normalizado = texto.trim().replace(",", ".");
+
+  if (!/^\d{1,9}(\.\d{1,2})?$/.test(normalizado)) return null;
+
+  return Math.round(Number(normalizado) * 100);
+}
+
+// El monto de un hito tal como lo escribió el desarrollador: al menos US$ 1.
+// null = no es un monto válido.
 export function leerMonto(texto: string): number | null {
-  const limpio = texto.trim().replace(",", ".");
+  const centavos = leerCentavos(texto);
 
-  if (!/^\d{1,9}(\.\d{1,2})?$/.test(limpio)) return null;
-  const valor = Number(limpio);
-
-  return valor >= 1 ? valor : null;
+  return centavos !== null && centavos >= 100 ? centavos / 100 : null;
 }
 
 export function totalHitos(hitos: HitoBorrador[]): number {
@@ -123,16 +130,35 @@ export function repartoDisputa(
   if (opcion === "liberar") return {liberar: total, reembolsar: 0};
   if (opcion === "reembolsar") return {liberar: 0, reembolsar: total};
 
-  const limpio = parteTexto.trim().replace(",", ".");
+  const centavosDesarrollador = leerCentavos(parteTexto);
+  const centavosTotal = Math.round(total * 100);
 
-  if (!/^\d{1,9}(\.\d{1,2})?$/.test(limpio)) return null;
-  const centavos = Math.round(Number(limpio) * 100);
-  const totalCentavos = Math.round(total * 100);
-
-  if (centavos <= 0 || centavos >= totalCentavos) return null;
+  if (
+    centavosDesarrollador === null ||
+    centavosDesarrollador <= 0 ||
+    centavosDesarrollador >= centavosTotal
+  ) {
+    return null;
+  }
 
   return {
-    liberar: centavos / 100,
-    reembolsar: (totalCentavos - centavos) / 100,
+    liberar: centavosDesarrollador / 100,
+    reembolsar: (centavosTotal - centavosDesarrollador) / 100,
   };
 }
+
+// Lo que se queda la plataforma sobre lo liberado, redondeado a centavos:
+// el mismo cálculo que hace hito_cerrar() en la base.
+export function comisionDe(liberado: number, porcentaje: number): number {
+  return Math.round(liberado * porcentaje) / 100;
+}
+
+// Largo de la nota con la que el admin resuelve una disputa: la misma regla
+// que valida resolver_disputa() en la base.
+export const NOTA_RESOLUCION_MIN = 5;
+
+export const NOTA_RESOLUCION_MAX = 2000;
+
+// Evento del navegador que avisa que se resolvió una disputa: el contador del
+// menú lo escucha para recontar sin cambiar de página.
+export const EVENTO_DISPUTAS_CAMBIARON = "disputas-cambiaron";

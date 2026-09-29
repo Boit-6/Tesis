@@ -2,6 +2,7 @@ import type {ServicioTipo} from "@/types/supabase";
 import type {User} from "@supabase/supabase-js";
 
 import {redirect} from "next/navigation";
+import {cache} from "react";
 import {NextResponse} from "next/server";
 
 import {createClient} from "@/lib/supabase/server";
@@ -82,16 +83,23 @@ export async function getPanelUser(): Promise<{
 // ¿La cuenta con sesión es el admin de la plataforma? Sólo le suma la
 // sección de disputas (etapa 11): no le da acceso a los datos de nadie. Cada
 // uno lee sólo su fila de profiles; la base vuelve a exigir el rol en cada
-// función de disputas.
-export async function esAdminPlataforma(userId: string): Promise<boolean> {
+// función de disputas. cache(): el layout y la página lo piden en el mismo
+// request, y así se consulta una sola vez. Si la consulta falla, no es admin.
+export const esAdminPlataforma = cache(async (userId: string): Promise<boolean> => {
   const supabase = await createClient();
 
   if (!supabase) return false;
 
-  const {data} = await supabase.from("profiles").select("role").eq("id", userId).maybeSingle();
+  const {data, error} = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) console.error("No se pudo leer el rol de la cuenta:", error.message);
 
   return data?.role === "admin";
-}
+});
 
 export type TipoCuenta = "desarrollador" | "cliente";
 

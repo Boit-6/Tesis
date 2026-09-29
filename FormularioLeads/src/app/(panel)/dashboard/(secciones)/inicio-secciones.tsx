@@ -26,14 +26,14 @@ const DIAS_AVISO_VENCIMIENTO = 3;
 const botonAccionClass =
   "ease border-ink text-ink hover:border-ochre hover:text-ochre shrink-0 border px-3.5 py-2 text-[11px] tracking-[0.12em] uppercase transition duration-200";
 
-// `disputasAbiertas`: sólo para el admin de la plataforma (etapa 11); null
-// para el resto.
+// `cantidadDisputasAbiertas`: las que el admin de la plataforma puede
+// resolver; null para el resto.
 export default function InicioSecciones({
   cobrosActivos,
-  disputasAbiertas = null,
+  cantidadDisputasAbiertas = null,
 }: {
   cobrosActivos: boolean;
-  disputasAbiertas?: number | null;
+  cantidadDisputasAbiertas?: number | null;
 }) {
   const d = usePanelDatos();
 
@@ -50,22 +50,22 @@ export default function InicioSecciones({
         urgente: true,
         accion: {etiqueta: "Ver facturas", href: "/dashboard/facturas"},
       })),
-    ...(disputasAbiertas
+    ...(cantidadDisputasAbiertas
       ? [
           {
             clave: "disputas",
             tipo: "Disputas por resolver",
             titulo:
-              disputasAbiertas === 1
+              cantidadDisputasAbiertas === 1
                 ? "Un cliente disputó un hito"
-                : `${disputasAbiertas} hitos en disputa`,
+                : `${cantidadDisputasAbiertas} hitos en disputa`,
             detalle: "La plata queda retenida hasta que decidas cuánto va a cada parte.",
             urgente: true,
             accion: {etiqueta: "Revisar", href: "/dashboard/disputas"},
           },
         ]
       : []),
-    ...d.hitos
+    ...d.hitosPendientes
       .filter((h) => h.estado === "EN_DISPUTA")
       .map((h) => ({
         clave: `disputa-${h.id}`,
@@ -97,7 +97,7 @@ export default function InicioSecciones({
         onClick: () => d.abrirLead(l.lead_id),
       },
     })),
-    ...d.hitos
+    ...d.hitosPendientes
       .filter((h) => h.estado === "FONDEADO")
       .map((h) => ({
         clave: `hito-${h.id}`,
@@ -105,7 +105,7 @@ export default function InicioSecciones({
         titulo: h.cliente,
         detalle: `${h.orden}. ${h.titulo} · ${usd(h.monto)} retenidos hasta que entregues`,
         accion: {
-          etiqueta: "Marcar entregado",
+          etiqueta: "Entregar",
           onClick: () => d.abrirLead(h.lead_id),
         },
       })),
