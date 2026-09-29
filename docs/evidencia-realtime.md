@@ -1,5 +1,10 @@
 # evidencia realtime
 
+> **Evidencia histórica (03-sep-2026):** la salida siguiente corresponde al
+> medidor anterior y al lead que ya existía entonces. No es una medición del
+> medidor actual con sesión autenticada y fixture propio, ni acredita el estado
+> de Realtime de un despliegue actual. No se ejecutó una nueva medición aquí.
+
 | campo | valor |
 | --- | --- |
 | comando | `node scripts/medir-realtime.mjs --n 20` |
