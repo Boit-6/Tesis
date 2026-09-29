@@ -938,7 +938,7 @@ SELECT probar('n8n lee los servicios y las alertas de cada espacio',
 -- propio de Pepe y LD-TEST-0001, del admin (1111), que también es desarrollador.
 INSERT INTO leads (lead_id, espacio_id, nombre, email, presupuesto, urgencia, servicio, estado, score, tier)
 VALUES ('LD-HITOS-0001', (SELECT id FROM espacios WHERE slug = 'estudio-pepe'),
-        'Marta Gómez', 'marta@test.com', 1000, 'media', 'ecommerce', 'PROPUESTA_ENVIADA', 60, 'WARM')
+        'Marta Gómez', 'marta@test.com', 1000, 'media', 'ecommerce', 'NUEVO', 60, 'WARM')
 ON CONFLICT (lead_id) DO NOTHING;
 UPDATE bolsa_pedidos SET lead_id = 'LD-HITOS-0001' WHERE titulo = 'Tienda online para mi marca';
 
@@ -1004,7 +1004,7 @@ UPDATE leads SET estado = 'ACEPTADO', fecha_aceptacion = now() WHERE lead_id = '
 SELECT probar('aceptada, ya no se puede cambiar la forma de cobro',
   'authenticated', '22222222-2222-4222-8222-222222222222',
   $q$SELECT count(*) FROM (SELECT definir_cobro('LD-HITOS-0001', '[{"titulo":"Todo junto","monto":1000}]')) x$q$,
-  'error: La forma de cobro se define antes de que el cliente acepte');
+  'error: La forma de cobro sólo se cambia antes de enviar la propuesta');
 SELECT probar('no se paga el hito 2 antes que el 1',
   'n8n_writer', NULL,
   format('SELECT count(*) FROM hito_para_cobrar(%L, %L)', (SELECT h2 FROM ph), (SELECT token FROM ph)), '0 filas');
@@ -1060,7 +1060,7 @@ SELECT probar('queda liberado: 300 al desarrollador y 15 de comisión',
   '1 filas');
 SELECT probar('n8n ve la transferencia pendiente: 285',
   'n8n_writer', NULL,
-  format('SELECT count(*) FROM hitos_por_mover() WHERE id = %L AND movimiento = ''transferir'' AND importe = 285', (SELECT h1 FROM ph)),
+  format('SELECT count(*) FROM hitos_por_mover(true) WHERE id = %L AND movimiento = ''transferir'' AND importe = 285', (SELECT h1 FROM ph)),
   '1 filas');
 SELECT probar('la registra una sola vez',
   'n8n_writer', NULL,
@@ -1155,7 +1155,7 @@ SELECT probar('el desarrollador tampoco ve las resueltas',
   'SELECT count(*) FROM disputas_resueltas()', 'error: Sólo el admin de la plataforma ve las disputas');
 SELECT probar('n8n ve los dos movimientos: 190 al desarrollador y 300.50 a la clienta',
   'n8n_writer', NULL,
-  format('SELECT count(*) FROM hitos_por_mover() WHERE id = %L AND ((movimiento = ''transferir'' AND importe = 190) OR (movimiento = ''reembolsar'' AND importe = 300.50))', (SELECT h2 FROM ph)),
+  format('SELECT count(*) FROM hitos_por_mover(true) WHERE id = %L AND ((movimiento = ''transferir'' AND importe = 190) OR (movimiento = ''reembolsar'' AND importe = 300.50))', (SELECT h2 FROM ph)),
   '2 filas');
 
 -- Hito 3: se paga y se entrega; la clienta no contesta.
@@ -1223,7 +1223,7 @@ SELECT probar('un pago que llega después de anulado queda para devolver entero'
   '1 filas');
 SELECT probar('(n8n ve el reembolso de 50 pendiente)',
   'n8n_writer', NULL,
-  $q$SELECT count(*) FROM hitos_por_mover() m JOIN hitos h ON h.id = m.id WHERE h.lead_id = 'LD-HITOS-0002' AND h.orden = 2 AND m.movimiento = 'reembolsar' AND m.importe = 50$q$,
+  $q$SELECT count(*) FROM hitos_por_mover(true) m JOIN hitos h ON h.id = m.id WHERE h.lead_id = 'LD-HITOS-0002' AND h.orden = 2 AND m.movimiento = 'reembolsar' AND m.importe = 50$q$,
   '1 filas');
 SELECT probar('y el proyecto del admin, con todo devuelto o anulado, queda cerrado',
   'service_role', NULL,

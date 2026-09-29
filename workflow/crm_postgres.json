@@ -2,7 +2,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "## 🔵 Captación y calificación (RAMA 1)\nCapta el lead del formulario → normaliza → **score/tier** → lo guarda.\nSi es HOT/WARM: propuesta por email + Telegram. Si es COLD: solo aviso.\n\n**Idempotencia (S6):** el INSERT es condicional — no inserta si ya entró un lead con el **mismo correo** al **mismo espacio** dentro de `DEDUP_VENTANA_MINUTOS` (10 por defecto).\n\n**Espacio:** el formulario de `/f/<slug>` manda su dirección y el INSERT la resuelve a `espacio_id`; una dirección que no existe no crea nada. Sin dirección (formulario de la raíz), el lead va al espacio del admin. Sin fila, `IF - Lead Nuevo?` corta en `No-op - Lead Duplicado`: ni segundo score ni segunda propuesta. El webhook ya respondió 200 al enviar, así que el que hizo doble clic ve éxito igual.\nEl `WHERE NOT EXISTS` **solo no alcanza**: dos peticiones solapadas abren transacciones distintas y, bajo READ COMMITTED, ninguna ve la fila que la otra no commiteó todavía (comprobado: dos POST simultáneos insertaban dos leads). Por eso va delante `pg_try_advisory_xact_lock` sobre el correo, que solo una de las dos transacciones consigue.",
+        "content": "## 🔵 Captación y calificación (RAMA 1)\nCapta el lead del formulario → normaliza → **score/tier** → lo guarda.\nSi es HOT/WARM: propuesta por email + Telegram. Si es COLD: solo aviso.\n\n**Idempotencia (S6):** el INSERT es condicional — no inserta si ya entró un lead con el **mismo correo** al **mismo espacio** dentro de `DEDUP_VENTANA_MINUTOS` (10 por defecto).\n\n**Espacio:** el formulario de `/f/<slug>` manda su dirección y el INSERT la resuelve a `espacio_id`; una dirección que no existe no crea nada. Sin dirección (formulario de la raíz), el lead va al espacio del admin. Sin fila, `IF - Lead Nuevo?` corta en `No-op - Lead Duplicado`: ni segundo score ni segunda propuesta. El webhook ya respondió 200 al enviar, así que el que hizo doble clic ve éxito igual.\nEl `WHERE NOT EXISTS` **solo no alcanza**: dos peticiones solapadas abren transacciones distintas y, bajo READ COMMITTED, ninguna ve la fila que la otra no commiteó todavía (comprobado: dos POST simultáneos insertaban dos leads). Por eso va delante `pg_try_advisory_xact_lock` sobre el correo, que solo una de las dos transacciones consigue.\n\n**CORS de webhooks del navegador:** `options.allowedOrigins` debe ser una lista LITERAL: n8n 2.34.6 no evalúa expresiones aquí. Este workflow fuente conserva localhost y el origen Vercel histórico; para otro despliegue, generar una copia con `CORS_ORIGINS` validado e importarla antes de activar el flujo. Cambiar el entorno sin reimportar no cambia CORS. CORS no sustituye autenticación.",
         "height": 650,
         "width": 3930,
         "color": 4
@@ -738,9 +738,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "=UPDATE leads SET estado = 'PROPUESTA_ENVIADA', fecha_propuesta = now(), token_expira_en = now() + make_interval(days => {{ $env.TOKEN_VIGENCIA_DIAS || 14 }}) WHERE lead_id = $1;",
+        "query": "=WITH aplicado AS (UPDATE leads SET estado = 'PROPUESTA_ENVIADA', fecha_propuesta = now(), token_expira_en = now() + make_interval(days => {{ $env.TOKEN_VIGENCIA_DIAS || 14 }}) WHERE lead_id = $1 AND estado = 'NUEVO' AND propuesta_envio_intento_id = $2::uuid AND accept_token = $3::uuid AND espacio_id = $4::uuid RETURNING lead_id) SELECT (a.lead_id IS NOT NULL) AS aplico, a.lead_id FROM (SELECT 1) entrada LEFT JOIN aplicado a ON true;",
         "options": {
-          "queryReplacement": "={{ [$('Code - Generar Propuesta').item.json.lead_id] }}"
+          "queryReplacement": "={{ [$('Postgres - Guardar Terminos').item.json.lead_id, $('Postgres - Guardar Terminos').item.json.propuesta_envio_intento_id, $('Postgres - Guardar Terminos').item.json.accept_token, $('Postgres - Guardar Terminos').item.json.espacio_id] }}"
         }
       },
       "id": "1f72265d-313f-43bd-a47f-08388a6ae7dd",
@@ -2173,7 +2173,8 @@
         "options": {
           "allowedOrigins": "http://localhost:3000,https://formulario-leads-psi.vercel.app"
         },
-        "authentication": "headerAuth"
+        "authentication": "headerAuth",
+        "responseMode": "responseNode"
       },
       "id": "2fd38e87-2c5b-49ec-bfa2-796cff874ae7",
       "name": "🔴 Webhook - Cierre Proyecto",
@@ -2207,7 +2208,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE leads SET estado = 'CERRADO', fecha_cierre = now(), dias_ciclo_completo = (now()::date - fecha_ingreso::date) WHERE lead_id = $1 RETURNING *, (SELECT e.nombre FROM espacios e WHERE e.id = leads.espacio_id) AS espacio_nombre, (SELECT e.email_contacto FROM espacios e WHERE e.id = leads.espacio_id) AS espacio_email;",
+        "query": "WITH cerrado AS (UPDATE leads SET estado = 'CERRADO', fecha_cierre = now(), dias_ciclo_completo = (now()::date - fecha_ingreso::date) WHERE lead_id = $1 AND estado = 'FACTURADO' AND estado_trabajo = 'ENTREGADO' AND (cobro_modo = 'hitos' OR EXISTS (SELECT 1 FROM facturas f WHERE f.lead_id = leads.lead_id AND f.estado_pago IN ('COBRADO'))) AND NOT EXISTS (SELECT 1 FROM hitos h WHERE h.lead_id = leads.lead_id AND h.estado NOT IN ('LIBERADO','REEMBOLSADO','ANULADO')) RETURNING *, (SELECT e.nombre FROM espacios e WHERE e.id = leads.espacio_id) AS espacio_nombre, (SELECT e.email_contacto FROM espacios e WHERE e.id = leads.espacio_id) AS espacio_email) SELECT (c.lead_id IS NOT NULL) AS aplico, c.* FROM (SELECT 1) entrada LEFT JOIN cerrado c ON true;",
         "options": {
           "queryReplacement": "={{ [$json.lead_id] }}"
         }
@@ -2225,7 +2226,8 @@
           "id": "vgFRrzGWcRMcT0YX",
           "name": "Postgres account"
         }
-      }
+      },
+      "alwaysOutputData": true
     },
     {
       "parameters": {
@@ -4249,7 +4251,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const b = $input.first().json.body || {};\nif (!b.lead_id) throw new Error('Falta lead_id');\nconst precio = Number(b.precio);\nif (!Number.isFinite(precio) || precio <= 0) throw new Error('El precio de la propuesta tiene que ser mayor que cero');\n// Plazo y alcance son texto libre del profesional: se recortan, no se inventan.\nconst plazo = String(b.plazo || '').trim().substring(0, 120);\nconst alcance = String(b.alcance || '').trim().substring(0, 2000);\nreturn [{ json: { lead_id: b.lead_id, precio: precio, plazo: plazo, alcance: alcance } }];"
+        "jsCode": "const b = $input.first().json.body || {};\nif (!b.lead_id) throw new Error('Falta lead_id');\nconst precio = Number(b.precio);\nif (!Number.isFinite(precio) || precio < 0.01 || precio > 9999999999.99 || Math.abs(precio * 100 - Math.round(precio * 100)) > 1e-7) throw new Error('El precio debe tener hasta dos decimales y ser de al menos US$ 0,01');\n// Plazo y alcance son texto libre del profesional: se recortan, no se inventan.\nconst plazo = String(b.plazo || '').trim().substring(0, 120);\nconst alcance = String(b.alcance || '').trim().substring(0, 2000);\nreturn [{ json: { lead_id: b.lead_id, precio: precio, plazo: plazo, alcance: alcance } }];"
       },
       "id": "b1a90003-0000-4b03-8b03-000000000003",
       "name": "Code - Leer Terminos Propuesta",
@@ -4263,7 +4265,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE leads SET precio_propuesto = CASE WHEN cobro_modo = 'hitos' THEN (SELECT sum(h.monto) FROM hitos h WHERE h.lead_id = leads.lead_id AND h.estado <> 'ANULADO') ELSE $4::numeric END, plazo_propuesto = $2, alcance_propuesto = $3 WHERE lead_id = $1 AND estado = 'NUEVO' AND tier IN ('HOT','WARM') AND (cobro_modo = 'factura' OR EXISTS (SELECT 1 FROM hitos h WHERE h.lead_id = leads.lead_id AND h.estado <> 'ANULADO')) AND (cobro_modo = 'hitos' OR NOT lead_de_plataforma(lead_id)) RETURNING *, (SELECT e.nombre FROM espacios e WHERE e.id = leads.espacio_id) AS espacio_nombre, (SELECT e.email_contacto FROM espacios e WHERE e.id = leads.espacio_id) AS espacio_email, (SELECT json_agg(json_build_object('orden', h.orden, 'titulo', h.titulo, 'descripcion', h.descripcion, 'monto', h.monto) ORDER BY h.orden) FROM hitos h WHERE h.lead_id = leads.lead_id AND h.estado <> 'ANULADO') AS hitos;",
+        "query": "WITH aplicado AS (UPDATE leads SET propuesta_envio_iniciado_en = now(), propuesta_envio_intento_id = gen_random_uuid(), precio_propuesto = CASE WHEN cobro_modo = 'hitos' THEN (SELECT sum(h.monto) FROM hitos h WHERE h.lead_id = leads.lead_id AND h.estado <> 'ANULADO') ELSE $4::numeric END, plazo_propuesto = $2, alcance_propuesto = $3 WHERE lead_id = $1 AND estado = 'NUEVO' AND propuesta_envio_iniciado_en IS NULL AND propuesta_envio_intento_id IS NULL AND tier IN ('HOT','WARM') AND (cobro_modo = 'factura' OR EXISTS (SELECT 1 FROM hitos h WHERE h.lead_id = leads.lead_id AND h.estado <> 'ANULADO')) AND (cobro_modo = 'hitos' OR NOT lead_de_plataforma(lead_id)) RETURNING *, (SELECT e.nombre FROM espacios e WHERE e.id = leads.espacio_id) AS espacio_nombre, (SELECT e.email_contacto FROM espacios e WHERE e.id = leads.espacio_id) AS espacio_email, (SELECT json_agg(json_build_object('orden', h.orden, 'titulo', h.titulo, 'descripcion', h.descripcion, 'monto', h.monto) ORDER BY h.orden) FROM hitos h WHERE h.lead_id = leads.lead_id AND h.estado <> 'ANULADO') AS hitos) SELECT (a.lead_id IS NOT NULL) AS aplico, a.* FROM (SELECT 1) entrada LEFT JOIN aplicado a ON true;",
         "options": {
           "queryReplacement": "={{ [$json.lead_id, $json.plazo, $json.alcance, $json.precio] }}"
         }
@@ -4295,11 +4297,11 @@
           "conditions": [
             {
               "id": "terminos-aplicaron",
-              "leftValue": "={{ $json.lead_id }}",
+              "leftValue": "={{ $json.aplico }}",
               "rightValue": "",
               "operator": {
-                "type": "string",
-                "operation": "notEmpty",
+                "type": "boolean",
+                "operation": "true",
                 "singleValue": true
               }
             }
@@ -4339,7 +4341,7 @@
         "respondWith": "json",
         "responseBody": "{ \"status\": \"invalido\", \"mensaje\": \"El lead ya no está esperando propuesta.\" }",
         "options": {
-          "responseCode": 200
+          "responseCode": 409
         }
       },
       "id": "b1a90007-0000-4b07-8b07-000000000007",
@@ -4992,7 +4994,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE facturas SET estado_pago = 'ANULADA' WHERE factura_id = $1 AND estado_pago IN ('PENDIENTE','VENCIDA') RETURNING *;",
+        "query": "UPDATE facturas SET estado_pago = 'ANULADA' WHERE factura_id = $1 AND estado_pago IN ('PENDIENTE','VENCIDA') AND NOT (stripe_checkout_reservado_en > now() - interval '45 minutes' AND stripe_checkout_id IS NULL) RETURNING *;",
         "options": {
           "queryReplacement": "={{ [$json.factura_id] }}"
         }
@@ -5204,7 +5206,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH previo AS (\n  SELECT count(*)::int AS cnt\n  FROM rate_limit_log\n  WHERE ip_o_clave = $1\n    AND ruta = $2\n    AND creado_en > now() - interval '1 minute'\n), intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT (SELECT cnt FROM previo) + 1 AS intentos;",
+        "query": "WITH cuota AS (\n  INSERT INTO rate_limit_cuotas (ip_o_clave, ruta, ventana_inicio, intentos)\n  VALUES ($1, $2, date_bin(interval '1 minute', now(), timestamptz '2000-01-01 00:00:00+00'), 1)\n  ON CONFLICT (ip_o_clave, ruta, ventana_inicio)\n  DO UPDATE SET intentos = rate_limit_cuotas.intentos + 1\n  RETURNING intentos\n), auditado AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  SELECT $1, $2, now() FROM cuota RETURNING id\n)\nSELECT intentos FROM cuota;",
         "options": {
           "queryReplacement": "={{ [$json.claveLimite, $json.ruta] }}"
         }
@@ -5309,7 +5311,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH previo AS (\n  SELECT count(*)::int AS cnt\n  FROM rate_limit_log\n  WHERE ip_o_clave = $1\n    AND ruta = $2\n    AND creado_en > now() - interval '5 minutes'\n), intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT (SELECT cnt FROM previo) + 1 AS intentos;",
+        "query": "WITH cuota AS (\n  INSERT INTO rate_limit_cuotas (ip_o_clave, ruta, ventana_inicio, intentos)\n  VALUES ($1, $2, date_bin(interval '5 minutes', now(), timestamptz '2000-01-01 00:00:00+00'), 1)\n  ON CONFLICT (ip_o_clave, ruta, ventana_inicio)\n  DO UPDATE SET intentos = rate_limit_cuotas.intentos + 1\n  RETURNING intentos\n), auditado AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  SELECT $1, $2, now() FROM cuota RETURNING id\n)\nSELECT intentos FROM cuota;",
         "options": {
           "queryReplacement": "={{ [$json.claveLimite, $json.ruta] }}"
         }
@@ -5408,7 +5410,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH previo AS (\n  SELECT count(*)::int AS cnt\n  FROM rate_limit_log\n  WHERE ip_o_clave = $1\n    AND ruta = $2\n    AND creado_en > now() - interval '5 minutes'\n), intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT (SELECT cnt FROM previo) + 1 AS intentos;",
+        "query": "WITH cuota AS (\n  INSERT INTO rate_limit_cuotas (ip_o_clave, ruta, ventana_inicio, intentos)\n  VALUES ($1, $2, date_bin(interval '5 minutes', now(), timestamptz '2000-01-01 00:00:00+00'), 1)\n  ON CONFLICT (ip_o_clave, ruta, ventana_inicio)\n  DO UPDATE SET intentos = rate_limit_cuotas.intentos + 1\n  RETURNING intentos\n), auditado AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  SELECT $1, $2, now() FROM cuota RETURNING id\n)\nSELECT intentos FROM cuota;",
         "options": {
           "queryReplacement": "={{ [$json.claveLimite, $json.ruta] }}"
         }
@@ -5507,7 +5509,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH previo AS (\n  SELECT count(*)::int AS cnt\n  FROM rate_limit_log\n  WHERE ip_o_clave = $1\n    AND ruta = $2\n    AND creado_en > now() - interval '5 minutes'\n), intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT (SELECT cnt FROM previo) + 1 AS intentos;",
+        "query": "WITH cuota AS (\n  INSERT INTO rate_limit_cuotas (ip_o_clave, ruta, ventana_inicio, intentos)\n  VALUES ($1, $2, date_bin(interval '5 minutes', now(), timestamptz '2000-01-01 00:00:00+00'), 1)\n  ON CONFLICT (ip_o_clave, ruta, ventana_inicio)\n  DO UPDATE SET intentos = rate_limit_cuotas.intentos + 1\n  RETURNING intentos\n), auditado AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  SELECT $1, $2, now() FROM cuota RETURNING id\n)\nSELECT intentos FROM cuota;",
         "options": {
           "queryReplacement": "={{ [$json.claveLimite, $json.ruta] }}"
         }
@@ -5606,7 +5608,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH previo AS (\n  SELECT count(*)::int AS cnt\n  FROM rate_limit_log\n  WHERE ip_o_clave = $1\n    AND ruta = $2\n    AND creado_en > now() - interval '5 minutes'\n), intento AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  VALUES ($1, $2, now())\n  RETURNING creado_en\n)\nSELECT (SELECT cnt FROM previo) + 1 AS intentos;",
+        "query": "WITH cuota AS (\n  INSERT INTO rate_limit_cuotas (ip_o_clave, ruta, ventana_inicio, intentos)\n  VALUES ($1, $2, date_bin(interval '5 minutes', now(), timestamptz '2000-01-01 00:00:00+00'), 1)\n  ON CONFLICT (ip_o_clave, ruta, ventana_inicio)\n  DO UPDATE SET intentos = rate_limit_cuotas.intentos + 1\n  RETURNING intentos\n), auditado AS (\n  INSERT INTO rate_limit_log (ip_o_clave, ruta, creado_en)\n  SELECT $1, $2, now() FROM cuota RETURNING id\n)\nSELECT intentos FROM cuota;",
         "options": {
           "queryReplacement": "={{ [$json.claveLimite, $json.ruta] }}"
         }
@@ -5692,7 +5694,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT factura_id, estado_pago, stripe_pago_id, cliente, monto, moneda FROM facturas WHERE factura_id = $1;",
+        "query": "SELECT f.factura_id, f.estado_pago, f.stripe_pago_id, f.cliente, f.monto, f.moneda FROM (SELECT $1::text AS solicitado) i LEFT JOIN facturas f ON f.factura_id = i.solicitado;",
         "options": {
           "queryReplacement": "={{ [$('Code - Verificar Evento Stripe').item.json.factura_id] }}"
         }
@@ -5715,7 +5717,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Llega acá todo pago confirmado por Stripe que no marcó la factura como\n// cobrada. Un reintento de Stripe sobre un pago ya registrado es ruido\n// esperable; lo que no puede pasar en silencio es un pago que no se registró:\n// la plata ya entró.\nconst pago = $('Code - Verificar Evento Stripe').first().json;\nif (!pago.factura_id) return [];\nconst f = $input.first().json || {};\nlet motivo;\nif (!f.factura_id) {\n  motivo = 'no existe una factura con ese identificador';\n} else if (f.estado_pago === 'COBRADO' && String(f.stripe_pago_id || '') === pago.stripe_pago_id) {\n  return [];\n} else if (f.estado_pago === 'COBRADO') {\n  motivo = f.stripe_pago_id\n    ? 'la factura ya estaba cobrada con otro pago (' + f.stripe_pago_id + '): es un pago doble'\n    : 'la factura ya figuraba cobrada sin un pago de Stripe (cierre del proyecto)';\n} else if (f.estado_pago === 'ANULADA') {\n  motivo = 'la factura está ANULADA';\n} else if (Number(f.monto) !== Number(pago.monto_pagado) || f.moneda !== pago.moneda_pagada) {\n  motivo = 'se pagaron ' + pago.monto_pagado + ' ' + pago.moneda_pagada + ' y la factura es por ' + f.monto + ' ' + f.moneda;\n} else {\n  motivo = 'la factura está en estado ' + f.estado_pago;\n}\nreturn [{ json: {\n  factura_id: pago.factura_id,\n  stripe_pago_id: pago.stripe_pago_id,\n  cliente: f.cliente || '',\n  motivo,\n  detalle: 'factura=' + pago.factura_id + ' pago_stripe=' + pago.stripe_pago_id + ' motivo=' + motivo,\n} }];"
+        "jsCode": "// Llega acá todo pago confirmado por Stripe que no marcó la factura como\n// cobrada. Un reintento de Stripe sobre un pago ya registrado es ruido\n// esperable; lo que no puede pasar en silencio es un pago que no se registró:\n// la plata ya entró.\nconst pago = $('Code - Verificar Evento Stripe').first().json;\nif (!pago.factura_id) return [];\nconst f = $input.first().json || {};\nlet motivo;\nif (!f.factura_id) {\n  motivo = 'no existe una factura con ese identificador';\n} else if (f.estado_pago === 'COBRADO' && String(f.stripe_pago_id || '') === pago.stripe_pago_id) {\n  return [{ json: { repetido: true } }];\n} else if (f.estado_pago === 'COBRADO') {\n  motivo = f.stripe_pago_id\n    ? 'la factura ya estaba cobrada con otro pago (' + f.stripe_pago_id + '): es un pago doble'\n    : 'la factura ya figuraba cobrada sin un pago de Stripe (cierre del proyecto)';\n} else if (f.estado_pago === 'ANULADA') {\n  motivo = 'la factura está ANULADA';\n} else if (Number(f.monto) !== Number(pago.monto_pagado) || f.moneda !== pago.moneda_pagada) {\n  motivo = 'se pagaron ' + pago.monto_pagado + ' ' + pago.moneda_pagada + ' y la factura es por ' + f.monto + ' ' + f.moneda;\n} else {\n  motivo = 'la factura está en estado ' + f.estado_pago;\n}\nreturn [{ json: {\n  repetido: false,\n  factura_id: pago.factura_id,\n  stripe_pago_id: pago.stripe_pago_id,\n  cliente: f.cliente || '',\n  motivo,\n  detalle: 'factura=' + pago.factura_id + ' pago_stripe=' + pago.stripe_pago_id + ' motivo=' + motivo,\n} }];"
       },
       "id": "mp-13-0000-4000-8000-aaaaaaaaaaaa",
       "name": "Code - Clasificar Pago No Aplicado",
@@ -5729,9 +5731,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO logs (workflow, evento, nivel, detalle)\nVALUES ('cobro_stripe', 'pago_no_aplicado', 'ERROR', $1);",
+        "query": "WITH pendiente AS (INSERT INTO pagos_no_aplicados (stripe_pago_id, factura_id, motivo) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING RETURNING stripe_pago_id), registro AS (INSERT INTO logs (workflow, evento, nivel, detalle) SELECT 'cobro_stripe', 'pago_no_aplicado', 'ERROR', $4 FROM pendiente RETURNING id) SELECT true AS registrado;",
         "options": {
-          "queryReplacement": "={{ [$json.detalle] }}"
+          "queryReplacement": "={{ [$json.stripe_pago_id, $json.factura_id, $json.motivo, $json.detalle] }}"
         }
       },
       "id": "mp-14-0000-4000-8000-aaaaaaaaaaaa",
@@ -5967,9 +5969,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT f.factura_id, f.lead_id, f.cliente, f.email, f.servicio, f.monto, f.moneda, f.comision_plataforma, f.estado_pago, f.pago_token, e.nombre AS espacio_nombre, e.stripe_account_id, e.stripe_cobros_activos FROM facturas f JOIN espacios e ON e.id = f.espacio_id WHERE f.factura_id = $1 AND f.pago_token::text = $2;",
+        "query": "WITH reserva AS (\n  UPDATE facturas f SET stripe_checkout_reservado_en = now(), stripe_checkout_intento_id = gen_random_uuid()\n  WHERE f.factura_id = $1 AND f.pago_token::text = $2 AND $3::boolean\n    AND f.estado_pago IN ('PENDIENTE','VENCIDA')\n    AND EXISTS (SELECT 1 FROM espacios e WHERE e.id = f.espacio_id AND e.stripe_cobros_activos AND e.stripe_account_id IS NOT NULL)\n    AND f.stripe_checkout_reservado_en IS NULL AND f.stripe_checkout_intento_id IS NULL AND f.stripe_checkout_id IS NULL\n  RETURNING f.factura_id, f.stripe_checkout_intento_id\n), revision AS (\n  INSERT INTO checkout_revisiones (tipo, referencia_id, identidad, stripe_checkout_id, motivo)\n  SELECT 'factura', f.factura_id::text,\n         COALESCE(f.stripe_checkout_id, f.stripe_checkout_intento_id::text, 'reserva-' || f.factura_id::text),\n         f.stripe_checkout_id, 'checkout_pendiente_o_expirado'\n  FROM facturas f\n  WHERE f.factura_id = $1\n    AND (f.stripe_checkout_id IS NOT NULL OR f.stripe_checkout_intento_id IS NOT NULL OR f.stripe_checkout_reservado_en IS NOT NULL)\n    AND NOT EXISTS (SELECT 1 FROM reserva)\n    AND ((f.stripe_checkout_intento_id IS NULL AND f.stripe_checkout_id IS NOT NULL)\n      OR (f.stripe_checkout_reservado_en < now() - interval '15 minutes'\n          AND (f.stripe_checkout_expira_en IS NULL OR f.stripe_checkout_expira_en <= now() + interval '1 minute')))\n  ON CONFLICT DO NOTHING RETURNING identidad\n)\nSELECT f.factura_id, f.lead_id, f.cliente, f.email, f.servicio, f.monto, f.moneda,\n       f.comision_plataforma, f.estado_pago, f.pago_token, e.nombre AS espacio_nombre,\n       e.stripe_account_id, e.stripe_cobros_activos,\n       (r.factura_id IS NOT NULL) AS checkout_reservado,\n       CASE WHEN r.factura_id IS NULL AND f.stripe_checkout_expira_en > now() + interval '1 minute' THEN f.stripe_checkout_url ELSE NULL END AS checkout_url, COALESCE(r.stripe_checkout_intento_id, f.stripe_checkout_intento_id) AS checkout_intento_id\nFROM facturas f JOIN espacios e ON e.id = f.espacio_id\nLEFT JOIN reserva r ON r.factura_id = f.factura_id\nWHERE f.factura_id = $1 AND f.pago_token::text = $2;",
         "options": {
-          "queryReplacement": "={{ [$json.factura_id, $json.pago_token] }}"
+          "queryReplacement": "={{ [$json.factura_id, $json.pago_token, Boolean($env.STRIPE_SECRET_KEY)] }}"
         }
       },
       "name": "Postgres - Buscar Factura a Pagar",
@@ -5990,7 +5992,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Qué hacer con el enlace de pago:\n//  - 'stripe': crear la sesión de pago (destination charge a la cuenta del\n//    desarrollador, con la comisión de la plataforma como application fee);\n//  - 'redirigir': sin Stripe configurado, al modo de desarrollo (pago simulado);\n//  - 'pagina': una explicación (enlace inválido, ya pagada, anulada, o el\n//    desarrollador todavía no habilitó los cobros).\nconst esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;');\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\nconst f = $input.first().json || {};\nconst BASE = leerEnv('N8N_PUBLIC_URL', 'http://localhost:5678/').replace(/\\/+$/, '');\nconst FRONT = leerEnv('FRONTEND_URL', 'http://localhost:3000').replace(/\\/+$/, '');\nconst pagina = (status, titulo, texto) => ({ accion: 'pagina', status, location: '', html:\n  \"<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>\" + esc(titulo) + \"</title></head>\" +\n  \"<body style='font-family:Arial,Helvetica,sans-serif;background:#f5f2ea;color:#27272a;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0'>\" +\n  \"<div style='background:#fff;border:1px solid #e4e0d4;padding:40px;max-width:440px;margin:16px'><h1 style='font-size:22px;margin:0 0 12px'>\" + esc(titulo) + \"</h1>\" +\n  \"<p style='font-size:15px;line-height:1.6;color:#52525b;margin:0'>\" + texto + \"</p></div></body></html>\" });\nlet salida;\nif (!f.factura_id) {\n  salida = pagina(404, 'Enlace inválido', 'Este enlace de pago no es válido. Usá el del correo de la factura.');\n} else if (f.estado_pago === 'COBRADO') {\n  salida = pagina(200, 'Factura pagada', 'La factura ' + esc(f.factura_id) + ' ya está pagada. ¡Gracias!');\n} else if (f.estado_pago === 'ANULADA') {\n  salida = pagina(410, 'Factura anulada', 'La factura ' + esc(f.factura_id) + ' fue anulada y no se puede pagar.');\n} else if (!leerEnv('STRIPE_SECRET_KEY', '')) {\n  salida = { accion: 'redirigir', status: 303, html: '', location: BASE + '/webhook/pago-confirmado?factura_id=' + encodeURIComponent(f.factura_id) + '&pago_token=' + encodeURIComponent(f.pago_token) + '&lead_id=' + encodeURIComponent(f.lead_id || '') };\n} else if (!f.stripe_account_id || !f.stripe_cobros_activos) {\n  salida = pagina(200, 'Pago online no disponible', esc(f.espacio_nombre || 'Quien te emitió la factura') + ' todavía no habilitó los pagos online. Respondé el correo de la factura para coordinar el pago.');\n} else {\n  const centavos = Math.round(Number(f.monto) * 100);\n  const comision = Math.round(Number(f.comision_plataforma || 0) * 100);\n  const svc = String(f.servicio || 'servicio').replace(/_/g, ' ');\n  const campos = {\n    mode: 'payment',\n    'line_items[0][quantity]': '1',\n    'line_items[0][price_data][currency]': String(f.moneda || 'USD').toLowerCase(),\n    'line_items[0][price_data][unit_amount]': String(centavos),\n    'line_items[0][price_data][product_data][name]': 'Factura ' + f.factura_id + ' — ' + svc,\n    'payment_intent_data[application_fee_amount]': String(comision),\n    'payment_intent_data[transfer_data][destination]': f.stripe_account_id,\n    'payment_intent_data[metadata][factura_id]': f.factura_id,\n    'metadata[factura_id]': f.factura_id,\n    client_reference_id: f.factura_id,\n    customer_email: String(f.email || ''),\n    success_url: FRONT + '/pago-exitoso?factura=' + encodeURIComponent(f.factura_id),\n    cancel_url: FRONT + '/pago-fallido?factura=' + encodeURIComponent(f.factura_id),\n  };\n  const form = Object.entries(campos).filter(([, v]) => v !== '').map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');\n  salida = { accion: 'stripe', status: 303, html: '', location: '', stripe_form: form, factura_id: f.factura_id };\n}\nreturn [{ json: salida }];"
+        "jsCode": "// Qué hacer con el enlace de pago:\n//  - 'stripe': crear la sesión de pago (destination charge a la cuenta del\n//    desarrollador, con la comisión de la plataforma como application fee);\n//  - 'redirigir': sin Stripe configurado, al modo de desarrollo (pago simulado);\n//  - 'pagina': una explicación (enlace inválido, ya pagada, anulada, o el\n//    desarrollador todavía no habilitó los cobros).\nconst esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;');\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\nconst f = $input.first().json || {};\nconst BASE = leerEnv('N8N_PUBLIC_URL', 'http://localhost:5678/').replace(/\\/+$/, '');\nconst FRONT = leerEnv('FRONTEND_URL', 'http://localhost:3000').replace(/\\/+$/, '');\nconst pagina = (status, titulo, texto) => ({ accion: 'pagina', status, location: '', html:\n  \"<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>\" + esc(titulo) + \"</title></head>\" +\n  \"<body style='font-family:Arial,Helvetica,sans-serif;background:#f5f2ea;color:#27272a;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0'>\" +\n  \"<div style='background:#fff;border:1px solid #e4e0d4;padding:40px;max-width:440px;margin:16px'><h1 style='font-size:22px;margin:0 0 12px'>\" + esc(titulo) + \"</h1>\" +\n  \"<p style='font-size:15px;line-height:1.6;color:#52525b;margin:0'>\" + texto + \"</p></div></body></html>\" });\nlet salida;\nif (!f.factura_id) {\n  salida = pagina(404, 'Enlace inválido', 'Este enlace de pago no es válido. Usá el del correo de la factura.');\n} else if (f.estado_pago === 'COBRADO') {\n  salida = pagina(200, 'Factura pagada', 'La factura ' + esc(f.factura_id) + ' ya está pagada. ¡Gracias!');\n} else if (f.estado_pago === 'ANULADA') {\n  salida = pagina(410, 'Factura anulada', 'La factura ' + esc(f.factura_id) + ' fue anulada y no se puede pagar.');\n} else if (!leerEnv('STRIPE_SECRET_KEY', '')) {\n  salida = { accion: 'redirigir', status: 303, html: '', location: BASE + '/webhook/pago-confirmado?factura_id=' + encodeURIComponent(f.factura_id) + '&pago_token=' + encodeURIComponent(f.pago_token) + '&lead_id=' + encodeURIComponent(f.lead_id || '') };\n} else if (!f.stripe_account_id || !f.stripe_cobros_activos) {\n  salida = pagina(200, 'Pago online no disponible', esc(f.espacio_nombre || 'Quien te emitió la factura') + ' todavía no habilitó los pagos online. Respondé el correo de la factura para coordinar el pago.');\n} else if (f.checkout_url) {\n  salida = { accion: 'redirigir', status: 303, html: '', location: f.checkout_url };\n} else if (!f.checkout_reservado) {\n  salida = pagina(409, 'Pago en preparación', 'Ya hay un intento de pago en curso. Si no se abrió Stripe, respondé el correo para que revisemos el enlace antes de intentar de nuevo.');\n} else {\n  const centavos = Math.round(Number(f.monto) * 100);\n  const comision = Math.round(Number(f.comision_plataforma || 0) * 100);\n  const svc = String(f.servicio || 'servicio').replace(/_/g, ' ');\n  const campos = {\n    mode: 'payment',\n    expires_at: String(Math.floor(Date.now() / 1000) + 2100),\n    'line_items[0][quantity]': '1',\n    'line_items[0][price_data][currency]': String(f.moneda || 'USD').toLowerCase(),\n    'line_items[0][price_data][unit_amount]': String(centavos),\n    'line_items[0][price_data][product_data][name]': 'Factura ' + f.factura_id + ' — ' + svc,\n    'payment_intent_data[application_fee_amount]': String(comision),\n    'payment_intent_data[transfer_data][destination]': f.stripe_account_id,\n    'payment_intent_data[metadata][factura_id]': f.factura_id,\n    'metadata[factura_id]': f.factura_id,\n    'metadata[checkout_intento_id]': String(f.checkout_intento_id),\n    client_reference_id: f.factura_id,\n    customer_email: String(f.email || ''),\n    success_url: FRONT + '/pago-exitoso?factura=' + encodeURIComponent(f.factura_id),\n    cancel_url: FRONT + '/pago-fallido?factura=' + encodeURIComponent(f.factura_id),\n  };\n  const form = Object.entries(campos).filter(([, v]) => v !== '').map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');\n  salida = { accion: 'stripe', status: 303, html: '', location: '', stripe_form: form, factura_id: f.factura_id, checkout_intento_id: f.checkout_intento_id };\n}\nreturn [{ json: salida }];"
       },
       "name": "Code - Decidir Pago",
       "type": "n8n-nodes-base.code",
@@ -6064,9 +6066,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE facturas SET stripe_checkout_id = $2 WHERE factura_id = $1 AND $2 <> '' RETURNING factura_id;",
+        "query": "WITH guardado AS (UPDATE facturas SET stripe_checkout_id = $2, stripe_checkout_url = $3, stripe_checkout_expira_en = to_timestamp($5::numeric) WHERE factura_id = $1 AND estado_pago IN ('PENDIENTE','VENCIDA') AND stripe_checkout_intento_id = $4::uuid AND stripe_checkout_id IS NULL AND $2 <> '' AND $3 <> '' AND $5::numeric > extract(epoch FROM now()) + 60 RETURNING factura_id), revision AS (INSERT INTO checkout_revisiones (tipo, referencia_id, identidad, stripe_checkout_id, motivo)\n SELECT 'factura', $1::text, COALESCE(NULLIF($2, ''), $4::text), NULLIF($2, ''), CASE WHEN $2 = '' THEN 'stripe_creacion_sin_respuesta' ELSE 'stripe_creada_no_persistida' END\n WHERE NOT EXISTS (SELECT 1 FROM guardado) AND $4::uuid IS NOT NULL\n ON CONFLICT DO NOTHING RETURNING identidad)\n SELECT g.factura_id FROM (SELECT 1) entrada LEFT JOIN guardado g ON true;",
         "options": {
-          "queryReplacement": "={{ [$('Code - Decidir Pago').item.json.factura_id, $json.id || ''] }}"
+          "queryReplacement": "={{ [$('Code - Decidir Pago').item.json.factura_id, $json.id || '', $json.url || '', $('Code - Decidir Pago').item.json.checkout_intento_id, $json.expires_at || 0] }}"
         }
       },
       "name": "Postgres - Guardar Checkout",
@@ -6088,14 +6090,14 @@
     {
       "parameters": {
         "respondWith": "text",
-        "responseBody": "={{ $('HTTP - Stripe Crear Checkout').item.json.url ? '' : \"<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'></head><body style='font-family:Arial,sans-serif;padding:40px'><h1>No pudimos abrir el pago</h1><p>Probá de nuevo en unos minutos. Si sigue fallando, respondé el correo de la factura.</p></body></html>\" }}",
+        "responseBody": "={{ $json.factura_id && $('HTTP - Stripe Crear Checkout').item.json.url ? '' : \"<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'></head><body style='font-family:Arial,sans-serif;padding:40px'><h1>No pudimos abrir el pago</h1><p>Probá de nuevo en unos minutos. Si sigue fallando, respondé el correo de la factura.</p></body></html>\" }}",
         "options": {
-          "responseCode": "={{ $('HTTP - Stripe Crear Checkout').item.json.url ? 303 : 502 }}",
+          "responseCode": "={{ $json.factura_id && $('HTTP - Stripe Crear Checkout').item.json.url ? 303 : 502 }}",
           "responseHeaders": {
             "entries": [
               {
                 "name": "Location",
-                "value": "={{ $('HTTP - Stripe Crear Checkout').item.json.url || '' }}"
+                "value": "={{ $json.factura_id ? $('HTTP - Stripe Crear Checkout').item.json.url : '' }}"
               },
               {
                 "name": "Content-Type",
@@ -6863,7 +6865,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH b AS (\n  SELECT bp.id FROM bolsa_pedidos bp\n  WHERE bp.eleccion_token = NULLIF($1::text, '')::uuid\n    AND bp.estado IN ('ABIERTO','EN_ELECCION')\n  FOR UPDATE\n), elegida AS (\n  -- La elegida por el cliente, o la que sortea la plataforma si lo pidió. En\n  -- un CTE propio: el sorteo es volátil y tiene que hacerse una sola vez\n  -- (dentro del WHERE de abajo se repetiría por cada postulación).\n  SELECT CASE WHEN $4::boolean THEN sortear_postulacion(b.id) ELSE NULLIF($2::text, '')::uuid END AS id\n  FROM b\n), p AS (\n  SELECT po.id, po.pedido_id, po.espacio_id, po.precio_estimado, po.plazo\n  FROM postulaciones po JOIN b ON b.id = po.pedido_id\n  WHERE po.id = (SELECT id FROM elegida)\n), asignado AS (\n  -- Un proyecto publicado por un cliente no tiene lead: se le asigna el id\n  -- nuevo acá y se crea abajo (la clave foránea se revisa al final).\n  UPDATE bolsa_pedidos bp\n  SET estado = 'ASIGNADO', asignado_espacio_id = p.espacio_id, cerrado_en = now(),\n      lead_id = COALESCE(bp.lead_id, $3::text)\n  FROM p WHERE bp.id = p.pedido_id\n  RETURNING bp.lead_id, bp.asignado_espacio_id, bp.cliente_id, bp.contacto_nombre, bp.contacto_email,\n            bp.contacto_telefono, bp.presupuesto, bp.presupuesto_rango, bp.urgencia, bp.servicio, bp.resumen\n), movido AS (\n  -- Pedido rechazado: arranca de cero en el espacio elegido, sin los términos\n  -- del desarrollador anterior y con un token de aceptación nuevo, para que\n  -- una propuesta vieja que le haya mandado no se pueda aceptar.\n  UPDATE leads\n  SET espacio_id = a.asignado_espacio_id, estado = 'NUEVO',\n      precio_propuesto = NULL, plazo_propuesto = NULL, alcance_propuesto = NULL,\n      fecha_propuesta = NULL, notas = NULL, seguimientos = 0, fecha_ultimo_seguimiento = NULL,\n      accept_token = gen_random_uuid(), token_expira_en = NULL\n  FROM asignado a WHERE a.cliente_id IS NULL AND leads.lead_id = a.lead_id\n  RETURNING leads.lead_id, leads.nombre, leads.email, leads.telefono, leads.servicio, leads.urgencia,\n            leads.presupuesto, leads.descripcion, leads.espacio_id, false AS creado\n), creado AS (\n  -- Proyecto de un cliente: el lead nace en el espacio elegido con los datos\n  -- de contacto que dejó al publicar. El puntaje lo calcula el paso siguiente.\n  INSERT INTO leads (lead_id, espacio_id, nombre, email, telefono, presupuesto, presupuesto_rango,\n                     urgencia, servicio, descripcion, fuente, score, tier, seguimientos, dias_ciclo_completo)\n  SELECT a.lead_id, a.asignado_espacio_id, a.contacto_nombre, a.contacto_email, a.contacto_telefono,\n         a.presupuesto, a.presupuesto_rango, a.urgencia, a.servicio, a.resumen, 'bolsa', 0, NULL, 0, 0\n  FROM asignado a WHERE a.cliente_id IS NOT NULL\n  RETURNING leads.lead_id, leads.nombre, leads.email, leads.telefono, leads.servicio, leads.urgencia,\n            leads.presupuesto, leads.descripcion, leads.espacio_id, true AS creado\n), l AS (\n  SELECT * FROM movido UNION ALL SELECT * FROM creado\n)\nSELECT l.lead_id, l.nombre, l.email, l.telefono, l.servicio, l.urgencia, l.presupuesto, l.descripcion,\n       l.creado, $4::boolean AS azar, e.id AS espacio_id, e.nombre AS espacio_nombre, e.email_contacto AS espacio_email,\n       p.precio_estimado, p.plazo\nFROM l JOIN espacios e ON e.id = l.espacio_id CROSS JOIN p;",
+        "query": "WITH b AS (\n  SELECT bp.id FROM bolsa_pedidos bp\n  WHERE bp.eleccion_token = NULLIF($1::text, '')::uuid\n    AND bp.estado IN ('ABIERTO','EN_ELECCION')\n  FOR UPDATE\n), elegida AS (\n  -- La elegida por el cliente, o la que sortea la plataforma si lo pidió. En\n  -- un CTE propio: el sorteo es volátil y tiene que hacerse una sola vez\n  -- (dentro del WHERE de abajo se repetiría por cada postulación).\n  SELECT CASE WHEN $4::boolean THEN sortear_postulacion(b.id) ELSE NULLIF($2::text, '')::uuid END AS id\n  FROM b\n), p AS (\n  SELECT po.id, po.pedido_id, po.espacio_id, po.precio_estimado, po.plazo\n  FROM postulaciones po JOIN b ON b.id = po.pedido_id\n  WHERE po.id = (SELECT id FROM elegida)\n), asignado AS (\n  -- Un proyecto publicado por un cliente no tiene lead: se le asigna el id\n  -- nuevo acá y se crea abajo (la clave foránea se revisa al final).\n  UPDATE bolsa_pedidos bp\n  SET estado = 'ASIGNADO', asignado_espacio_id = p.espacio_id, cerrado_en = now(),\n      lead_id = COALESCE(bp.lead_id, $3::text)\n  FROM p WHERE bp.id = p.pedido_id\n  RETURNING bp.lead_id, bp.asignado_espacio_id, bp.cliente_id, bp.contacto_nombre, bp.contacto_email,\n            bp.contacto_telefono, bp.presupuesto, bp.presupuesto_rango, bp.urgencia, bp.servicio, bp.resumen\n), movido AS (\n  -- Pedido rechazado: arranca de cero en el espacio elegido, sin los términos\n  -- del desarrollador anterior y con un token de aceptación nuevo, para que\n  -- una propuesta vieja que le haya mandado no se pueda aceptar.\n  UPDATE leads\n  SET espacio_id = a.asignado_espacio_id, estado = 'NUEVO',\n      precio_propuesto = NULL, plazo_propuesto = NULL, alcance_propuesto = NULL,\n      propuesta_envio_iniciado_en = NULL, propuesta_envio_intento_id = NULL,\n      fecha_propuesta = NULL, notas = NULL, seguimientos = 0, fecha_ultimo_seguimiento = NULL,\n      accept_token = gen_random_uuid(), token_expira_en = NULL\n  FROM asignado a WHERE a.cliente_id IS NULL AND leads.lead_id = a.lead_id\n  RETURNING leads.lead_id, leads.nombre, leads.email, leads.telefono, leads.servicio, leads.urgencia,\n            leads.presupuesto, leads.descripcion, leads.espacio_id, false AS creado\n), creado AS (\n  -- Proyecto de un cliente: el lead nace en el espacio elegido con los datos\n  -- de contacto que dejó al publicar. El puntaje lo calcula el paso siguiente.\n  INSERT INTO leads (lead_id, espacio_id, nombre, email, telefono, presupuesto, presupuesto_rango,\n                     urgencia, servicio, descripcion, fuente, score, tier, seguimientos, dias_ciclo_completo)\n  SELECT a.lead_id, a.asignado_espacio_id, a.contacto_nombre, a.contacto_email, a.contacto_telefono,\n         a.presupuesto, a.presupuesto_rango, a.urgencia, a.servicio, a.resumen, 'bolsa', 0, NULL, 0, 0\n  FROM asignado a WHERE a.cliente_id IS NOT NULL\n  RETURNING leads.lead_id, leads.nombre, leads.email, leads.telefono, leads.servicio, leads.urgencia,\n            leads.presupuesto, leads.descripcion, leads.espacio_id, true AS creado\n), l AS (\n  SELECT * FROM movido UNION ALL SELECT * FROM creado\n)\nSELECT l.lead_id, l.nombre, l.email, l.telefono, l.servicio, l.urgencia, l.presupuesto, l.descripcion,\n       l.creado, $4::boolean AS azar, e.id AS espacio_id, e.nombre AS espacio_nombre, e.email_contacto AS espacio_email,\n       p.precio_estimado, p.plazo\nFROM l JOIN espacios e ON e.id = l.espacio_id CROSS JOIN p;",
         "options": {
           "queryReplacement": "={{ [$json.token, $json.postulacion_id, $json.lead_nuevo, $json.azar === true] }}"
         }
@@ -7407,7 +7409,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH pendientes AS (\n  -- Se marcan en la misma consulta: si el correo falla, no se reintenta en\n  -- cada vuelta (el mensaje igual queda en el panel con su contador).\n  UPDATE mensajes m SET avisado_en = now()\n  WHERE m.leido_en IS NULL AND m.avisado_en IS NULL\n    AND m.creado_en <= now() - make_interval(mins => $1::int)\n  RETURNING m.postulacion_id, m.autor\n)\nSELECT CASE WHEN pe.autor = 'cliente' THEN 'desarrollador' ELSE 'cliente' END AS para,\n       CASE WHEN pe.autor = 'cliente' THEN e.email_contacto ELSE COALESCE(b.contacto_email, l.email) END AS email,\n       CASE WHEN pe.autor = 'cliente' THEN e.nombre ELSE COALESCE(b.contacto_nombre, l.nombre) END AS nombre,\n       COALESCE(b.titulo, replace(b.servicio::text, '_', ' ')) AS proyecto,\n       CASE WHEN pe.autor = 'cliente' THEN 'el cliente' ELSE e.nombre END AS de,\n       b.cliente_id IS NOT NULL AS con_cuenta, b.eleccion_token, count(*)::int AS cantidad\nFROM pendientes pe\nJOIN postulaciones po ON po.id = pe.postulacion_id\nJOIN bolsa_pedidos b ON b.id = po.pedido_id\nJOIN espacios e ON e.id = po.espacio_id\nLEFT JOIN leads l ON l.lead_id = b.lead_id\nGROUP BY 1, 2, 3, 4, 5, 6, 7;",
+        "query": "WITH pendientes AS (\n  SELECT m.id, m.postulacion_id, m.autor\n  FROM mensajes m\n  WHERE m.leido_en IS NULL AND m.avisado_en IS NULL\n    AND m.creado_en <= now() - make_interval(mins => $1::int)\n)\nSELECT CASE WHEN pe.autor = 'cliente' THEN 'desarrollador' ELSE 'cliente' END AS para,\n       CASE WHEN pe.autor = 'cliente' THEN e.email_contacto ELSE COALESCE(b.contacto_email, l.email) END AS email,\n       CASE WHEN pe.autor = 'cliente' THEN e.nombre ELSE COALESCE(b.contacto_nombre, l.nombre) END AS nombre,\n       COALESCE(b.titulo, replace(b.servicio::text, '_', ' ')) AS proyecto,\n       CASE WHEN pe.autor = 'cliente' THEN 'el cliente' ELSE e.nombre END AS de,\n       b.cliente_id IS NOT NULL AS con_cuenta, b.eleccion_token,\n       count(*)::int AS cantidad, array_agg(pe.id) AS mensaje_ids\nFROM pendientes pe\nJOIN postulaciones po ON po.id = pe.postulacion_id\nJOIN bolsa_pedidos b ON b.id = po.pedido_id\nJOIN espacios e ON e.id = po.espacio_id\nLEFT JOIN leads l ON l.lead_id = b.lead_id\nGROUP BY 1, 2, 3, 4, 5, 6, 7;",
         "options": {
           "queryReplacement": "={{ [ parseInt($env.MENSAJES_AVISO_MINUTOS || '10', 10) || 10 ] }}"
         }
@@ -7429,7 +7431,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Un correo por persona con los mensajes que no leyó, agrupados por\n// proyecto. El enlace depende de quién es: el desarrollador va a su Bolsa;\n// el cliente con cuenta, a «Mis proyectos»; el que no tiene cuenta, a su\n// enlace de /elegir (con ese token entra a la conversación).\nconst esc = (s) => String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');\nlet plataforma = 'FormularioLeads';\nlet frontend = '';\ntry {\n  plataforma = ($env && $env.PLATAFORMA_NOMBRE) || plataforma;\n  frontend = String(($env && $env.FRONTEND_URL) || '').replace(/\\/+$/, '');\n} catch (e) {}\nconst porPersona = new Map();\nfor (const item of $input.all()) {\n  const f = item.json;\n  if (!f.email) continue;\n  const url = f.para === 'desarrollador'\n    ? `${frontend}/dashboard/bolsa`\n    : f.con_cuenta ? `${frontend}/cliente` : `${frontend}/elegir/${encodeURIComponent(f.eleccion_token)}`;\n  const actual = porPersona.get(f.email) || { email: f.email, nombre: f.nombre, total: 0, filas: [] };\n  actual.total += Number(f.cantidad) || 0;\n  actual.filas.push(`<li><b>${esc(f.proyecto)}</b>: ${Number(f.cantidad)} de ${esc(f.de)} · <a href=\"${esc(url)}\">Leer y responder</a></li>`);\n  porPersona.set(f.email, actual);\n}\nreturn [...porPersona.values()].map((p) => ({ json: {\n  email: p.email,\n  espacio_nombre: '',\n  espacio_email: '',\n  asunto: `Tenés ${p.total} ${p.total === 1 ? 'mensaje sin leer' : 'mensajes sin leer'} en ${plataforma}`,\n  cuerpo_html: `<p>Hola ${esc(String(p.nombre || '').split(' ')[0])},</p>\n<p>Te escribieron y todavía no lo leíste:</p>\n<ul>${p.filas.join('')}</ul>\n<p>Saludos,<br><b>${esc(plataforma)}</b></p>`,\n} }));"
+        "jsCode": "// Un correo por persona con los mensajes que no leyó, agrupados por\n// proyecto. El enlace depende de quién es: el desarrollador va a su Bolsa;\n// el cliente con cuenta, a «Mis proyectos»; el que no tiene cuenta, a su\n// enlace de /elegir (con ese token entra a la conversación).\nconst esc = (s) => String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');\nlet plataforma = 'FormularioLeads';\nlet frontend = '';\ntry {\n  plataforma = ($env && $env.PLATAFORMA_NOMBRE) || plataforma;\n  frontend = String(($env && $env.FRONTEND_URL) || '').replace(/\\/+$/, '');\n} catch (e) {}\nconst porPersona = new Map();\nfor (const item of $input.all()) {\n  const f = item.json;\n  if (!f.email) continue;\n  const url = f.para === 'desarrollador'\n    ? `${frontend}/dashboard/bolsa`\n    : f.con_cuenta ? `${frontend}/cliente` : `${frontend}/elegir/${encodeURIComponent(f.eleccion_token)}`;\n  const actual = porPersona.get(f.email) || { email: f.email, nombre: f.nombre, total: 0, filas: [], mensaje_ids: [] };\n  actual.total += Number(f.cantidad) || 0;\n  actual.mensaje_ids.push(...(f.mensaje_ids || []));\n  actual.filas.push(`<li><b>${esc(f.proyecto)}</b>: ${Number(f.cantidad)} de ${esc(f.de)} · <a href=\"${esc(url)}\">Leer y responder</a></li>`);\n  porPersona.set(f.email, actual);\n}\nreturn [...porPersona.values()].map((p) => ({ json: {\n  email: p.email,\n  mensaje_ids: p.mensaje_ids,\n  espacio_nombre: '',\n  espacio_email: '',\n  asunto: `Tenés ${p.total} ${p.total === 1 ? 'mensaje sin leer' : 'mensajes sin leer'} en ${plataforma}`,\n  cuerpo_html: `<p>Hola ${esc(String(p.nombre || '').split(' ')[0])},</p>\n<p>Te escribieron y todavía no lo leíste:</p>\n<ul>${p.filas.join('')}</ul>\n<p>Saludos,<br><b>${esc(plataforma)}</b></p>`,\n} }));"
       },
       "id": "350b5a32-a028-4ba6-9648-5dbacc59c5ef",
       "name": "Code - Emails Mensajes",
@@ -7850,9 +7852,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT c.*, e.stripe_cobros_activos, $2 AS proyecto_token FROM hito_para_cobrar(NULLIF($1, '')::uuid, NULLIF($2, '')::uuid) c JOIN hitos h ON h.id = c.id JOIN espacios e ON e.id = h.espacio_id;",
+        "query": "WITH reserva AS (\n  UPDATE hitos h SET stripe_checkout_reservado_en = now(), stripe_checkout_intento_id = gen_random_uuid()\n  WHERE h.id = NULLIF($1, '')::uuid AND $3::boolean\n    AND EXISTS (SELECT 1 FROM espacios e WHERE e.id = h.espacio_id AND e.stripe_cobros_activos)\n    AND EXISTS (SELECT 1 FROM hito_para_cobrar(NULLIF($1, '')::uuid, NULLIF($2, '')::uuid))\n    AND h.stripe_checkout_reservado_en IS NULL AND h.stripe_checkout_intento_id IS NULL AND h.stripe_checkout_id IS NULL\n  RETURNING h.id, h.stripe_checkout_intento_id\n), revision AS (\n  INSERT INTO checkout_revisiones (tipo, referencia_id, identidad, stripe_checkout_id, motivo)\n  SELECT 'hito', h.id::text,\n         COALESCE(h.stripe_checkout_id, h.stripe_checkout_intento_id::text, 'reserva-' || h.id::text),\n         h.stripe_checkout_id, 'checkout_pendiente_o_expirado'\n  FROM hitos h\n  WHERE h.id = NULLIF($1, '')::uuid\n    AND (h.stripe_checkout_id IS NOT NULL OR h.stripe_checkout_intento_id IS NOT NULL OR h.stripe_checkout_reservado_en IS NOT NULL)\n    AND NOT EXISTS (SELECT 1 FROM reserva)\n    AND ((h.stripe_checkout_intento_id IS NULL AND h.stripe_checkout_id IS NOT NULL)\n      OR (h.stripe_checkout_reservado_en < now() - interval '15 minutes'\n          AND (h.stripe_checkout_expira_en IS NULL OR h.stripe_checkout_expira_en <= now() + interval '1 minute')))\n  ON CONFLICT DO NOTHING RETURNING identidad\n)\nSELECT c.*, e.stripe_cobros_activos, $2 AS proyecto_token,\n       (r.id IS NOT NULL) AS checkout_reservado,\n       CASE WHEN r.id IS NULL AND h.stripe_checkout_expira_en > now() + interval '1 minute' THEN h.stripe_checkout_url ELSE NULL END AS checkout_url, COALESCE(r.stripe_checkout_intento_id, h.stripe_checkout_intento_id) AS checkout_intento_id\nFROM hito_para_cobrar(NULLIF($1, '')::uuid, NULLIF($2, '')::uuid) c\nJOIN hitos h ON h.id = c.id JOIN espacios e ON e.id = h.espacio_id\nLEFT JOIN reserva r ON r.id = h.id;",
         "options": {
-          "queryReplacement": "={{ [$json.hito_id, $json.proyecto_token] }}"
+          "queryReplacement": "={{ [$json.hito_id, $json.proyecto_token, Boolean($env.STRIPE_SECRET_KEY)] }}"
         }
       },
       "id": "0fb0ab46-6f1f-473e-af2c-5557010b4fd7",
@@ -7873,7 +7875,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Qué hacer con el «Pagar» de un hito:\n//  - 'stripe': sesión de pago a nombre de la PLATAFORMA (sin transfer_data):\n//    la plata queda retenida y al liberar el hito se transfiere aparte a la\n//    cuenta del desarrollador (separate charges and transfers). transfer_group\n//    y metadata llevan el id del hito.\n//  - 'pagina': una explicación (ya pagado, no le toca todavía, o el\n//    desarrollador todavía no habilitó los cobros).\nconst esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;');\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\nconst h = $input.first().json || {};\nconst pedido = $('Code - Leer Pagar Hito').first().json;\nconst FRONT = leerEnv('FRONTEND_URL', 'http://localhost:3000').replace(/\\/+$/, '');\nconst proyecto = FRONT + '/proyecto/' + encodeURIComponent(pedido.proyecto_token || '');\nconst pagina = (status, titulo, texto) => ({ accion: 'pagina', status, html:\n  \"<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>\" + esc(titulo) + \"</title></head>\" +\n  \"<body style='font-family:Arial,Helvetica,sans-serif;background:#f5f2ea;color:#27272a;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0'>\" +\n  \"<div style='background:#fff;border:1px solid #e4e0d4;padding:40px;max-width:440px;margin:16px'><h1 style='font-size:22px;margin:0 0 12px'>\" + esc(titulo) + \"</h1>\" +\n  \"<p style='font-size:15px;line-height:1.6;color:#52525b;margin:0 0 20px'>\" + texto + \"</p>\" +\n  (pedido.proyecto_token ? \"<a href='\" + esc(proyecto) + \"' style='color:#8f5f22'>Volver al proyecto</a>\" : '') + \"</div></body></html>\" });\nlet salida;\nif (!h.id) {\n  salida = pagina(409, 'No se puede pagar este hito', 'Puede que ya esté pagado o que antes haya que pagar el anterior. Volvé a la página del proyecto para ver en qué está.');\n} else if (!leerEnv('STRIPE_SECRET_KEY', '')) {\n  salida = pagina(503, 'Pagos no disponibles', 'La plataforma todavía no tiene configurados los pagos online.');\n} else if (!h.stripe_cobros_activos) {\n  salida = pagina(200, 'Todavía no se puede pagar', esc(h.espacio_nombre) + ' todavía no habilitó los cobros en la plataforma. Te avisamos por correo apenas puedas pagar.');\n} else {\n  const svc = String(h.servicio || 'servicio').replace(/_/g, ' ');\n  const campos = {\n    mode: 'payment',\n    'line_items[0][quantity]': '1',\n    'line_items[0][price_data][currency]': 'usd',\n    'line_items[0][price_data][unit_amount]': String(Math.round(Number(h.monto) * 100)),\n    'line_items[0][price_data][product_data][name]': 'Hito ' + h.orden + ': ' + h.titulo + ' (' + svc + ', ' + h.espacio_nombre + ')',\n    'payment_intent_data[transfer_group]': h.id,\n    'payment_intent_data[metadata][hito_id]': h.id,\n    'metadata[hito_id]': h.id,\n    'metadata[lead_id]': h.lead_id,\n    customer_email: String(h.cliente_email || ''),\n    success_url: proyecto + '?pago=ok',\n    cancel_url: proyecto,\n  };\n  const form = Object.entries(campos).filter(([, v]) => v !== '').map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');\n  salida = { accion: 'stripe', stripe_form: form, hito_id: h.id };\n}\nreturn [{ json: salida }];"
+        "jsCode": "// Qué hacer con el «Pagar» de un hito:\n//  - 'stripe': sesión de pago a nombre de la PLATAFORMA (sin transfer_data):\n//    la plata queda retenida y al liberar el hito se transfiere aparte a la\n//    cuenta del desarrollador (separate charges and transfers). transfer_group\n//    y metadata llevan el id del hito.\n//  - 'pagina': una explicación (ya pagado, no le toca todavía, o el\n//    desarrollador todavía no habilitó los cobros).\nconst esc = (s) => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;').replace(/'/g, '&#39;');\nconst leerEnv = (clave, porDefecto) => {\n  try {\n    const v = (typeof $env !== 'undefined' && $env) ? $env[clave] : undefined;\n    return (v === undefined || v === null || v === '') ? porDefecto : String(v);\n  } catch (e) { return porDefecto; }\n};\nconst h = $input.first().json || {};\nconst pedido = $('Code - Leer Pagar Hito').first().json;\nconst FRONT = leerEnv('FRONTEND_URL', 'http://localhost:3000').replace(/\\/+$/, '');\nconst proyecto = FRONT + '/proyecto/' + encodeURIComponent(pedido.proyecto_token || '');\nconst pagina = (status, titulo, texto) => ({ accion: 'pagina', status, html:\n  \"<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>\" + esc(titulo) + \"</title></head>\" +\n  \"<body style='font-family:Arial,Helvetica,sans-serif;background:#f5f2ea;color:#27272a;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0'>\" +\n  \"<div style='background:#fff;border:1px solid #e4e0d4;padding:40px;max-width:440px;margin:16px'><h1 style='font-size:22px;margin:0 0 12px'>\" + esc(titulo) + \"</h1>\" +\n  \"<p style='font-size:15px;line-height:1.6;color:#52525b;margin:0 0 20px'>\" + texto + \"</p>\" +\n  (pedido.proyecto_token ? \"<a href='\" + esc(proyecto) + \"' style='color:#8f5f22'>Volver al proyecto</a>\" : '') + \"</div></body></html>\" });\nlet salida;\nif (!h.id) {\n  salida = pagina(409, 'No se puede pagar este hito', 'Puede que ya esté pagado o que antes haya que pagar el anterior. Volvé a la página del proyecto para ver en qué está.');\n} else if (!leerEnv('STRIPE_SECRET_KEY', '')) {\n  salida = pagina(503, 'Pagos no disponibles', 'La plataforma todavía no tiene configurados los pagos online.');\n} else if (!h.stripe_cobros_activos) {\n  salida = pagina(200, 'Todavía no se puede pagar', esc(h.espacio_nombre) + ' todavía no habilitó los cobros en la plataforma. Te avisamos por correo apenas puedas pagar.');\n} else if (h.checkout_url) {\n  salida = { accion: 'redirigir', status: 303, location: h.checkout_url, html: '' };\n} else if (!h.checkout_reservado) {\n  salida = pagina(409, 'Pago en preparación', 'Ya hay un intento de pago en curso. Si no se abrió Stripe, contactá a la plataforma para revisar el enlace antes de intentar de nuevo.');\n} else {\n  const svc = String(h.servicio || 'servicio').replace(/_/g, ' ');\n  const campos = {\n    mode: 'payment',\n    expires_at: String(Math.floor(Date.now() / 1000) + 2100),\n    'line_items[0][quantity]': '1',\n    'line_items[0][price_data][currency]': 'usd',\n    'line_items[0][price_data][unit_amount]': String(Math.round(Number(h.monto) * 100)),\n    'line_items[0][price_data][product_data][name]': 'Hito ' + h.orden + ': ' + h.titulo + ' (' + svc + ', ' + h.espacio_nombre + ')',\n    'payment_intent_data[transfer_group]': h.id,\n    'payment_intent_data[metadata][hito_id]': h.id,\n    'metadata[hito_id]': h.id,\n    'metadata[lead_id]': h.lead_id,\n    'metadata[checkout_intento_id]': String(h.checkout_intento_id),\n    customer_email: String(h.cliente_email || ''),\n    success_url: proyecto + '?pago=ok',\n    cancel_url: proyecto,\n  };\n  const form = Object.entries(campos).filter(([, v]) => v !== '').map(([k, v]) => encodeURIComponent(k) + '=' + encodeURIComponent(v)).join('&');\n  salida = { accion: 'stripe', stripe_form: form, hito_id: h.id, checkout_intento_id: h.checkout_intento_id };\n}\nreturn [{ json: salida }];"
       },
       "id": "20ff00f2-c9b1-45d1-9764-fb5808e1e925",
       "name": "Code - Decidir Pago Hito",
@@ -7947,9 +7949,9 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "UPDATE hitos SET stripe_checkout_id = $2 WHERE id = $1::uuid AND $2 <> '' RETURNING id;",
+        "query": "WITH guardado AS (UPDATE hitos SET stripe_checkout_id = $2, stripe_checkout_url = $3, stripe_checkout_expira_en = to_timestamp($5::numeric) WHERE id = $1::uuid AND estado = 'PENDIENTE' AND stripe_checkout_intento_id = $4::uuid AND stripe_checkout_id IS NULL AND $2 <> '' AND $3 <> '' AND $5::numeric > extract(epoch FROM now()) + 60 RETURNING id), revision AS (INSERT INTO checkout_revisiones (tipo, referencia_id, identidad, stripe_checkout_id, motivo)\n SELECT 'hito', $1::text, COALESCE(NULLIF($2, ''), $4::text), NULLIF($2, ''), CASE WHEN $2 = '' THEN 'stripe_creacion_sin_respuesta' ELSE 'stripe_creada_no_persistida' END\n WHERE NOT EXISTS (SELECT 1 FROM guardado) AND $4::uuid IS NOT NULL\n ON CONFLICT DO NOTHING RETURNING identidad)\n SELECT g.id FROM (SELECT 1) entrada LEFT JOIN guardado g ON true;",
         "options": {
-          "queryReplacement": "={{ [$('Code - Decidir Pago Hito').item.json.hito_id, $json.id || ''] }}"
+          "queryReplacement": "={{ [$('Code - Decidir Pago Hito').item.json.hito_id, $json.id || '', $json.url || '', $('Code - Decidir Pago Hito').item.json.checkout_intento_id, $json.expires_at || 0] }}"
         }
       },
       "id": "5a607567-849a-4970-a6bc-ebbf0a5aafe7",
@@ -7971,14 +7973,14 @@
     {
       "parameters": {
         "respondWith": "text",
-        "responseBody": "={{ $('HTTP - Stripe Checkout Hito').item.json.url ? '' : \"<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'></head><body style='font-family:Arial,sans-serif;padding:40px'><h1>No pudimos abrir el pago</h1><p>Probá de nuevo en unos minutos. Si sigue fallando, respondé el correo de la factura.</p></body></html>\" }}",
+        "responseBody": "={{ $json.id && $('HTTP - Stripe Checkout Hito').item.json.url ? '' : \"<!DOCTYPE html><html lang='es'><head><meta charset='UTF-8'></head><body style='font-family:Arial,sans-serif;padding:40px'><h1>No pudimos abrir el pago</h1><p>Probá de nuevo en unos minutos. Si sigue fallando, respondé el correo de la factura.</p></body></html>\" }}",
         "options": {
-          "responseCode": "={{ $('HTTP - Stripe Checkout Hito').item.json.url ? 303 : 502 }}",
+          "responseCode": "={{ $json.id && $('HTTP - Stripe Checkout Hito').item.json.url ? 303 : 502 }}",
           "responseHeaders": {
             "entries": [
               {
                 "name": "Location",
-                "value": "={{ $('HTTP - Stripe Checkout Hito').item.json.url || '' }}"
+                "value": "={{ $json.id ? $('HTTP - Stripe Checkout Hito').item.json.url : '' }}"
               },
               {
                 "name": "Content-Type",
@@ -8225,7 +8227,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "INSERT INTO logs (workflow, lead_id, evento, nivel, detalle) SELECT 'cobro_stripe', $2, 'pago_hito_no_aplicado', 'ERROR', 'hito=' || $1 || ' pago_stripe=' || $3 || ' pagado=' || $4 || ' ' || $5 WHERE $3 <> $6;",
+        "query": "WITH pendiente AS (INSERT INTO pagos_no_aplicados (stripe_pago_id, hito_id, motivo) SELECT $3, $1::uuid, 'pago_hito_no_aplicado: ' || $4 || ' ' || $5 WHERE $3 <> $6 ON CONFLICT DO NOTHING RETURNING stripe_pago_id), registro AS (INSERT INTO logs (workflow, lead_id, evento, nivel, detalle) SELECT 'cobro_stripe', $2, 'pago_hito_no_aplicado', 'ERROR', 'hito=' || $1 || ' pago_stripe=' || $3 || ' pagado=' || $4 || ' ' || $5 FROM pendiente RETURNING id) SELECT true AS registrado;",
         "options": {
           "queryReplacement": "={{ [$('Code - Verificar Evento Stripe').item.json.hito_id, $json.lead_id || null, $('Code - Verificar Evento Stripe').item.json.stripe_pago_id, String($('Code - Verificar Evento Stripe').item.json.monto_pagado), $('Code - Verificar Evento Stripe').item.json.moneda_pagada, $json.pago_registrado || ''] }}"
         }
@@ -8306,8 +8308,10 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "SELECT * FROM hitos_por_mover() LIMIT 50;",
-        "options": {}
+        "query": "SELECT * FROM hitos_por_mover($1::boolean);",
+        "options": {
+          "queryReplacement": "={{ [Boolean($env.STRIPE_SECRET_KEY)] }}"
+        }
       },
       "id": "be59f15d-6d57-4128-88f4-28473185f35b",
       "name": "Postgres - Hitos por Mover",
@@ -8452,7 +8456,7 @@
     {
       "parameters": {
         "operation": "executeQuery",
-        "query": "WITH nuevos AS (\n  -- Se marcan en la misma consulta: cada evento se avisa una sola vez.\n  UPDATE hitos_eventos SET avisado_en = now()\n  WHERE avisado_en IS NULL\n  RETURNING *\n)\nSELECT ev.id AS evento_id, ev.tipo, ev.actor, ev.detalle,\n       h.orden, h.titulo, h.monto, h.monto_liberado, h.monto_reembolsado, h.comision, h.libera_en,\n       l.lead_id, l.nombre AS cliente_nombre, l.email AS cliente_email, l.servicio, l.estado AS lead_estado,\n       l.proyecto_token, l.calificacion_token,\n       e.id AS espacio_id, e.nombre AS espacio_nombre, e.email_contacto AS espacio_email,\n       -- El último evento con aviso del proyecto: si con él terminó, el correo\n       -- al cliente lleva el enlace para calificar (una sola vez).\n       ev.id = (SELECT max(x.id) FROM hitos_eventos x\n                WHERE x.lead_id = ev.lead_id AND x.tipo NOT IN ('fondeado','transferido')) AS ultimo\nFROM nuevos ev\nJOIN hitos h ON h.id = ev.hito_id\nJOIN leads l ON l.lead_id = h.lead_id\nJOIN espacios e ON e.id = h.espacio_id\nORDER BY ev.id;",
+        "query": "SELECT ev.id AS evento_id, ev.tipo, ev.actor, ev.detalle,\n       (ev.correo_avisado_en IS NULL AND (ev.tipo <> 'aprobado' OR (l.estado = 'CERRADO' AND ev.id = (SELECT max(x.id) FROM hitos_eventos x WHERE x.lead_id = ev.lead_id AND x.tipo NOT IN ('fondeado','transferido'))))) AS enviar_correo,\n       ev.aviso_avisado_en IS NULL AS enviar_aviso,\n       h.orden, h.titulo, h.monto, h.monto_liberado, h.monto_reembolsado, h.comision, h.libera_en,\n       l.lead_id, l.nombre AS cliente_nombre, l.email AS cliente_email, l.servicio, l.estado AS lead_estado,\n       l.proyecto_token, l.calificacion_token,\n       e.id AS espacio_id, e.nombre AS espacio_nombre, e.email_contacto AS espacio_email,\n       ev.id = (SELECT max(x.id) FROM hitos_eventos x\n                WHERE x.lead_id = ev.lead_id AND x.tipo NOT IN ('fondeado','transferido')) AS ultimo\nFROM hitos_eventos ev\nJOIN hitos h ON h.id = ev.hito_id\nJOIN leads l ON l.lead_id = h.lead_id\nJOIN espacios e ON e.id = h.espacio_id\nWHERE (ev.correo_avisado_en IS NULL AND (ev.tipo IN ('entregado','liberado_solo','resuelto','devuelto','anulado','reembolsado') OR (ev.tipo = 'aprobado' AND l.estado = 'CERRADO' AND ev.id = (SELECT max(x.id) FROM hitos_eventos x WHERE x.lead_id = ev.lead_id AND x.tipo NOT IN ('fondeado','transferido')))))\n   OR (ev.aviso_avisado_en IS NULL AND ev.tipo IN ('aprobado','liberado_solo','disputado','resuelto'))\nORDER BY ev.id LIMIT 100;",
         "options": {}
       },
       "id": "61be661b-0691-44ef-9000-c12660217ff0",
@@ -8473,7 +8477,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Qué se avisa de cada evento de la línea de tiempo y a quién:\n//  - al cliente, por correo con la marca del espacio (responde al desarrollador):\n//    la entrega, lo que se liberó solo, lo resuelto, lo devuelto o anulado;\n//  - al desarrollador, por el aviso del panel (que también va por correo y\n//    Telegram): lo aprobado o liberado, y las disputas (críticas: también le\n//    llegan a la plataforma).\n// El pago (fondeado) ya lo avisa el webhook de Stripe y las transferencias no\n// necesitan aviso propio. Si el evento cerró el proyecto, el correo al cliente\n// lleva el enlace para calificar.\nconst esc = (s) => String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('\"', '&quot;');\nconst SERVICIO = {\n  desarrollo_web: 'desarrollo web', ecommerce: 'tienda online', app_movil: 'app móvil',\n  automatizacion: 'automatización', marketing: 'marketing digital', seo: 'SEO',\n  diseno_ui: 'diseño UX/UI', consultoria: 'consultoría', soporte: 'soporte',\n};\nlet plataforma = 'FormularioLeads';\nlet frontend = 'http://localhost:3000';\ntry {\n  plataforma = ($env && $env.PLATAFORMA_NOMBRE) || plataforma;\n  frontend = String(($env && $env.FRONTEND_URL) || frontend).replace(/\\/+$/, '');\n} catch (e) {}\nconst usd = (n) => 'US$ ' + Number(n).toLocaleString('es-AR', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 });\nconst fecha = (iso) => new Date(iso).toLocaleDateString('es-AR', { day: 'numeric', month: 'long' });\nconst salida = [];\nfor (const { json: ev } of $input.all()) {\n  if (!ev.evento_id) continue;\n  const marca = ev.espacio_nombre || plataforma;\n  const hito = `el hito ${ev.orden} («${ev.titulo}»)`;\n  const delHito = `del hito ${ev.orden} («${ev.titulo}»)`;\n  const proyecto = `${frontend}/proyecto/${encodeURIComponent(ev.proyecto_token)}`;\n  const neto = Number(ev.monto_liberado) - Number(ev.comision);\n  const cierre = ev.ultimo && ev.lead_estado === 'CERRADO'\n    ? `<p>Con esto terminó el proyecto. ¿Nos contás cómo te fue con ${esc(marca)}? <a href=\"${esc(frontend)}/calificar/${esc(ev.calificacion_token)}\">Calificalo en un minuto</a>.</p>`\n    : '';\n  const correo = (asunto, parrafos) => salida.push({ json: {\n    salida: 'correo', email: ev.cliente_email, espacio_nombre: ev.espacio_nombre, espacio_email: ev.espacio_email,\n    asunto, cuerpo_html: `<p>Hola ${esc(String(ev.cliente_nombre || '').split(' ')[0])},</p>${parrafos}${cierre}<p><a href=\"${esc(proyecto)}\">Ver tu proyecto</a></p><p>Saludos,<br><b>${esc(marca)}</b></p>`,\n  } });\n  const aviso = (nivel, mensaje) => salida.push({ json: { salida: 'aviso', tipo: 'hito_' + ev.tipo, nivel, mensaje, lead_id: ev.lead_id } });\n\n  switch (ev.tipo) {\n    case 'entregado':\n      correo(`${marca} entregó ${hito}`,\n        `<p><b>${esc(marca)}</b> marcó como entregado ${esc(hito)}:</p><blockquote>${esc(ev.detalle)}</blockquote>` +\n        `<p>Revisalo y, si está bien, aprobalo para liberar el pago. Si algo no está bien, podés abrir una disputa. ` +\n        `Si no respondés, el pago se libera solo el <b>${esc(fecha(ev.libera_en))}</b>.</p>`);\n      break;\n    case 'aprobado':\n      aviso('atencion', `✅ <b>${esc(ev.cliente_nombre)}</b> aprobó ${esc(hito)}.\\nSe liberaron ${usd(ev.monto_liberado)}: te transferimos ${usd(neto)} (menos la comisión).`);\n      if (cierre) correo(`Tu proyecto con ${marca} terminó`, `<p>Aprobaste ${esc(hito)} y se liberó el pago.</p>`);\n      break;\n    case 'liberado_solo':\n      aviso('atencion', `✅ Se liberó ${esc(hito)}: pasó el plazo sin respuesta de ${esc(ev.cliente_nombre)}.\\nTe transferimos ${usd(neto)} (menos la comisión).`);\n      correo(`Se liberó el pago ${delHito}`, `<p>Pasaron los días para revisar la entrega ${esc(delHito)} sin que la aprobaras ni la disputaras, así que el pago se liberó a ${esc(marca)}.</p>`);\n      break;\n    case 'disputado':\n      aviso('critico', `⚠️ <b>Disputa</b> en ${esc(hito)} de ${esc(ev.cliente_nombre)}:\\n${esc(ev.detalle)}\\nLa plata queda retenida hasta que la plataforma resuelva. Podés devolverla desde el panel si le das la razón.`);\n      break;\n    case 'resuelto': {\n      const partes = [];\n      if (Number(ev.monto_liberado) > 0) partes.push(`${usd(ev.monto_liberado)} para ${esc(marca)}`);\n      if (Number(ev.monto_reembolsado) > 0) partes.push(`${usd(ev.monto_reembolsado)} de vuelta para vos`);\n      aviso('atencion', `⚖️ La plataforma resolvió la disputa ${esc(delHito)}: ${partes.join(' y ')}.\\n${esc(ev.detalle)}`);\n      correo(`Resolvimos la disputa ${delHito}`, `<p>Revisamos la disputa ${esc(delHito)} y la resolvimos así: ${partes.join(' y ')}.</p><blockquote>${esc(ev.detalle)}</blockquote>`);\n      break;\n    }\n    case 'devuelto':\n      correo(`${marca} te devuelve el pago ${delHito}`, `<p>${esc(marca)} decidió devolverte el pago ${esc(delHito)}: ${usd(ev.monto_reembolsado)}.${ev.detalle ? ` Nos dijo: «${esc(ev.detalle)}».` : ''} El reembolso puede tardar unos días en verse en tu tarjeta.</p>`);\n      break;\n    case 'anulado':\n      correo(`${marca} sacó ${hito} del proyecto`, `<p>${esc(marca)} anuló ${esc(hito)}, que todavía no habías pagado: ya no hace falta pagarlo.</p>`);\n      break;\n    case 'reembolsado':\n      correo(`Te reembolsamos ${usd(ev.monto_reembolsado)}`, `<p>Ya procesamos el reembolso ${esc(delHito)}: ${usd(ev.monto_reembolsado)}.</p>`);\n      break;\n  }\n}\nreturn salida.filter((s) => s.json.salida !== 'correo' || s.json.email);"
+        "jsCode": "// Qué se avisa de cada evento de la línea de tiempo y a quién:\n//  - al cliente, por correo con la marca del espacio (responde al desarrollador):\n//    la entrega, lo que se liberó solo, lo resuelto, lo devuelto o anulado;\n//  - al desarrollador, por el aviso durable del panel (el subflujo intenta además correo y\n//    Telegram, pero esos canales opcionales no forman parte del ACK): lo aprobado o liberado, y las disputas (críticas: también le\n//    llegan a la plataforma).\n// El pago (fondeado) ya lo avisa el webhook de Stripe y las transferencias no\n// necesitan aviso propio. Si el evento cerró el proyecto, el correo al cliente\n// lleva el enlace para calificar.\nconst esc = (s) => String(s ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('\"', '&quot;');\nconst SERVICIO = {\n  desarrollo_web: 'desarrollo web', ecommerce: 'tienda online', app_movil: 'app móvil',\n  automatizacion: 'automatización', marketing: 'marketing digital', seo: 'SEO',\n  diseno_ui: 'diseño UX/UI', consultoria: 'consultoría', soporte: 'soporte',\n};\nlet plataforma = 'FormularioLeads';\nlet frontend = 'http://localhost:3000';\ntry {\n  plataforma = ($env && $env.PLATAFORMA_NOMBRE) || plataforma;\n  frontend = String(($env && $env.FRONTEND_URL) || frontend).replace(/\\/+$/, '');\n} catch (e) {}\nconst usd = (n) => 'US$ ' + Number(n).toLocaleString('es-AR', { minimumFractionDigits: Number(n) % 1 ? 2 : 0, maximumFractionDigits: 2 });\nconst fecha = (iso) => new Date(iso).toLocaleDateString('es-AR', { day: 'numeric', month: 'long' });\nconst salida = [];\nfor (const [i, { json: ev }] of $input.all().entries()) {\n  if (!ev.evento_id) continue;\n  const marca = ev.espacio_nombre || plataforma;\n  const hito = `el hito ${ev.orden} («${ev.titulo}»)`;\n  const delHito = `del hito ${ev.orden} («${ev.titulo}»)`;\n  const proyecto = `${frontend}/proyecto/${encodeURIComponent(ev.proyecto_token)}`;\n  const neto = Number(ev.monto_liberado) - Number(ev.comision);\n  const cierre = ev.ultimo && ev.lead_estado === 'CERRADO'\n    ? `<p>Con esto terminó el proyecto. ¿Nos contás cómo te fue con ${esc(marca)}? <a href=\"${esc(frontend)}/calificar/${esc(ev.calificacion_token)}\">Calificalo en un minuto</a>.</p>`\n    : '';\n  const correo = (asunto, parrafos) => ev.enviar_correo !== false && salida.push({ pairedItem: { item: i }, json: { evento_id: ev.evento_id,\n    salida: 'correo', email: ev.cliente_email, espacio_nombre: ev.espacio_nombre, espacio_email: ev.espacio_email,\n    asunto, cuerpo_html: `<p>Hola ${esc(String(ev.cliente_nombre || '').split(' ')[0])},</p>${parrafos}${cierre}<p><a href=\"${esc(proyecto)}\">Ver tu proyecto</a></p><p>Saludos,<br><b>${esc(marca)}</b></p>`,\n  } });\n  const aviso = (nivel, mensaje) => ev.enviar_aviso !== false && salida.push({ pairedItem: { item: i }, json: { evento_id: ev.evento_id, salida: 'aviso', tipo: 'hito_' + ev.tipo, nivel, mensaje, lead_id: ev.lead_id } });\n\n  switch (ev.tipo) {\n    case 'entregado':\n      correo(`${marca} entregó ${hito}`,\n        `<p><b>${esc(marca)}</b> marcó como entregado ${esc(hito)}:</p><blockquote>${esc(ev.detalle)}</blockquote>` +\n        `<p>Revisalo y, si está bien, aprobalo para liberar el pago. Si algo no está bien, podés abrir una disputa. ` +\n        `Si no respondés, el pago se libera solo el <b>${esc(fecha(ev.libera_en))}</b>.</p>`);\n      break;\n    case 'aprobado':\n      aviso('atencion', `✅ <b>${esc(ev.cliente_nombre)}</b> aprobó ${esc(hito)}.\\nSe liberaron ${usd(ev.monto_liberado)}: te transferimos ${usd(neto)} (menos la comisión).`);\n      if (cierre) correo(`Tu proyecto con ${marca} terminó`, `<p>Aprobaste ${esc(hito)} y se liberó el pago.</p>`);\n      break;\n    case 'liberado_solo':\n      aviso('atencion', `✅ Se liberó ${esc(hito)}: pasó el plazo sin respuesta de ${esc(ev.cliente_nombre)}.\\nTe transferimos ${usd(neto)} (menos la comisión).`);\n      correo(`Se liberó el pago ${delHito}`, `<p>Pasaron los días para revisar la entrega ${esc(delHito)} sin que la aprobaras ni la disputaras, así que el pago se liberó a ${esc(marca)}.</p>`);\n      break;\n    case 'disputado':\n      aviso('critico', `⚠️ <b>Disputa</b> en ${esc(hito)} de ${esc(ev.cliente_nombre)}:\\n${esc(ev.detalle)}\\nLa plata queda retenida hasta que la plataforma resuelva. Podés devolverla desde el panel si le das la razón.`);\n      break;\n    case 'resuelto': {\n      const partes = [];\n      if (Number(ev.monto_liberado) > 0) partes.push(`${usd(ev.monto_liberado)} para ${esc(marca)}`);\n      if (Number(ev.monto_reembolsado) > 0) partes.push(`${usd(ev.monto_reembolsado)} de vuelta para vos`);\n      aviso('atencion', `⚖️ La plataforma resolvió la disputa ${esc(delHito)}: ${partes.join(' y ')}.\\n${esc(ev.detalle)}`);\n      correo(`Resolvimos la disputa ${delHito}`, `<p>Revisamos la disputa ${esc(delHito)} y la resolvimos así: ${partes.join(' y ')}.</p><blockquote>${esc(ev.detalle)}</blockquote>`);\n      break;\n    }\n    case 'devuelto':\n      correo(`${marca} te devuelve el pago ${delHito}`, `<p>${esc(marca)} decidió devolverte el pago ${esc(delHito)}: ${usd(ev.monto_reembolsado)}.${ev.detalle ? ` Nos dijo: «${esc(ev.detalle)}».` : ''} El reembolso puede tardar unos días en verse en tu tarjeta.</p>`);\n      break;\n    case 'anulado':\n      correo(`${marca} sacó ${hito} del proyecto`, `<p>${esc(marca)} anuló ${esc(hito)}, que todavía no habías pagado: ya no hace falta pagarlo.</p>`);\n      break;\n    case 'reembolsado':\n      correo(`Te reembolsamos ${usd(ev.monto_reembolsado)}`, `<p>Ya procesamos el reembolso ${esc(delHito)}: ${usd(ev.monto_reembolsado)}.</p>`);\n      break;\n  }\n}\nreturn salida.filter((s) => s.json.salida !== 'correo' || s.json.email);"
       },
       "id": "5a8d8e18-7ae0-4dc9-ac4f-8b2e8e3c1394",
       "name": "Code - Avisos de Hitos",
@@ -8621,7 +8625,7 @@
           ]
         },
         "options": {
-          "waitForSubWorkflow": false
+          "waitForSubWorkflow": true
         }
       },
       "id": "5849e516-adac-413d-8e2a-3b782d6678ca",
@@ -8631,8 +8635,7 @@
       "position": [
         1950,
         24910
-      ],
-      "onError": "continueRegularOutput"
+      ]
     },
     {
       "parameters": {
@@ -8713,7 +8716,7 @@
           ]
         },
         "options": {
-          "waitForSubWorkflow": false
+          "waitForSubWorkflow": true
         }
       },
       "id": "062f9c3c-fecf-463e-87c6-e07eec90b5c8",
@@ -8723,8 +8726,7 @@
       "position": [
         1950,
         25070
-      ],
-      "onError": "continueRegularOutput"
+      ]
     },
     {
       "parameters": {
@@ -8756,6 +8758,496 @@
         1650,
         24950
       ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.aplico }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f335bba6-c5e0-472b-9bef-7216321d7e65",
+      "name": "IF - Cierre Aplicó?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        950,
+        10450
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"status\":\"ok\",\"mensaje\":\"Proyecto cerrado.\"}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "91cd289a-3175-4192-8f57-7f0018a57949",
+      "name": "Respond - Cierre Aplicado",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        10350
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"status\":\"invalido\",\"mensaje\":\"El proyecto no está listo para cerrar: revisá estado del trabajo, factura e hitos.\"}",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "6ab420d1-a286-4f11-a64b-6f52d2af69a1",
+      "name": "Respond - Cierre No Aplica",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1250,
+        10550
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE hitos_eventos SET correo_avisado_en = now() WHERE id = $1::bigint AND correo_avisado_en IS NULL RETURNING id;",
+        "options": {
+          "queryReplacement": "={{ [$('Code - Avisos de Hitos').item.json.evento_id] }}"
+        }
+      },
+      "id": "d8feb882-a2ee-4ae8-a0c0-213d92d92274",
+      "name": "Postgres - Confirmar Correo Hito",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3100,
+        24700
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE hitos_eventos SET aviso_avisado_en = now() WHERE id = $1::bigint AND aviso_avisado_en IS NULL RETURNING id;",
+        "options": {
+          "queryReplacement": "={{ [$('Code - Avisos de Hitos').item.json.evento_id] }}"
+        }
+      },
+      "id": "cf85e88b-d1fa-405f-9bde-02facbc68a3b",
+      "name": "Postgres - Confirmar Aviso Hito",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        3100,
+        24900
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE mensajes SET avisado_en = now() WHERE id IN (SELECT value::uuid FROM jsonb_array_elements_text($1::jsonb)) AND avisado_en IS NULL RETURNING id;",
+        "options": {
+          "queryReplacement": "={{ [JSON.stringify($('Code - Emails Mensajes').item.json.mensaje_ids || [])] }}"
+        }
+      },
+      "id": "e16af2cc-3074-4c65-ae83-ef67459fc002",
+      "name": "Postgres - Confirmar Aviso Mensajes",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        2800,
+        23000
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.repetido }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "efa5dab8-aa66-4e90-a636-9bf71f6e5b6f",
+      "name": "IF - Pago Stripe Repetido?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4260,
+        11960
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH pendientes AS (\n  SELECT id, 'transferir'::text AS movimiento FROM hitos\n  WHERE stripe_transfer_intentado_en < now() - interval '15 minutes' AND stripe_transfer_id IS NULL\n  UNION ALL\n  SELECT id, 'reembolsar'::text FROM hitos\n  WHERE stripe_reembolso_intentado_en < now() - interval '15 minutes' AND stripe_reembolso_id IS NULL\n), ins AS (\n  INSERT INTO hitos_movimientos_revision (hito_id, movimiento)\n  SELECT id, movimiento FROM pendientes ON CONFLICT DO NOTHING\n  RETURNING hito_id, movimiento\n)\nSELECT i.hito_id, i.movimiento, h.lead_id FROM ins i JOIN hitos h ON h.id = i.hito_id;",
+        "options": {}
+      },
+      "id": "ad9f7bfe-59d3-48d7-9e85-0c55ce406230",
+      "name": "Postgres - Revisar Movimientos Hito",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        7430,
+        12800
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "error_pago",
+            "nivel": "critico",
+            "mensaje": "=⚠️ Movimiento de hito sin ID de Stripe: {{ $json.movimiento }} — hito {{ $json.hito_id }}. Conciliar en Stripe antes de reintentar.",
+            "lead_id": "={{ $json.lead_id || '' }}",
+            "factura_id": "",
+            "espacio_id": ""
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": false
+        }
+      },
+      "id": "a88737d7-3b74-4554-83bf-efa4ba71ef26",
+      "name": "Aviso - Movimiento Hito para Revision",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        7650,
+        12800
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "WITH candidatos AS (\n  SELECT 'factura'::text AS tipo, f.factura_id AS referencia_id,\n    COALESCE(f.stripe_checkout_id, f.stripe_checkout_intento_id::text, 'legacy-' || f.factura_id) AS identidad,\n    f.stripe_checkout_id, f.lead_id\n  FROM facturas f WHERE f.stripe_checkout_reservado_en < now() - interval '15 minutes'\n    AND (f.stripe_checkout_id IS NULL OR f.stripe_checkout_expira_en IS NULL OR f.stripe_checkout_expira_en <= now() + interval '1 minute')\n  UNION ALL\n  SELECT 'hito', h.id::text,\n    COALESCE(h.stripe_checkout_id, h.stripe_checkout_intento_id::text, 'legacy-' || h.id::text),\n    h.stripe_checkout_id, h.lead_id\n  FROM hitos h WHERE h.stripe_checkout_reservado_en < now() - interval '15 minutes'\n    AND (h.stripe_checkout_id IS NULL OR h.stripe_checkout_expira_en IS NULL OR h.stripe_checkout_expira_en <= now() + interval '1 minute')\n), ins AS (\n  INSERT INTO checkout_revisiones (tipo, referencia_id, identidad, stripe_checkout_id, motivo)\n  SELECT tipo, referencia_id, identidad, stripe_checkout_id, 'barrido_reserva_incierta' FROM candidatos\n  ON CONFLICT DO NOTHING RETURNING tipo, referencia_id\n)\nSELECT true AS barrido;",
+        "options": {}
+      },
+      "id": "f6a91e87-603d-4f9f-b937-e3f114d97636",
+      "name": "Postgres - Revisar Checkout Pendientes",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        7430,
+        13100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $env.AVISOS_WORKFLOW_ID }}"
+        },
+        "mode": "each",
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "tipo": "error_pago",
+            "nivel": "critico",
+            "mensaje": "=⚠️ Checkout sin resultado conciliado: {{ $json.tipo }} {{ $json.referencia_id }}. Verificar en Stripe antes de liberar la reserva.",
+            "lead_id": "={{ $json.lead_id || '' }}",
+            "factura_id": "",
+            "espacio_id": ""
+          },
+          "matchingColumns": [
+            "tipo",
+            "nivel",
+            "mensaje",
+            "lead_id",
+            "factura_id",
+            "espacio_id"
+          ],
+          "schema": [
+            {
+              "id": "tipo",
+              "displayName": "tipo",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "nivel",
+              "displayName": "nivel",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "mensaje",
+              "displayName": "mensaje",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "lead_id",
+              "displayName": "lead_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "factura_id",
+              "displayName": "factura_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "espacio_id",
+              "displayName": "espacio_id",
+              "type": "string",
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {
+          "waitForSubWorkflow": true
+        }
+      },
+      "id": "c29ceb6c-874f-48d2-af59-08981765b51f",
+      "name": "Aviso - Checkout para Revision",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [
+        7650,
+        13100
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1cdac0d5-28eb-46b6-89f5-d0fcda226849",
+              "leftValue": "={{ $json.aplico }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e63451c3-1b7f-4c11-a29a-babd05d9206a",
+      "name": "IF - Estado Propuesta Confirmado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2450,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{ \"status\": \"requiere_revision\", \"mensaje\": \"El correo pudo haberse enviado, pero la propuesta cambió. Revisar el envío antes de reintentar.\" }",
+        "options": {
+          "responseCode": 409
+        }
+      },
+      "id": "3c72d4cf-2fc4-4f33-893a-43631e709e7c",
+      "name": "Respond - Propuesta Envio en Revision",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2670,
+        220
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT r.tipo, r.referencia_id, r.identidad,\n       COALESCE(f.lead_id, h.lead_id) AS lead_id\nFROM checkout_revisiones r\nLEFT JOIN facturas f ON r.tipo = 'factura' AND f.factura_id = r.referencia_id\nLEFT JOIN hitos h ON r.tipo = 'hito' AND h.id::text = r.referencia_id\nWHERE r.resuelto_en IS NULL AND r.aviso_avisado_en IS NULL\nORDER BY r.detectado_en, r.tipo, r.referencia_id\nLIMIT 50;",
+        "options": {}
+      },
+      "id": "c2cac17b-912a-431d-89c6-313de0815b33",
+      "name": "Postgres - Avisos Checkout Pendientes",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        7530,
+        13100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE checkout_revisiones SET aviso_avisado_en = now() WHERE tipo = $1 AND referencia_id = $2 AND identidad = $3 AND aviso_avisado_en IS NULL AND resuelto_en IS NULL RETURNING tipo;",
+        "options": {
+          "queryReplacement": "={{ [$('Postgres - Avisos Checkout Pendientes').item.json.tipo, $('Postgres - Avisos Checkout Pendientes').item.json.referencia_id, $('Postgres - Avisos Checkout Pendientes').item.json.identidad] }}"
+        }
+      },
+      "id": "e7708f50-0f91-4bdc-b9e0-f9bfb2101477",
+      "name": "Postgres - Confirmar Aviso Checkout",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        7870,
+        13100
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "vgFRrzGWcRMcT0YX",
+          "name": "Postgres account"
+        }
+      }
     }
   ],
   "connections": {
@@ -8919,7 +9411,7 @@
       "main": [
         [
           {
-            "node": "Telegram - Propuesta Enviada",
+            "node": "IF - Estado Propuesta Confirmado?",
             "type": "main",
             "index": 0
           }
@@ -9377,7 +9869,7 @@
       "main": [
         [
           {
-            "node": "Postgres - Factura Cobrada",
+            "node": "IF - Cierre Aplicó?",
             "type": "main",
             "index": 0
           }
@@ -9954,11 +10446,6 @@
       "main": [
         [
           {
-            "node": "Respond - Propuesta Enviada",
-            "type": "main",
-            "index": 0
-          },
-          {
             "node": "Code - Generar Propuesta",
             "type": "main",
             "index": 0
@@ -10439,12 +10926,7 @@
       "main": [
         [
           {
-            "node": "Postgres - Log Pago No Aplicado",
-            "type": "main",
-            "index": 0
-          },
-          {
-            "node": "Telegram - Pago No Aplicado",
+            "node": "IF - Pago Stripe Repetido?",
             "type": "main",
             "index": 0
           }
@@ -10612,11 +11094,6 @@
           }
         ],
         [
-          {
-            "node": "Respond - Stripe Pago No Aplicado",
-            "type": "main",
-            "index": 0
-          },
           {
             "node": "Postgres - Buscar Pago No Aplicado",
             "type": "main",
@@ -11254,11 +11731,6 @@
       "main": [
         [
           {
-            "node": "Respond - Stripe OK (Hito)",
-            "type": "main",
-            "index": 0
-          },
-          {
             "node": "IF - Hito Fondeado?",
             "type": "main",
             "index": 0
@@ -11269,6 +11741,11 @@
     "IF - Hito Fondeado?": {
       "main": [
         [
+          {
+            "node": "Respond - Stripe OK (Hito)",
+            "type": "main",
+            "index": 0
+          },
           {
             "node": "Aviso - Hito Fondeado",
             "type": "main",
@@ -11289,6 +11766,16 @@
         [
           {
             "node": "Postgres - Liberar Hitos Vencidos",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Postgres - Revisar Movimientos Hito",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Postgres - Revisar Checkout Pendientes",
             "type": "main",
             "index": 0
           }
@@ -11418,6 +11905,185 @@
         [
           {
             "node": "Aviso - Hitos al Desarrollador",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Cierre Aplicó?": {
+      "main": [
+        [
+          {
+            "node": "Respond - Cierre Aplicado",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram - Proyecto Cerrado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Cierre No Aplica",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Avisos de Hitos": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Confirmar Correo Hito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aviso - Hitos al Desarrollador": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Confirmar Aviso Hito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aviso - Disputa de Hito": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Confirmar Aviso Hito",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gmail - Mensajes sin Leer": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Confirmar Aviso Mensajes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Pago Stripe Repetido?": {
+      "main": [
+        [
+          {
+            "node": "Respond - Stripe Pago No Aplicado",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Postgres - Log Pago No Aplicado",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Telegram - Pago No Aplicado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Log Pago No Aplicado": {
+      "main": [
+        [
+          {
+            "node": "Respond - Stripe Pago No Aplicado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Log Pago Hito No Aplicado": {
+      "main": [
+        [
+          {
+            "node": "Respond - Stripe OK (Hito)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Revisar Movimientos Hito": {
+      "main": [
+        [
+          {
+            "node": "Aviso - Movimiento Hito para Revision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Revisar Checkout Pendientes": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Avisos Checkout Pendientes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Estado Propuesta Confirmado?": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Propuesta Enviada",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Respond - Propuesta Enviada",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond - Propuesta Envio en Revision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres - Avisos Checkout Pendientes": {
+      "main": [
+        [
+          {
+            "node": "Aviso - Checkout para Revision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aviso - Checkout para Revision": {
+      "main": [
+        [
+          {
+            "node": "Postgres - Confirmar Aviso Checkout",
             "type": "main",
             "index": 0
           }

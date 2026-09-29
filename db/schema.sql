@@ -8,11 +8,11 @@
 --
 -- Modelo de seguridad:
 --   • La ESCRITURA la realiza n8n con el rol `n8n_writer`: sin BYPASSRLS,
---     con políticas propias de SELECT/INSERT/UPDATE sobre leads, facturas,
---     seguimientos y logs (nunca profiles) y sin privilegio de DELETE,
---     porque ningún nodo del flujo borra filas. Cierra S4 de la Tabla 11
---     de la tesis: si esta credencial se filtra, el radio de daño queda
---     acotado a esas cuatro tablas, no a la base entera. `service_role`
+--     con políticas propias sobre las tablas que usa el workflow, incluido
+--     el registro financiero y las cuotas de tasa. No tiene BYPASSRLS ni
+--     acceso general a profiles. El radio de daño debe evaluarse contra
+--     los GRANT y las políticas vigentes más abajo, no contra la antigua
+--     lista de cuatro tablas de la tesis. `service_role`
 --     sigue existiendo (GRANT más abajo) para uso administrativo puntual,
 --     pero deja de ser la credencial que usa la conexión de n8n.
 --   • La plataforma es compartida: cada desarrollador tiene un ESPACIO
@@ -307,6 +307,15 @@ CREATE TABLE IF NOT EXISTS rate_limit_log (
   ruta        TEXT NOT NULL,
   creado_en   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Contador atómico por ventana fija: ON CONFLICT serializa llamadas paralelas
+-- de la misma clave. rate_limit_log sigue como auditoría, no como contador.
+CREATE TABLE IF NOT EXISTS rate_limit_cuotas (
+  ip_o_clave TEXT NOT NULL,
+  ruta TEXT NOT NULL,
+  ventana_inicio TIMESTAMPTZ NOT NULL,
+  intentos INT NOT NULL DEFAULT 0 CHECK (intentos >= 0),
+  PRIMARY KEY (ip_o_clave, ruta, ventana_inicio)
+);
 
 -- Limpieza periódica (pendiente, documentada y no implementada): esta tabla
 -- crece sin techo, igual que `logs`. No hay un cron dedicado a purgarla; se
@@ -399,6 +408,24 @@ ALTER TABLE facturas ADD CONSTRAINT chk_facturas_metodo_cobro
 -- la entrada del scoring y el registro de lo que el cliente declaró; el importe
 -- que se factura es `precio_propuesto`.
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS precio_propuesto  NUMERIC(12,2);
+-- Una reserva con UUID bloquea Checkout concurrentes. No vence por reloj:
+-- aunque la URL de Stripe haya expirado, el intento sólo se libera tras
+-- verificar externamente su estado y resolver checkout_revisiones. El UUID
+-- es el CAS que impide guardar una respuesta vieja sobre otra operación.
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS stripe_checkout_reservado_en TIMESTAMPTZ;
+-- La marca se fija atómicamente antes de Gmail. Si el flujo falla, un operador
+-- verifica la salida externa: si NO salió, puede limpiar esta marca para
+-- reintentar; si salió, completa PROPUESTA_ENVIADA sin mandar otro correo.
+-- Nunca se limpia automáticamente por antigüedad.
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS propuesta_envio_iniciado_en TIMESTAMPTZ;
+-- Identidad del reclamo: a diferencia de now(), sobrevive intacta al viaje
+-- PostgreSQL → JSON/Date de n8n → PostgreSQL (sin perder microsegundos).
+-- Reclamos legacy con fecha pero sin UUID quedan bloqueados para conciliación
+-- manual; no se les inventa identidad ni se reenvía el correo automáticamente.
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS propuesta_envio_intento_id UUID;
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS stripe_checkout_intento_id UUID;
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS stripe_checkout_expira_en TIMESTAMPTZ;
+ALTER TABLE facturas ADD COLUMN IF NOT EXISTS stripe_checkout_url TEXT;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS plazo_propuesto   TEXT;
 ALTER TABLE leads ADD COLUMN IF NOT EXISTS alcance_propuesto TEXT;
 DO $$ BEGIN
@@ -1040,6 +1067,7 @@ ALTER TABLE seguimientos    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE logs            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profiles        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE rate_limit_log  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rate_limit_cuotas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE admin_emails    ENABLE ROW LEVEL SECURITY;
 ALTER TABLE tickets         ENABLE ROW LEVEL SECURITY;
 ALTER TABLE espacios        ENABLE ROW LEVEL SECURITY;
@@ -1056,6 +1084,7 @@ ALTER TABLE seguimientos    FORCE ROW LEVEL SECURITY;
 ALTER TABLE logs            FORCE ROW LEVEL SECURITY;
 ALTER TABLE profiles        FORCE ROW LEVEL SECURITY;
 ALTER TABLE rate_limit_log  FORCE ROW LEVEL SECURITY;
+ALTER TABLE rate_limit_cuotas FORCE ROW LEVEL SECURITY;
 ALTER TABLE admin_emails    FORCE ROW LEVEL SECURITY;
 ALTER TABLE tickets         FORCE ROW LEVEL SECURITY;
 ALTER TABLE espacios        FORCE ROW LEVEL SECURITY;
@@ -1169,7 +1198,7 @@ GRANT SELECT ON metrics_mensuales, facturas_pendientes TO authenticated;
 --    autoalojado del docker-compose) NO, y BYPASSRLS solo evade la RLS, no
 --    otorga el privilegio de tabla. Se conceden explícitamente para que
 --    funcione en ambos entornos.
-GRANT SELECT, INSERT, UPDATE, DELETE ON leads, facturas, seguimientos, logs, profiles, rate_limit_log, admin_emails, tickets, espacios, avisos TO service_role;
+GRANT SELECT, INSERT, UPDATE, DELETE ON leads, facturas, seguimientos, logs, profiles, rate_limit_log, rate_limit_cuotas, admin_emails, tickets, espacios, avisos TO service_role;
 GRANT SELECT ON tickets_tablero TO service_role;
 GRANT SELECT ON metrics_mensuales, facturas_pendientes TO service_role;
 
@@ -1196,6 +1225,13 @@ GRANT SELECT, INSERT, UPDATE ON leads, facturas, seguimientos, logs TO n8n_write
 -- (registrar el intento y contar los recientes): nunca se actualiza una fila
 -- ya escrita, así que no lleva UPDATE.
 GRANT SELECT, INSERT ON rate_limit_log TO n8n_writer;
+GRANT SELECT, INSERT, UPDATE ON rate_limit_cuotas TO n8n_writer;
+DROP POLICY IF EXISTS rate_limit_cuotas_select_n8n_writer ON rate_limit_cuotas;
+CREATE POLICY rate_limit_cuotas_select_n8n_writer ON rate_limit_cuotas FOR SELECT TO n8n_writer USING (true);
+DROP POLICY IF EXISTS rate_limit_cuotas_insert_n8n_writer ON rate_limit_cuotas;
+CREATE POLICY rate_limit_cuotas_insert_n8n_writer ON rate_limit_cuotas FOR INSERT TO n8n_writer WITH CHECK (true);
+DROP POLICY IF EXISTS rate_limit_cuotas_update_n8n_writer ON rate_limit_cuotas;
+CREATE POLICY rate_limit_cuotas_update_n8n_writer ON rate_limit_cuotas FOR UPDATE TO n8n_writer USING (true) WITH CHECK (true);
 GRANT SELECT ON metrics_mensuales, facturas_pendientes TO n8n_writer;
 REVOKE ALL ON profiles FROM n8n_writer;
 REVOKE ALL ON admin_emails FROM n8n_writer;
@@ -1448,6 +1484,9 @@ BEGIN
   NEW.estado := 'ABIERTO';
   NEW.postulaciones := 0;
   NEW.resumen := btrim(NEW.resumen);
+  IF ocultar_contacto(NEW.resumen) <> NEW.resumen THEN
+    RAISE EXCEPTION 'El resumen público no puede incluir datos de contacto';
+  END IF;
   RETURN NEW;
 END;
 $$;
@@ -1515,6 +1554,10 @@ BEGIN
   IF b.origen_espacio_id = mi_espacio THEN
     RAISE EXCEPTION 'No podés postularte a un pedido que rechazaste';
   END IF;
+  IF p_precio IS NULL OR p_precio < 0.01 OR p_precio > 9999999999.99
+     OR p_precio <> round(p_precio, 2) THEN
+    RAISE EXCEPTION 'El precio estimado debe tener hasta dos decimales y ser de al menos US$ 0,01';
+  END IF;
 
   INSERT INTO postulaciones (pedido_id, espacio_id, mensaje, precio_estimado, plazo)
   VALUES (p_pedido, mi_espacio, btrim(p_mensaje), p_precio, btrim(p_plazo));
@@ -1567,6 +1610,10 @@ BEGIN
   END IF;
   IF length(btrim(coalesce(p_nombre, ''))) NOT BETWEEN 2 AND 100 THEN
     RAISE EXCEPTION 'El nombre tiene que tener entre 2 y 100 caracteres';
+  END IF;
+  IF ocultar_contacto(coalesce(p_titulo, '')) <> coalesce(p_titulo, '')
+     OR ocultar_contacto(coalesce(p_descripcion, '')) <> coalesce(p_descripcion, '') THEN
+    RAISE EXCEPTION 'El título y la descripción públicos no pueden incluir datos de contacto';
   END IF;
 
   -- Etiquetas: sin vacías ni repetidas (sin distinguir mayúsculas), en orden.
@@ -2127,6 +2174,99 @@ CREATE TABLE IF NOT EXISTS hitos (
   CHECK (estado NOT IN ('LIBERADO','REEMBOLSADO') OR monto_liberado + monto_reembolsado = monto)
 );
 CREATE INDEX IF NOT EXISTS idx_hitos_lead ON hitos (lead_id, orden);
+ALTER TABLE hitos ADD COLUMN IF NOT EXISTS stripe_checkout_reservado_en TIMESTAMPTZ;
+ALTER TABLE hitos ADD COLUMN IF NOT EXISTS stripe_checkout_intento_id UUID;
+ALTER TABLE hitos ADD COLUMN IF NOT EXISTS stripe_checkout_expira_en TIMESTAMPTZ;
+ALTER TABLE hitos ADD COLUMN IF NOT EXISTS stripe_checkout_url TEXT;
+-- Un intento de movimiento externo se reclama ANTES de llamar a Stripe.
+-- Si falla Stripe o el registro posterior, queda para revisión manual y nunca
+-- se reenvía sólo porque venció la retención de Idempotency-Key de Stripe.
+ALTER TABLE hitos ADD COLUMN IF NOT EXISTS stripe_transfer_intentado_en TIMESTAMPTZ;
+ALTER TABLE hitos ADD COLUMN IF NOT EXISTS stripe_reembolso_intentado_en TIMESTAMPTZ;
+-- Pagos que Stripe confirmó pero no se pudieron aplicar. No se da por hecho
+-- que un reembolso automático sea seguro: esta cola durable exige conciliación
+-- por un operador y conserva un único registro por PaymentIntent.
+CREATE TABLE IF NOT EXISTS pagos_no_aplicados (
+  stripe_pago_id TEXT PRIMARY KEY,
+  factura_id TEXT,
+  hito_id UUID,
+  motivo TEXT NOT NULL,
+  estado TEXT NOT NULL DEFAULT 'pendiente' CHECK (estado IN ('pendiente','resuelto')),
+  detectado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resuelto_en TIMESTAMPTZ,
+  CHECK (factura_id IS NOT NULL OR hito_id IS NOT NULL)
+);
+-- Cola de conciliación: nunca se despeja una sesión externa sólo porque venza
+-- la reserva local. Recuperación: bloquear la factura/hito con SELECT FOR
+-- UPDATE; consultar Stripe por stripe_checkout_id o por checkout_intento_id
+-- en metadata; si existe un pago, conciliarlo primero. Sólo tras comprobar
+-- que la sesión expiró sin pago (o que jamás se creó), limpiar los cuatro
+-- campos checkout_* de esa fila y marcar resuelto_en EN LA MISMA TRANSACCIÓN.
+-- Si Stripe no puede confirmar el resultado, mantener el bloqueo manual.
+-- aviso_avisado_en confirma sólo la inserción durable en avisos (panel). El
+-- cron relee toda fila pendiente sin ACK, incluso si la insertó otro flujo;
+-- un fallo tras insertar avisos y antes del ACK puede duplicar el aviso.
+CREATE TABLE IF NOT EXISTS checkout_revisiones (
+  tipo TEXT NOT NULL CHECK (tipo IN ('factura','hito')),
+  referencia_id TEXT NOT NULL,
+  identidad TEXT NOT NULL,
+  stripe_checkout_id TEXT,
+  motivo TEXT NOT NULL,
+  detectado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resuelto_en TIMESTAMPTZ,
+  aviso_avisado_en TIMESTAMPTZ,
+  PRIMARY KEY (tipo, referencia_id, identidad)
+);
+ALTER TABLE checkout_revisiones ADD COLUMN IF NOT EXISTS aviso_avisado_en TIMESTAMPTZ;
+-- Intentos externos sin identificador de Stripe: pueden haber tenido éxito;
+-- nunca se reemiten a ciegas, aun vencida la ventana de idempotencia.
+CREATE TABLE IF NOT EXISTS hitos_movimientos_revision (
+  hito_id UUID NOT NULL REFERENCES hitos(id) ON DELETE RESTRICT,
+  movimiento TEXT NOT NULL CHECK (movimiento IN ('transferir','reembolsar')),
+  detectado_en TIMESTAMPTZ NOT NULL DEFAULT now(),
+  resuelto_en TIMESTAMPTZ,
+  PRIMARY KEY (hito_id, movimiento)
+);
+ALTER TABLE hitos_movimientos_revision ENABLE ROW LEVEL SECURITY;
+ALTER TABLE hitos_movimientos_revision FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON hitos_movimientos_revision FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE ON hitos_movimientos_revision TO service_role;
+GRANT SELECT, INSERT ON hitos_movimientos_revision TO n8n_writer;
+DROP POLICY IF EXISTS hitos_movimientos_revision_select_n8n_writer ON hitos_movimientos_revision;
+CREATE POLICY hitos_movimientos_revision_select_n8n_writer ON hitos_movimientos_revision FOR SELECT TO n8n_writer USING (true);
+DROP POLICY IF EXISTS hitos_movimientos_revision_insert_n8n_writer ON hitos_movimientos_revision;
+CREATE POLICY hitos_movimientos_revision_insert_n8n_writer ON hitos_movimientos_revision FOR INSERT TO n8n_writer WITH CHECK (true);
+ALTER TABLE checkout_revisiones ENABLE ROW LEVEL SECURITY;
+ALTER TABLE checkout_revisiones FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON checkout_revisiones FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE ON checkout_revisiones TO service_role;
+GRANT SELECT, INSERT, UPDATE (aviso_avisado_en) ON checkout_revisiones TO n8n_writer;
+DROP POLICY IF EXISTS checkout_revisiones_select_n8n_writer ON checkout_revisiones;
+CREATE POLICY checkout_revisiones_select_n8n_writer ON checkout_revisiones FOR SELECT TO n8n_writer USING (true);
+DROP POLICY IF EXISTS checkout_revisiones_insert_n8n_writer ON checkout_revisiones;
+CREATE POLICY checkout_revisiones_insert_n8n_writer ON checkout_revisiones FOR INSERT TO n8n_writer WITH CHECK (true);
+DROP POLICY IF EXISTS checkout_revisiones_update_n8n_writer ON checkout_revisiones;
+CREATE POLICY checkout_revisiones_update_n8n_writer ON checkout_revisiones
+  FOR UPDATE TO n8n_writer USING (true) WITH CHECK (true);
+INSERT INTO checkout_revisiones (tipo, referencia_id, identidad, stripe_checkout_id, motivo)
+SELECT 'factura', factura_id, stripe_checkout_id, stripe_checkout_id, 'legacy_sin_expiracion_verificada'
+FROM facturas WHERE stripe_checkout_id IS NOT NULL AND stripe_checkout_intento_id IS NULL
+ON CONFLICT DO NOTHING;
+INSERT INTO checkout_revisiones (tipo, referencia_id, identidad, stripe_checkout_id, motivo)
+SELECT 'hito', id::text, stripe_checkout_id, stripe_checkout_id, 'legacy_sin_expiracion_verificada'
+FROM hitos WHERE stripe_checkout_id IS NOT NULL AND stripe_checkout_intento_id IS NULL
+ON CONFLICT DO NOTHING;
+ALTER TABLE pagos_no_aplicados ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pagos_no_aplicados FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON pagos_no_aplicados FROM anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON pagos_no_aplicados TO service_role;
+GRANT SELECT, INSERT ON pagos_no_aplicados TO n8n_writer;
+DROP POLICY IF EXISTS pagos_no_aplicados_select_n8n_writer ON pagos_no_aplicados;
+CREATE POLICY pagos_no_aplicados_select_n8n_writer ON pagos_no_aplicados
+  FOR SELECT TO n8n_writer USING (true);
+DROP POLICY IF EXISTS pagos_no_aplicados_insert_n8n_writer ON pagos_no_aplicados;
+CREATE POLICY pagos_no_aplicados_insert_n8n_writer ON pagos_no_aplicados
+  FOR INSERT TO n8n_writer WITH CHECK (true);
 CREATE INDEX IF NOT EXISTS idx_hitos_espacio ON hitos (espacio_id);
 CREATE INDEX IF NOT EXISTS idx_hitos_a_liberar ON hitos (libera_en) WHERE estado = 'ENTREGADO';
 -- Etapa 11, paso 5: quién resolvió la disputa (el admin de la plataforma). Aparte de
@@ -2139,7 +2279,7 @@ CREATE TRIGGER trg_hitos_espacio
   FOR EACH ROW EXECUTE FUNCTION public.espacio_desde_lead();
 
 -- Lo que pasó con cada hito, en orden: es la línea de tiempo que ven las dos
--- partes y la cola de los correos (n8n marca avisado_en).
+-- partes y la cola de los correos (n8n marca correo_avisado_en tras Gmail).
 CREATE TABLE IF NOT EXISTS hitos_eventos (
   id         BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   hito_id    UUID NOT NULL REFERENCES hitos(id) ON DELETE CASCADE,
@@ -2152,6 +2292,13 @@ CREATE TABLE IF NOT EXISTS hitos_eventos (
   avisado_en TIMESTAMPTZ,
   creado_en  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Correo y aviso son canales independientes. Se marca cada uno DESPUÉS de
+-- entregarlo: una falla permite reintentar (semántica at-least-once). Si el
+-- envío tuvo éxito pero falló el marcado, puede llegar un duplicado.
+ALTER TABLE hitos_eventos ADD COLUMN IF NOT EXISTS correo_avisado_en TIMESTAMPTZ;
+ALTER TABLE hitos_eventos ADD COLUMN IF NOT EXISTS aviso_avisado_en TIMESTAMPTZ;
+UPDATE hitos_eventos SET correo_avisado_en = avisado_en, aviso_avisado_en = avisado_en
+WHERE avisado_en IS NOT NULL AND (correo_avisado_en IS NULL OR aviso_avisado_en IS NULL);
 CREATE INDEX IF NOT EXISTS idx_hitos_eventos_hito ON hitos_eventos (hito_id, creado_en);
 CREATE INDEX IF NOT EXISTS idx_hitos_eventos_sin_avisar ON hitos_eventos (creado_en) WHERE avisado_en IS NULL;
 
@@ -2204,8 +2351,9 @@ BEGIN
   IF NOT FOUND OR proyecto_rol(p_lead, NULL) IS DISTINCT FROM 'desarrollador' THEN
     RAISE EXCEPTION 'No tenés acceso a este proyecto';
   END IF;
-  IF l.estado NOT IN ('NUEVO','PROPUESTA_ENVIADA','EN_SEGUIMIENTO') THEN
-    RAISE EXCEPTION 'La forma de cobro se define antes de que el cliente acepte';
+  IF l.estado <> 'NUEVO' OR l.propuesta_envio_intento_id IS NOT NULL
+     OR l.propuesta_envio_iniciado_en IS NOT NULL THEN
+    RAISE EXCEPTION 'La forma de cobro sólo se cambia antes de enviar la propuesta';
   END IF;
 
   IF p_hitos IS NULL OR jsonb_typeof(p_hitos) <> 'array' OR jsonb_array_length(p_hitos) = 0 THEN
@@ -2493,21 +2641,54 @@ $$;
 -- Cron de n8n: lo que falta mover en Stripe. Una fila por movimiento.
 --   'transferir': al desarrollador, lo liberado menos la comisión.
 --   'reembolsar': al cliente, sobre el pago original.
-CREATE OR REPLACE FUNCTION public.hitos_por_mover()
+DROP FUNCTION IF EXISTS public.hitos_por_mover();
+CREATE OR REPLACE FUNCTION public.hitos_por_mover(p_configurado boolean)
 RETURNS TABLE (
   id uuid, lead_id text, movimiento text, importe numeric, stripe_pago_id text,
   stripe_account_id text, espacio_nombre text, titulo text
 )
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public AS $$
-  SELECT h.id, h.lead_id, 'transferir', h.monto_liberado - h.comision, h.stripe_pago_id,
-         e.stripe_account_id, e.nombre, h.titulo
-  FROM hitos h JOIN espacios e ON e.id = h.espacio_id
-  WHERE h.monto_liberado > 0 AND h.stripe_transfer_id IS NULL AND h.stripe_pago_id IS NOT NULL
-  UNION ALL
-  SELECT h.id, h.lead_id, 'reembolsar', h.monto_reembolsado, h.stripe_pago_id,
-         NULL, e.nombre, h.titulo
-  FROM hitos h JOIN espacios e ON e.id = h.espacio_id
-  WHERE h.monto_reembolsado > 0 AND h.stripe_reembolso_id IS NULL AND h.stripe_pago_id IS NOT NULL
+LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path = public AS $$
+DECLARE
+  fila record;
+  transferir boolean;
+  reembolsar boolean;
+BEGIN
+  IF p_configurado IS NOT TRUE THEN
+    RAISE EXCEPTION 'Stripe no configurado: no se reclamaron movimientos';
+  END IF;
+  FOR fila IN
+    SELECT h.*, e.stripe_account_id AS cuenta, e.nombre AS marca
+    FROM hitos h JOIN espacios e ON e.id = h.espacio_id
+    WHERE h.stripe_pago_id IS NOT NULL AND (
+      (h.monto_liberado > 0 AND h.stripe_transfer_id IS NULL
+       AND h.stripe_transfer_intentado_en IS NULL AND e.stripe_account_id IS NOT NULL)
+      OR (h.monto_reembolsado > 0 AND h.stripe_reembolso_id IS NULL
+          AND h.stripe_reembolso_intentado_en IS NULL))
+    ORDER BY h.cerrado_en, h.id
+    LIMIT 50 FOR UPDATE OF h SKIP LOCKED
+  LOOP
+    transferir := fila.monto_liberado > 0 AND fila.stripe_transfer_id IS NULL
+      AND fila.stripe_transfer_intentado_en IS NULL AND fila.cuenta IS NOT NULL;
+    reembolsar := fila.monto_reembolsado > 0 AND fila.stripe_reembolso_id IS NULL
+      AND fila.stripe_reembolso_intentado_en IS NULL;
+    UPDATE hitos h SET
+      stripe_transfer_intentado_en = CASE WHEN transferir THEN now() ELSE h.stripe_transfer_intentado_en END,
+      stripe_reembolso_intentado_en = CASE WHEN reembolsar THEN now() ELSE h.stripe_reembolso_intentado_en END
+    WHERE h.id = fila.id;
+    IF transferir THEN
+      id := fila.id; lead_id := fila.lead_id; movimiento := 'transferir';
+      importe := fila.monto_liberado - fila.comision; stripe_pago_id := fila.stripe_pago_id;
+      stripe_account_id := fila.cuenta; espacio_nombre := fila.marca; titulo := fila.titulo;
+      RETURN NEXT;
+    END IF;
+    IF reembolsar THEN
+      id := fila.id; lead_id := fila.lead_id; movimiento := 'reembolsar';
+      importe := fila.monto_reembolsado; stripe_pago_id := fila.stripe_pago_id;
+      stripe_account_id := NULL; espacio_nombre := fila.marca; titulo := fila.titulo;
+      RETURN NEXT;
+    END IF;
+  END LOOP;
+END;
 $$;
 
 -- n8n, después de mover la plata en Stripe. Idempotente.
@@ -2710,7 +2891,7 @@ REVOKE ALL ON FUNCTION public.devolver_hito(uuid, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.anular_hito(uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.resolver_disputa(uuid, numeric, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.liberar_vencidos() FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.hitos_por_mover() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.hitos_por_mover(boolean) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.hito_movido(uuid, text, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.ver_proyecto(text, uuid) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.disputas_abiertas() FROM PUBLIC;
@@ -2735,7 +2916,7 @@ GRANT EXECUTE ON FUNCTION public.lead_de_plataforma(text) TO n8n_writer;
 GRANT EXECUTE ON FUNCTION public.hito_para_cobrar(uuid, uuid) TO n8n_writer;
 GRANT EXECUTE ON FUNCTION public.hito_fondeado(uuid, text, text) TO n8n_writer;
 GRANT EXECUTE ON FUNCTION public.liberar_vencidos() TO n8n_writer;
-GRANT EXECUTE ON FUNCTION public.hitos_por_mover() TO n8n_writer;
+GRANT EXECUTE ON FUNCTION public.hitos_por_mover(boolean) TO n8n_writer;
 GRANT EXECUTE ON FUNCTION public.hito_movido(uuid, text, text) TO n8n_writer;
 
 ALTER TABLE hitos ENABLE ROW LEVEL SECURITY;
@@ -2751,13 +2932,15 @@ DROP POLICY IF EXISTS hitos_select_espacio ON hitos;
 CREATE POLICY hitos_select_espacio ON hitos
   FOR SELECT TO authenticated
   USING (espacio_id IN (SELECT id FROM espacios WHERE dueno_id = (SELECT auth.uid())));
--- n8n: lee todo, guarda la sesión de pago y marca los correos enviados.
-GRANT SELECT, UPDATE (stripe_checkout_id) ON hitos TO n8n_writer;
+-- n8n: lee todo y sólo actualiza las columnas de reserva/URL de Checkout.
+GRANT SELECT, UPDATE (stripe_checkout_id, stripe_checkout_reservado_en, stripe_checkout_intento_id, stripe_checkout_url, stripe_checkout_expira_en) ON hitos TO n8n_writer;
 DROP POLICY IF EXISTS hitos_select_n8n_writer ON hitos;
 CREATE POLICY hitos_select_n8n_writer ON hitos FOR SELECT TO n8n_writer USING (true);
 DROP POLICY IF EXISTS hitos_update_n8n_writer ON hitos;
 CREATE POLICY hitos_update_n8n_writer ON hitos FOR UPDATE TO n8n_writer USING (true) WITH CHECK (true);
-GRANT SELECT, UPDATE (avisado_en) ON hitos_eventos TO n8n_writer;
+-- correo_avisado_en confirma Gmail; aviso_avisado_en confirma la persistencia
+-- en avisos (panel), no la entrega opcional de Telegram/Gmail del subflujo.
+GRANT SELECT, UPDATE (avisado_en, correo_avisado_en, aviso_avisado_en) ON hitos_eventos TO n8n_writer;
 DROP POLICY IF EXISTS hitos_eventos_select_n8n_writer ON hitos_eventos;
 CREATE POLICY hitos_eventos_select_n8n_writer ON hitos_eventos FOR SELECT TO n8n_writer USING (true);
 DROP POLICY IF EXISTS hitos_eventos_update_n8n_writer ON hitos_eventos;

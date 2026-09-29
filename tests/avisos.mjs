@@ -44,8 +44,13 @@ for (const [wfNombre, wf] of [['crm', crm], ['tickets', tickets]]) {
     const v = p.workflowInputs?.value || {};
 
     check(`${wfNombre}/${n.name}: llama al subflujo de avisos`, /AVISOS_WORKFLOW_ID/.test(p.workflowId?.value || ''));
-    check(`${wfNombre}/${n.name}: no espera al subflujo (un aviso que falla no corta la cadena)`,
-      p.options?.waitForSubWorkflow === false && n.onError === 'continueRegularOutput');
+    if (n.name === 'Aviso - Hitos al Desarrollador' || n.name === 'Aviso - Disputa de Hito' || n.name === 'Aviso - Checkout para Revision') {
+      check(`${wfNombre}/${n.name}: espera para confirmar el aviso del hito`,
+        p.options?.waitForSubWorkflow === true && n.onError !== 'continueRegularOutput');
+    } else {
+      check(`${wfNombre}/${n.name}: no espera al subflujo (un aviso que falla no corta la cadena)`,
+        p.options?.waitForSubWorkflow === false && n.onError === 'continueRegularOutput');
+    }
     check(`${wfNombre}/${n.name}: tipo y nivel válidos`, /^[a-z_]+$/.test(v.tipo || '') && NIVELES.includes(v.nivel), JSON.stringify(v));
     check(`${wfNombre}/${n.name}: dice de qué espacio es (lead, factura o espacio)`, Boolean(v.lead_id || v.factura_id || v.espacio_id));
   }

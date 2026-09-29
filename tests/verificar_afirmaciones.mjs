@@ -318,7 +318,8 @@ function medirCualitativas() {
       ok: /accept_token = gen_random_uuid\(\)/.test(params('Postgres - Reabrir Propuesta')) &&
         /accept_token = gen_random_uuid\(\)/.test(params('Postgres - Reabrir Original')) &&
         /UPDATE leads SET accept_token = gen_random_uuid\(\)/.test(params('Postgres - Leer Leads Follow-up')) &&
-        !/accept_token/.test(params('Postgres - Estado Propuesta Enviada')),
+        !/accept_token\s*=\s*gen_random_uuid\(\)/.test(params('Postgres - Estado Propuesta Enviada')) &&
+        /AND accept_token = \$3::uuid/.test(params('Postgres - Estado Propuesta Enviada')),
       detalle: 'rota en Reabrir Propuesta, Reabrir Original y Leer Leads Follow-up; no en el envío inicial',
     },
     {

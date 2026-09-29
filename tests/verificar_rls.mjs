@@ -169,6 +169,140 @@ try {
   console.log('· Re-aplicando el esquema (debe ser idempotente) …');
   psql(path.join(raiz, 'db', 'schema.sql'));
 
+  console.log('· Ejecutando las escrituras de n8n con sus GRANT reales …');
+  psql(path.join(aqui, 'rls', 'permisos_workflow.sql'));
+
+  // PREPARE no detecta que n8n recibiría cero items: se ejecuta la consulta
+  // real del cierre sin coincidencia y se exige una fila con aplico=false.
+  const workflow = JSON.parse(readFileSync(path.join(raiz, 'workflow', 'crm_postgres.json'), 'utf8'));
+  const cierre = workflow.nodes.find((n) => n.name === 'Postgres - Lead Cerrado').parameters.query;
+  const cierreSinLead = correr(cierre.replace('$1', "'LD-INEXISTENTE-RLS'"));
+  if (!/\bf\s*\|/.test(cierreSinLead) || !/\(1 row\)/.test(cierreSinLead)) {
+    throw new Error('El cierre rechazado debe devolver exactamente una fila con aplico=false:\n' + cierreSinLead);
+  }
+  console.log('  ✓ el cierre rechazado devuelve un item de 409');
+
+  // Ejecuta las consultas reales de reserva/guardado de factura, no una copia
+  // simplificada: dos aperturas no crean dos intentos y una respuesta vieja
+  // queda en la cola de conciliación sin reemplazar el intento vigente.
+  const consulta = (nombre) => workflow.nodes.find((n) => n.name === nombre).parameters.query.trim().replace(/;$/, '');
+  const sustituir = (sql, valores) => sql.replace(/\$(\d+)/g, (_, i) => valores[Number(i) - 1]);
+  const reservar = consulta('Postgres - Buscar Factura a Pagar');
+  const guardar = consulta('Postgres - Guardar Checkout');
+  const barrerCheckout = consulta('Postgres - Revisar Checkout Pendientes');
+  const avisosCheckout = consulta('Postgres - Avisos Checkout Pendientes');
+  const confirmarAvisoCheckout = consulta('Postgres - Confirmar Aviso Checkout');
+  const reclamarPropuesta = consulta('Postgres - Guardar Terminos');
+  const finalizarPropuesta = consulta('Postgres - Estado Propuesta Enviada')
+    .replace(/^=/, '').replace(/\{\{[^}]*\}\}/g, '14');
+  const reasignar = consulta('Postgres - Asignar Pedido Bolsa');
+  const factura = "'FAC-REGRESION-CHECKOUT'";
+  const token = "'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'";
+  const tokenLegacy = "'cccccccc-cccc-4ccc-8ccc-cccccccccccc'";
+  correr(`
+    BEGIN;
+    CREATE FUNCTION pg_temp.assert_ok(ok boolean) RETURNS void LANGUAGE plpgsql AS $test$
+    BEGIN IF ok IS NOT TRUE THEN RAISE EXCEPTION 'regresion checkout incumplida'; END IF; END $test$;
+    INSERT INTO espacios (id, slug, nombre, stripe_account_id, stripe_cobros_activos)
+    VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab', 'regresion-checkout', 'Prueba', 'acct_regresion', true);
+    INSERT INTO leads (lead_id, espacio_id, nombre, email)
+    VALUES ('LD-REGRESION-CHECKOUT', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab', 'Prueba', 'prueba@example.invalid');
+    UPDATE leads SET tier = 'HOT' WHERE lead_id = 'LD-REGRESION-CHECKOUT';
+    INSERT INTO facturas (factura_id, lead_id, cliente, email, monto, fecha_vencimiento, pago_token)
+    VALUES (${factura}, 'LD-REGRESION-CHECKOUT', 'Prueba', 'prueba@example.invalid', 10, now() + interval '1 day', ${token});
+    INSERT INTO facturas (factura_id, lead_id, cliente, email, monto, fecha_vencimiento, pago_token, stripe_checkout_id)
+    VALUES ('FAC-REGRESION-LEGACY', 'LD-REGRESION-CHECKOUT', 'Prueba', 'prueba@example.invalid', 10,
+      now() + interval '1 day', ${tokenLegacy}, 'cs_legacy');
+    ${sustituir(reservar, ["'FAC-REGRESION-LEGACY'", tokenLegacy, 'true'])} \\gset legacy_
+    SELECT pg_temp.assert_ok(:'legacy_checkout_reservado' = 'f' AND
+      (SELECT count(*) FROM checkout_revisiones WHERE stripe_checkout_id = 'cs_legacy') = 1);
+    ${sustituir(reservar, [factura, token, 'true'])} \\gset primera_
+    SELECT pg_temp.assert_ok(:'primera_checkout_reservado' = 't');
+    ${sustituir(guardar, [factura, "''", "''", ":'primera_checkout_intento_id'", '0'])} \\gset sinid_
+    SELECT pg_temp.assert_ok((SELECT count(*) FROM checkout_revisiones
+      WHERE identidad = :'primera_checkout_intento_id' AND motivo = 'stripe_creacion_sin_respuesta') = 1);
+    -- Un aviso fallido no cambia el ACK: una cola creada antes del barrido
+    -- sigue seleccionable hasta comprobar la persistencia en avisos.
+    SELECT pg_temp.assert_ok((SELECT count(*) FROM (${avisosCheckout}) pendientes
+      WHERE identidad = :'primera_checkout_intento_id') = 1);
+    SELECT pg_temp.assert_ok((SELECT count(*) FROM (${avisosCheckout}) pendientes
+      WHERE identidad IN ('cs_legacy', :'primera_checkout_intento_id')) = 2);
+    SELECT pg_temp.assert_ok((SELECT aviso_avisado_en IS NULL FROM checkout_revisiones
+      WHERE identidad = :'primera_checkout_intento_id'));
+    -- Se entrega y confirma el aviso legacy; el aviso del intento sin ID falló
+    -- y debe permanecer pendiente, sin que el ACK de la otra fila lo tape.
+    INSERT INTO avisos (espacio_id, tipo, nivel, mensaje, lead_id)
+    VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab', 'error_pago', 'critico',
+      'Checkout legacy para revisión', 'LD-REGRESION-CHECKOUT');
+    ${sustituir(confirmarAvisoCheckout, ["'factura'", "'FAC-REGRESION-LEGACY'", "'cs_legacy'"])};
+    SELECT pg_temp.assert_ok((SELECT count(*) FROM (${avisosCheckout}) pendientes
+      WHERE identidad IN ('cs_legacy', :'primera_checkout_intento_id')) = 1);
+    INSERT INTO avisos (espacio_id, tipo, nivel, mensaje, lead_id)
+    VALUES ('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab', 'error_pago', 'critico',
+      'Checkout para revisión', 'LD-REGRESION-CHECKOUT');
+    ${sustituir(confirmarAvisoCheckout, ["'factura'", factura, ":'primera_checkout_intento_id'"])};
+    SELECT pg_temp.assert_ok((SELECT count(*) FROM (${avisosCheckout}) pendientes
+      WHERE identidad IN ('cs_legacy', :'primera_checkout_intento_id')) = 0);
+    ${sustituir(reservar, [factura, token, 'true'])} \\gset segunda_
+    SELECT pg_temp.assert_ok(:'segunda_checkout_reservado' = 'f');
+    ${sustituir(guardar, [factura, "'cs_vieja'", "'https://example.invalid/vieja'", "'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb'", 'extract(epoch FROM now()) + 1800'])} \\gset vieja_
+    SELECT pg_temp.assert_ok((SELECT count(*) FROM checkout_revisiones WHERE stripe_checkout_id = 'cs_vieja') = 1);
+    ${sustituir(guardar, [factura, "'cs_vigente'", "'https://example.invalid/vigente'", ":'primera_checkout_intento_id'", 'extract(epoch FROM now()) + 1800'])} \\gset vigente_
+    SELECT pg_temp.assert_ok(:'vigente_factura_id' = 'FAC-REGRESION-CHECKOUT');
+    UPDATE facturas SET stripe_checkout_expira_en = now() - interval '1 minute',
+      stripe_checkout_reservado_en = now() - interval '16 minutes' WHERE factura_id = ${factura};
+    ${sustituir(reservar, [factura, token, 'true'])} \\gset expirado_
+    SELECT pg_temp.assert_ok(:'expirado_checkout_reservado' = 'f' AND
+      (SELECT stripe_checkout_url IS NOT NULL FROM facturas WHERE factura_id = ${factura}));
+    SELECT pg_temp.assert_ok((SELECT count(*) FROM checkout_revisiones WHERE referencia_id = 'FAC-REGRESION-CHECKOUT') >= 2);
+    INSERT INTO facturas (factura_id, lead_id, cliente, email, monto, fecha_vencimiento, pago_token,
+      stripe_checkout_reservado_en, stripe_checkout_intento_id)
+    VALUES ('FAC-REGRESION-HUERFANA', 'LD-REGRESION-CHECKOUT', 'Prueba', 'prueba@example.invalid', 10,
+      now() + interval '1 day', gen_random_uuid(), now() - interval '16 minutes', gen_random_uuid());
+    ${barrerCheckout};
+    SELECT pg_temp.assert_ok((SELECT count(*) FROM checkout_revisiones
+      WHERE referencia_id = 'FAC-REGRESION-HUERFANA' AND motivo = 'barrido_reserva_incierta') = 1);
+    ${sustituir(reclamarPropuesta, ["'LD-REGRESION-CHECKOUT'", "'10 dias'", "'Alcance inicial'", '10'])} \\gset primera_propuesta_
+    SELECT pg_temp.assert_ok(:'primera_propuesta_aplico' = 't');
+    ${sustituir(reclamarPropuesta, ["'LD-REGRESION-CHECKOUT'", "'20 dias'", "'Alcance tardio'", '20'])} \\gset segunda_propuesta_
+    SELECT pg_temp.assert_ok(:'segunda_propuesta_aplico' = 'f');
+    SELECT pg_temp.assert_ok((SELECT precio_propuesto = 10 AND alcance_propuesto = 'Alcance inicial'
+      AND propuesta_envio_iniciado_en IS NOT NULL AND propuesta_envio_intento_id IS NOT NULL FROM leads WHERE lead_id = 'LD-REGRESION-CHECKOUT'));
+    UPDATE leads SET compartir_bolsa = true WHERE lead_id = 'LD-REGRESION-CHECKOUT';
+    SELECT accept_token FROM leads WHERE lead_id = 'LD-REGRESION-CHECKOUT' \\gset antes_
+    INSERT INTO espacios (id, slug, nombre)
+    VALUES ('dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'regresion-nuevo-dueno', 'Nuevo dueño');
+    INSERT INTO bolsa_pedidos (id, lead_id, origen_espacio_id, resumen, servicio, urgencia,
+      presupuesto, eleccion_token)
+    VALUES ('eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee', 'LD-REGRESION-CHECKOUT',
+      'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab', 'Proyecto de prueba para reasignación segura',
+      'desarrollo_web', 'media', 10, 'ffffffff-ffff-4fff-8fff-ffffffffffff');
+    INSERT INTO postulaciones (id, pedido_id, espacio_id, mensaje, precio_estimado, plazo)
+    VALUES ('cccccccc-cccc-4ccc-8ccc-cccccccccccd', 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+      'dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'Me postulo al proyecto', 10, '10 dias');
+    ${sustituir(reasignar, ["'ffffffff-ffff-4fff-8fff-ffffffffffff'", "'cccccccc-cccc-4ccc-8ccc-cccccccccccd'", "'LD-REGRESION-CHECKOUT'", 'false'])};
+    SELECT pg_temp.assert_ok((SELECT espacio_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'::uuid
+      AND estado = 'NUEVO' AND precio_propuesto IS NULL AND propuesta_envio_iniciado_en IS NULL AND propuesta_envio_intento_id IS NULL
+      AND accept_token <> :'antes_accept_token'::uuid FROM leads WHERE lead_id = 'LD-REGRESION-CHECKOUT'));
+    ${sustituir(finalizarPropuesta, ["'LD-REGRESION-CHECKOUT'", ":'primera_propuesta_propuesta_envio_intento_id'", ":'primera_propuesta_accept_token'", ":'primera_propuesta_espacio_id'"])} \\gset tardia_
+    SELECT pg_temp.assert_ok(:'tardia_aplico' = 'f' AND
+      (SELECT estado = 'NUEVO' AND espacio_id = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd'::uuid
+        FROM leads WHERE lead_id = 'LD-REGRESION-CHECKOUT'));
+    INSERT INTO leads (lead_id, espacio_id, nombre, email, tier)
+    VALUES ('LD-REGRESION-NORMAL', 'dddddddd-dddd-4ddd-8ddd-dddddddddddd', 'Normal', 'normal@example.invalid', 'HOT');
+    ${sustituir(reclamarPropuesta, ["'LD-REGRESION-NORMAL'", "'10 dias'", "'Alcance normal'", '10'])} \\gset normal_
+    SELECT pg_temp.assert_ok(:'normal_aplico' = 't');
+    -- Simula el redondeo a milisegundos de una fecha enviada por JSON/JS:
+    -- el CAS debe depender del UUID, no de los microsegundos de now().
+    UPDATE leads SET propuesta_envio_iniciado_en = date_trunc('milliseconds', propuesta_envio_iniciado_en)
+      WHERE lead_id = 'LD-REGRESION-NORMAL';
+    ${sustituir(finalizarPropuesta, ["'LD-REGRESION-NORMAL'", ":'normal_propuesta_envio_intento_id'", ":'normal_accept_token'", ":'normal_espacio_id'"])} \\gset final_
+    SELECT pg_temp.assert_ok(:'final_aplico' = 't' AND
+      (SELECT estado = 'PROPUESTA_ENVIADA' FROM leads WHERE lead_id = 'LD-REGRESION-NORMAL'));
+    ROLLBACK;
+  `);
+  console.log('  ✓ reserva, CAS, sesión vencida y cola conciliable ejecutados en PostgreSQL');
+
   // Actualización de una instancia vieja. Re-aplicar sobre una base recién
   // creada no prueba nada: las vistas ya tienen la forma nueva, así que el
   // CREATE OR REPLACE no cambia ninguna columna y siempre pasa. El caso que
