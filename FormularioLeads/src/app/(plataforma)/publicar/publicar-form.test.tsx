@@ -97,6 +97,29 @@ describe("PublicarForm", () => {
     expect(screen.getByLabelText(/^Tu nombre/)).toHaveValue("Marta Gómez");
   });
 
+  it("descarta un borrador de formato incompatible sin romper el formulario", async () => {
+    localStorage.setItem(BORRADOR, JSON.stringify({titulo: "Proyecto viejo", etiquetas: null}));
+
+    render(<PublicarForm tipo="cliente" />);
+
+    expect(screen.getByLabelText(/^Título/)).toHaveValue("");
+    expect(screen.getByLabelText(/^Habilidades que buscás/)).toHaveValue("");
+    expect(
+      screen.queryByText("Ya entraste. Revisá tu proyecto y publicalo."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("no recupera opciones inválidas guardadas por otra versión", () => {
+    localStorage.setItem(BORRADOR, JSON.stringify({servicio: "servicio_antiguo"}));
+
+    render(<PublicarForm tipo="cliente" />);
+
+    expect(screen.getByLabelText(/^Título/)).toHaveValue("");
+    expect(
+      screen.queryByText("Ya entraste. Revisá tu proyecto y publicalo."),
+    ).not.toBeInTheDocument();
+  });
+
   it("no publica sin la aceptación ni con campos faltantes", async () => {
     const user = userEvent.setup();
 

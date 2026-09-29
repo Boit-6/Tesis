@@ -55,7 +55,31 @@ function leerBorrador(): Proyecto | null {
   try {
     const guardado = localStorage.getItem(BORRADOR);
 
-    return guardado ? {...VACIO, ...JSON.parse(guardado)} : null;
+    if (!guardado) return null;
+    const dato: unknown = JSON.parse(guardado);
+
+    if (!dato || typeof dato !== "object" || Array.isArray(dato)) return null;
+    const campos = dato as Record<string, unknown>;
+
+    // El borrador puede sobrevivir a una versión anterior del formulario.
+    // No confiar en el tipo TypeScript al leer JSON de localStorage.
+    if (
+      Object.keys(VACIO).some(
+        (clave) => campos[clave] !== undefined && typeof campos[clave] !== "string",
+      )
+    )
+      return null;
+    const borrador = {...VACIO, ...campos} as Proyecto;
+
+    if (borrador.servicio && !(borrador.servicio in SERVICIO_LEGIBLE)) return null;
+    if (
+      borrador.presupuesto_rango &&
+      !RANGOS_PRESUPUESTO.some((r) => r.clave === borrador.presupuesto_rango)
+    )
+      return null;
+    if (!["baja", "media", "alta"].includes(borrador.urgencia)) return null;
+
+    return borrador;
   } catch {
     return null;
   }
