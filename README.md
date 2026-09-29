@@ -76,6 +76,21 @@ Su particularidad es el **envejecimiento**: un ticket que nadie toca sube solo d
 
 Detalle: [`docs/modulo-tickets.md`](docs/modulo-tickets.md).
 
+### 💸 Pago protegido por hitos
+
+El desarrollador divide el proyecto en hitos, el cliente paga cada uno por adelantado y la plataforma retiene la plata hasta que aprueba la entrega (o pasan 7 días sin respuesta). Recién ahí se transfiere al desarrollador, menos el 5 % de comisión. Es obligatorio en los proyectos que llegan por la plataforma y opcional con los clientes propios.
+
+Si el cliente disputa un hito, el admin de la plataforma lo resuelve desde `/dashboard/disputas`: libera todo, reembolsa todo o parte el monto, con una nota que les llega a las dos partes. Ve el historial del hito y la conversación entre las partes, y no puede resolver una disputa de un proyecto propio.
+
+| Pieza | Qué hace |
+|---|---|
+| `/proyecto/<token>` | El cliente paga, aprueba o disputa cada hito |
+| Webhook `hito-pagar` (GET) | Crea el cobro de la plataforma en Stripe, sin transferir todavía |
+| `/dashboard/disputas` | El admin revisa y resuelve las disputas |
+| 💸 Cron - Hitos · cada 5 min (RAMA 14) | Libera las entregas vencidas, transfiere y reembolsa en Stripe con idempotencia, y avisa a las dos partes |
+
+Detalle: [`docs/modulo-hitos.md`](docs/modulo-hitos.md).
+
 ---
 
 ## 🛠️ Stack Tecnológico
@@ -231,6 +246,7 @@ tesis/
 │   ├── dictamen-v6-reejecucion.md     # Corrida manual de E11–E13 (evidencia citada en el Anexo A)
 │   ├── modulo-tickets.md              # Documentación del módulo de tickets
 │   ├── modulo-pagos.md                # Cobro con Stripe Connect + comisión de la plataforma
+│   ├── modulo-hitos.md                # Pago protegido por hitos y disputas (etapa 11)
 │   ├── roadmap-mejoras.md             # Backlog de mejoras
 │   └── figura*.jpg                    # Capturas vigentes del Anexo A
 ├── FormularioLeads/           # Front Next.js (parte del monorepo — deploy en Vercel)
