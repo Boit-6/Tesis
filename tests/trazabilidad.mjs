@@ -18,20 +18,12 @@
 // cumple; si falta un tramo, el escenario lo nombra.
 //
 // Uso: node tests/trazabilidad.mjs   (npm run test:trazabilidad)
-import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {cargarEnv, crearRest, crearWebhook} from './helpers/servicios.mjs';
 
 const raiz = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const rutaEnv = path.join(raiz, '.env');
-
-if (existsSync(rutaEnv)) {
-  for (const linea of readFileSync(rutaEnv, 'utf8').split('\n')) {
-    const m = linea.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
-
-    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, '');
-  }
-}
+cargarEnv(path.join(raiz, '.env'));
 
 const N8N = (process.env.N8N_BASE ?? 'http://localhost:5678').replace(/\/+$/, '');
 const SUPA = (process.env.SUPABASE_URL ?? '').replace(/\/+$/, '');
@@ -41,34 +33,8 @@ const PANEL_HEADER = process.env.CRM_PANEL_HEADER ?? 'x-crm-token';
 
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function rest(ruta, opciones = {}) {
-  const res = await fetch(`${SUPA}/rest/v1/${ruta}`, {
-    ...opciones,
-    headers: {
-      apikey: KEY,
-      Authorization: `Bearer ${KEY}`,
-      'Content-Type': 'application/json',
-      ...(opciones.headers ?? {}),
-    },
-  });
-
-  if (!res.ok) throw new Error(`Supabase ${res.status}: ${await res.text()}`);
-
-  const texto = await res.text();
-
-  return texto ? JSON.parse(texto) : [];
-}
-
-async function webhook(ruta, {metodo = 'POST', cuerpo, headers = {}} = {}) {
-  const res = await fetch(`${N8N}/webhook/${ruta}`, {
-    method: metodo,
-    headers: {'Content-Type': 'application/json', ...headers},
-    body: cuerpo ? JSON.stringify(cuerpo) : undefined,
-  });
-  const texto = await res.text();
-
-  try { return {status: res.status, json: texto ? JSON.parse(texto) : null}; } catch { return {status: res.status, json: null}; }
-}
+const rest = crearRest(SUPA, KEY);
+const webhook = crearWebhook(N8N);
 
 async function esperarHasta(descripcion, condicion, {timeout = 25000, intervalo = 400} = {}) {
   const t0 = Date.now();

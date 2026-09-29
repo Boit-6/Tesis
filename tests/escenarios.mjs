@@ -19,24 +19,17 @@
 //   node tests/escenarios.mjs                 corre todo y escribe el reporte
 //   node tests/escenarios.mjs --verificar     sólo chequea configuración y conectividad
 //   node tests/escenarios.mjs --no-limpiar    deja los datos de prueba en la base
-import {readFileSync, writeFileSync, existsSync} from 'node:fs';
+import {writeFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import path from 'node:path';
+import {cargarEnv, crearRest, crearWebhook} from './helpers/servicios.mjs';
 
 const aqui = path.dirname(fileURLToPath(import.meta.url));
 const raiz = path.join(aqui, '..');
 
 // ── Configuración ──────────────────────────────────────────────────────────
 // Carga un .env de la raíz si existe, sin pisar lo que ya venga del entorno.
-const rutaEnv = path.join(raiz, '.env');
-
-if (existsSync(rutaEnv)) {
-  for (const linea of readFileSync(rutaEnv, 'utf8').split('\n')) {
-    const m = linea.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)$/);
-
-    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].trim().replace(/^["']|["']$/g, '');
-  }
-}
+cargarEnv(path.join(raiz, '.env'));
 
 const N8N = (process.env.N8N_BASE ?? 'http://localhost:5678').replace(/\/+$/, '');
 const SUPA = (process.env.SUPABASE_URL ?? '').replace(/\/+$/, '');
@@ -53,38 +46,8 @@ const limpiar = !process.argv.includes('--no-limpiar');
 const esperar = (ms) => new Promise((r) => setTimeout(r, ms));
 const ahora = () => Number(process.hrtime.bigint() / 1000000n);
 
-async function rest(ruta, opciones = {}) {
-  const res = await fetch(`${SUPA}/rest/v1/${ruta}`, {
-    ...opciones,
-    headers: {
-      apikey: KEY,
-      Authorization: `Bearer ${KEY}`,
-      'Content-Type': 'application/json',
-      ...(opciones.headers ?? {}),
-    },
-  });
-
-  if (!res.ok) throw new Error(`Supabase ${res.status}: ${await res.text()}`);
-
-  const texto = await res.text();
-
-  return texto ? JSON.parse(texto) : [];
-}
-
-async function webhook(ruta, {metodo = 'POST', cuerpo, headers = {}} = {}) {
-  const res = await fetch(`${N8N}/webhook/${ruta}`, {
-    method: metodo,
-    headers: {'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true', ...headers},
-    body: cuerpo ? JSON.stringify(cuerpo) : undefined,
-  });
-  const texto = await res.text();
-
-  let json = null;
-
-  try { json = texto ? JSON.parse(texto) : null; } catch { /* respuesta HTML */ }
-
-  return {status: res.status, texto, json};
-}
+const rest = crearRest(SUPA, KEY);
+const webhook = crearWebhook(N8N, fetch, {'ngrok-skip-browser-warning': 'true'});
 
 // n8n procesa de forma asíncrona: se sondea hasta que el efecto aparece.
 async function esperarHasta(descripcion, condicion, {timeout = 25000, intervalo = 400} = {}) {
