@@ -4,7 +4,6 @@
 // Crea un lead ficticio en SU espacio con service_role y lo elimina al terminar.
 // No ejecutar contra producción sin planificar el dato de prueba.
 // Uso: node scripts/medir-realtime.mjs [--n 5] (también --muestras 5).
-import {createClient} from '@supabase/supabase-js';
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -42,6 +41,9 @@ async function medir(n) {
     return;
   }
 
+  // Import diferido: validar argumentos no debe exigir node_modules (el CI del
+  // artefacto no instala las dependencias del front).
+  const {createClient} = await import('@supabase/supabase-js');
   const escritor = createClient(url, service, {auth: {persistSession: false}});
   const lector = createClient(url, anon, {auth: {persistSession: false, autoRefreshToken: false}});
   const id = `LD-RT-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
