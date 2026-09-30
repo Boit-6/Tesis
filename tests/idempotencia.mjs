@@ -437,8 +437,14 @@ try {
   comprobar('un evento sin factura (factura_id vacío) no toca nada ni alerta',
     cobrar(pago('')) === 0 && clasificar(pago('')) === null);
 
-  ejecutar(SQL_LOG_NO_APLICADO, ['factura=FAC-ST-ANUL pago_stripe=pi_555 motivo=la factura está ANULADA']);
+  const alerta = ['pi_556', 'FAC-ST-ANUL', 'la factura está ANULADA', 'factura=FAC-ST-ANUL pago_stripe=pi_556 motivo=la factura está ANULADA'];
+  ejecutar(SQL_LOG_NO_APLICADO, alerta);
   comprobar('n8n_writer puede dejar la alerta en logs',
+    valor("SELECT count(*) FROM logs WHERE evento = 'pago_no_aplicado' AND nivel = 'ERROR';") === '1');
+  comprobar('y el pago queda en la cola de conciliación',
+    valor("SELECT estado FROM pagos_no_aplicados WHERE stripe_pago_id = 'pi_556';") === 'pendiente');
+  ejecutar(SQL_LOG_NO_APLICADO, alerta);
+  comprobar('la misma alerta repetida no duplica el log',
     valor("SELECT count(*) FROM logs WHERE evento = 'pago_no_aplicado' AND nivel = 'ERROR';") === '1');
 
   console.log('\n── metrics_mensuales: una factura ANULADA no es facturación ──\n');

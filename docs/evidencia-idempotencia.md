@@ -3,12 +3,12 @@
 | campo | valor |
 | --- | --- |
 | comando | `node tests/idempotencia.mjs` |
-| marca temporal (UTC) | 2026-09-28T17:43:46.208Z |
-| commit | 5b1bbb1e8f3173e7c5f8003c88014893d63aef1d |
-| commit (corto) | 5b1bbb1 |
+| marca temporal (UTC) | 2026-09-30T18:04:33.469Z |
+| commit | 625d05db22a5aa3fe63a17d540eed461c5586fc9 |
+| commit (corto) | 625d05d |
 | arbol de trabajo | CON CAMBIOS SIN CONFIRMAR |
 | codigo de salida | 0 |
-| duracion | 10.3 s |
+| duracion | 12.4 s |
 
 ## salida
 
@@ -65,6 +65,8 @@ OK    un segundo pago sobre una factura ya cobrada se detecta como pago doble
 OK    un pago que apunta a una factura inexistente deja alerta
 OK    un evento sin factura (factura_id vacío) no toca nada ni alerta
 OK    n8n_writer puede dejar la alerta en logs
+OK    y el pago queda en la cola de conciliación
+OK    la misma alerta repetida no duplica el log
 
 ── metrics_mensuales: una factura ANULADA no es facturación ──
 
@@ -100,5 +102,5 @@ OK    correrlo de nuevo el mismo día no vuelve a escalar
 OK    pasar a HECHO lo cierra (cerrado_en)
 OK    reabrirlo limpia cerrado_en
 
-Resultado: 66 OK, 0 FALLA
+Resultado: 68 OK, 0 FALLA
 ```
