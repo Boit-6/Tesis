@@ -70,6 +70,13 @@ services:
       - NODE_FUNCTION_ALLOW_BUILTIN=crypto
       # Apaga la telemetría de uso que n8n manda a sus propios servidores.
       - N8N_DIAGNOSTICS_ENABLED=false
+      # Detrás de un proxy HTTPS (Caddy en la demo): n8n confía en un salto de
+      # X-Forwarded-For para resolver la IP real del cliente.
+      - N8N_PROXY_HOPS=${N8N_PROXY_HOPS:-0}
+      # Demo de portfolio: con un correo acá, todos los Gmail de los workflows
+      # van a esa casilla con el asunto «[DEMO → destinatario original] …».
+      # Vacía = cada correo va a su destinatario real.
+      - DEMO_EMAIL_SINK=${DEMO_EMAIL_SINK:-}
       # ── Cobro con Stripe Connect (RAMA 8) ────────────────────────────────
       # Sin STRIPE_SECRET_KEY, el enlace de la factura cae al pago simulado.
       # STRIPE_API_BASE vacío = la API real; se cambia sólo para apuntar a un

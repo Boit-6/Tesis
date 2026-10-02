@@ -710,8 +710,8 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $json.email }}",
-        "subject": "=Propuesta para {{ $json.servicio }} — {{ $json.espacio_nombre || $env.PLATAFORMA_NOMBRE || 'FormularioLeads' }}",
+        "sendTo": "={{ $env.DEMO_EMAIL_SINK || ($json.email) }}",
+        "subject": "={{ $env.DEMO_EMAIL_SINK ? '[DEMO → ' + ($json.email) + '] ' : '' }}Propuesta para {{ $json.servicio }} — {{ $json.espacio_nombre || $env.PLATAFORMA_NOMBRE || 'FormularioLeads' }}",
         "message": "={{ $json.propuesta_html }}",
         "options": {
           "appendAttribution": false,
@@ -1364,8 +1364,8 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $('Code - Generar Factura HTML').item.json.email }}",
-        "subject": "=Factura {{ $('Code - Generar Factura HTML').item.json.factura_id }} — {{ $('Code - Generar Factura HTML').item.json.espacio_nombre || $env.PLATAFORMA_NOMBRE || 'FormularioLeads' }}",
+        "sendTo": "={{ $env.DEMO_EMAIL_SINK || ($('Code - Generar Factura HTML').item.json.email) }}",
+        "subject": "={{ $env.DEMO_EMAIL_SINK ? '[DEMO → ' + ($('Code - Generar Factura HTML').item.json.email) + '] ' : '' }}Factura {{ $('Code - Generar Factura HTML').item.json.factura_id }} — {{ $('Code - Generar Factura HTML').item.json.espacio_nombre || $env.PLATAFORMA_NOMBRE || 'FormularioLeads' }}",
         "message": "=<p>Hola <b>{{ String($('Code - Generar Factura HTML').item.json.nombre.split(' ')[0] || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}</b>,</p><p>Adjunto tu factura <b>{{ $('Code - Generar Factura HTML').item.json.factura_id }}</b> por <b>${{ $('Code - Generar Factura HTML').item.json.monto }} USD</b>.</p><p>Saludos,<br><b>{{ String($('Code - Generar Factura HTML').item.json.espacio_nombre || $env.PLATAFORMA_NOMBRE || 'FormularioLeads').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}</b></p>",
         "options": {
           "appendAttribution": false,
@@ -1679,8 +1679,8 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $json.email }}",
-        "subject": "={{ $json.email_subject }}",
+        "sendTo": "={{ $env.DEMO_EMAIL_SINK || ($json.email) }}",
+        "subject": "={{ $env.DEMO_EMAIL_SINK ? '[DEMO → ' + ($json.email) + '] ' : '' }}{{ $json.email_subject }}",
         "message": "={{ $json.email_body }}",
         "options": {
           "appendAttribution": false,
@@ -1984,8 +1984,8 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $json.email }}",
-        "subject": "={{ $json.email_asunto }}",
+        "sendTo": "={{ $env.DEMO_EMAIL_SINK || ($json.email) }}",
+        "subject": "={{ $env.DEMO_EMAIL_SINK ? '[DEMO → ' + ($json.email) + '] ' : '' }}{{ $json.email_asunto }}",
         "message": "={{ $json.email_cuerpo }}",
         "options": {
           "appendAttribution": false,
@@ -2359,8 +2359,8 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $json.email }}",
-        "subject": "=¿Cómo fue tu experiencia con {{ $json.espacio_nombre || $env.PLATAFORMA_NOMBRE || 'FormularioLeads' }}? Calificá el trabajo",
+        "sendTo": "={{ $env.DEMO_EMAIL_SINK || ($json.email) }}",
+        "subject": "={{ $env.DEMO_EMAIL_SINK ? '[DEMO → ' + ($json.email) + '] ' : '' }}¿Cómo fue tu experiencia con {{ $json.espacio_nombre || $env.PLATAFORMA_NOMBRE || 'FormularioLeads' }}? Calificá el trabajo",
         "message": "={{ $json.testimonio_html }}",
         "options": {
           "appendAttribution": false,
@@ -3584,8 +3584,8 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $json.email }}",
-        "subject": "=Sobre tu pedido de cambios en {{ $json.servicio }} — {{ $json.espacio_nombre || $env.PLATAFORMA_NOMBRE || 'FormularioLeads' }}",
+        "sendTo": "={{ $env.DEMO_EMAIL_SINK || ($json.email) }}",
+        "subject": "={{ $env.DEMO_EMAIL_SINK ? '[DEMO → ' + ($json.email) + '] ' : '' }}Sobre tu pedido de cambios en {{ $json.servicio }} — {{ $json.espacio_nombre || $env.PLATAFORMA_NOMBRE || 'FormularioLeads' }}",
         "message": "={{ $json.propuesta_html }}",
         "options": {
           "appendAttribution": false,
@@ -3844,8 +3844,8 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $json.email }}",
-        "subject": "=Sobre tu pedido de cambios — {{ $json.espacio_nombre || $env.PLATAFORMA_NOMBRE || 'FormularioLeads' }}",
+        "sendTo": "={{ $env.DEMO_EMAIL_SINK || ($json.email) }}",
+        "subject": "={{ $env.DEMO_EMAIL_SINK ? '[DEMO → ' + ($json.email) + '] ' : '' }}Sobre tu pedido de cambios — {{ $json.espacio_nombre || $env.PLATAFORMA_NOMBRE || 'FormularioLeads' }}",
         "message": "={{ $json.aviso_html }}",
         "options": {
           "appendAttribution": false,
@@ -4107,8 +4107,8 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $json.email }}",
-        "subject": "=Recibimos tu consulta sobre {{ $json.servicio }} — {{ $json.espacio_nombre || $env.PLATAFORMA_NOMBRE || 'FormularioLeads' }}",
+        "sendTo": "={{ $env.DEMO_EMAIL_SINK || ($json.email) }}",
+        "subject": "={{ $env.DEMO_EMAIL_SINK ? '[DEMO → ' + ($json.email) + '] ' : '' }}Recibimos tu consulta sobre {{ $json.servicio }} — {{ $json.espacio_nombre || $env.PLATAFORMA_NOMBRE || 'FormularioLeads' }}",
         "message": "=<p>Hola {{ String($json.nombre || '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }},</p>\n<p>Recibimos tu consulta sobre <b>{{ $json.servicio }}</b> y ya la estamos revisando.</p>\n<p>Si es algo en lo que podemos ayudarte, te escribimos con una propuesta. Si en 48 horas no tuviste novedades, respondé este correo y lo vemos.</p>\n<p>Gracias por escribirnos.<br><b>{{ String($json.espacio_nombre || $env.PLATAFORMA_NOMBRE || 'FormularioLeads').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;') }}</b></p>",
         "options": {
           "appendAttribution": false,
@@ -6700,8 +6700,8 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $json.email }}",
-        "subject": "={{ $json.asunto }}",
+        "sendTo": "={{ $env.DEMO_EMAIL_SINK || ($json.email) }}",
+        "subject": "={{ $env.DEMO_EMAIL_SINK ? '[DEMO → ' + ($json.email) + '] ' : '' }}{{ $json.asunto }}",
         "message": "={{ $json.cuerpo_html }}",
         "options": {
           "appendAttribution": false,
@@ -6949,8 +6949,8 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $json.email }}",
-        "subject": "={{ $json.asunto }}",
+        "sendTo": "={{ $env.DEMO_EMAIL_SINK || ($json.email) }}",
+        "subject": "={{ $env.DEMO_EMAIL_SINK ? '[DEMO → ' + ($json.email) + '] ' : '' }}{{ $json.asunto }}",
         "message": "={{ $json.cuerpo_html }}",
         "options": {
           "appendAttribution": false,
@@ -7156,8 +7156,8 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $json.email }}",
-        "subject": "={{ $json.asunto }}",
+        "sendTo": "={{ $env.DEMO_EMAIL_SINK || ($json.email) }}",
+        "subject": "={{ $env.DEMO_EMAIL_SINK ? '[DEMO → ' + ($json.email) + '] ' : '' }}{{ $json.asunto }}",
         "message": "={{ $json.cuerpo_html }}",
         "options": {
           "appendAttribution": false,
@@ -7444,8 +7444,8 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $json.email }}",
-        "subject": "={{ $json.asunto }}",
+        "sendTo": "={{ $env.DEMO_EMAIL_SINK || ($json.email) }}",
+        "subject": "={{ $env.DEMO_EMAIL_SINK ? '[DEMO → ' + ($json.email) + '] ' : '' }}{{ $json.asunto }}",
         "message": "={{ $json.cuerpo_html }}",
         "options": {
           "appendAttribution": false,
@@ -7540,8 +7540,8 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $json.email }}",
-        "subject": "={{ $json.asunto }}",
+        "sendTo": "={{ $env.DEMO_EMAIL_SINK || ($json.email) }}",
+        "subject": "={{ $env.DEMO_EMAIL_SINK ? '[DEMO → ' + ($json.email) + '] ' : '' }}{{ $json.asunto }}",
         "message": "={{ $json.cuerpo_html }}",
         "options": {
           "appendAttribution": false,
@@ -7702,8 +7702,8 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $json.email }}",
-        "subject": "={{ $json.asunto }}",
+        "sendTo": "={{ $env.DEMO_EMAIL_SINK || ($json.email) }}",
+        "subject": "={{ $env.DEMO_EMAIL_SINK ? '[DEMO → ' + ($json.email) + '] ' : '' }}{{ $json.asunto }}",
         "message": "={{ $json.cuerpo_html }}",
         "options": {
           "appendAttribution": false,
@@ -8521,8 +8521,8 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $json.email }}",
-        "subject": "={{ $json.asunto }}",
+        "sendTo": "={{ $env.DEMO_EMAIL_SINK || ($json.email) }}",
+        "subject": "={{ $env.DEMO_EMAIL_SINK ? '[DEMO → ' + ($json.email) + '] ' : '' }}{{ $json.asunto }}",
         "message": "={{ $json.cuerpo_html }}",
         "options": {
           "appendAttribution": false,

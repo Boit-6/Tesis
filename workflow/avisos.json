@@ -130,8 +130,8 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $json.para }}",
-        "subject": "={{ $json.asunto }}",
+        "sendTo": "={{ $env.DEMO_EMAIL_SINK || ($json.para) }}",
+        "subject": "={{ $env.DEMO_EMAIL_SINK ? '[DEMO → ' + ($json.para) + '] ' : '' }}{{ $json.asunto }}",
         "message": "={{ $json.html }}",
         "options": {
           "appendAttribution": false,
