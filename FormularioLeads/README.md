@@ -1,6 +1,6 @@
 # FormularioLeads — Front del CRM Freelance Automatizado
 
-Capa de presentación del proyecto (ver el [README de la raíz](../README.md) para
+Capa de presentación del proyecto (ver la [documentación técnica](../docs/README-tecnico.md) para
 la arquitectura completa). Next.js 16 (App Router) + React 19 + Tailwind v4 +
 Supabase Auth/Realtime. Las operaciones autorizadas del panel (por ejemplo,
 tickets y datos del espacio) usan Supabase con RLS; las acciones del CRM pasan

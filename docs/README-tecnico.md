@@ -1,6 +1,7 @@
-# CRM Freelance Automatizado
+# CRM Freelance Automatizado — documentación técnica
 
-> Trabajo final de tesis — Automatización del ciclo comercial de un freelance con **n8n**
+> Trabajo final de tesis — Automatización del ciclo comercial de un freelance con **n8n**.
+> La presentación del proyecto está en el [README principal](../README.md).
 
 ---
 
@@ -41,7 +42,7 @@ El sistema está desacoplado en tres capas con responsabilidades claras:
 
 > El front es público y **nunca** muta la base directo: habla con n8n por HTTP. n8n concentra la lógica y es el único que escribe en las tablas de negocio. El dashboard lee con la anon key bajo sesión (nunca la service key). Cada capa se cambia sin romper las otras.
 
-La orquestación tiene **13 webhooks** y **4 procesos programados** (más logging y manejo de errores global). El flujo exportado tiene **168 nodos funcionales** (185 en total, incluidas 17 notas de documentación):
+La orquestación del flujo principal tiene **21 webhooks** y **9 procesos programados** (más logging y manejo de errores global), en **314 nodos funcionales** (339 en total, incluidas 25 notas de documentación; lo cuenta `npm run test:afirmaciones`). La tabla resume el ciclo comercial base:
 
 | Disparador | Proceso | Qué hace |
 |---|---|---|
@@ -72,9 +73,9 @@ Su particularidad es el **envejecimiento**: un ticket que nadie toca sube solo d
 |---|---|
 | `/api/tickets` (GET / POST) | Lista el tablero (vista `tickets_tablero`, con score y días calculados al momento) y crea tickets con la sesión de un desarrollador; la RLS limita las filas a su espacio |
 | `/api/tickets/estado` (POST) | Mueve de columna o cambia la prioridad |
-| [`workflow/tickets.json`](workflow/tickets.json) · Cron 8:00 | Escala en una sola sentencia SQL los tickets quietos y envía el resumen al subflujo de avisos por espacio |
+| [`workflow/tickets.json`](../workflow/tickets.json) · Cron 8:00 | Escala en una sola sentencia SQL los tickets quietos y envía el resumen al subflujo de avisos por espacio |
 
-Detalle: [`docs/modulo-tickets.md`](docs/modulo-tickets.md).
+Detalle: [`docs/modulo-tickets.md`](modulo-tickets.md).
 
 ### 💸 Pago protegido por hitos
 
@@ -89,7 +90,7 @@ Si el cliente disputa un hito, el admin de la plataforma lo resuelve desde `/das
 | `/dashboard/disputas` | El admin revisa y resuelve las disputas |
 | 💸 Cron - Hitos · cada 5 min (RAMA 14) | Libera entregas vencidas y reclama una vez cada movimiento externo; un resultado incierto queda para conciliación manual, sin reintento automático |
 
-Detalle: [`docs/modulo-hitos.md`](docs/modulo-hitos.md).
+Detalle: [`docs/modulo-hitos.md`](modulo-hitos.md).
 
 ---
 
@@ -130,7 +131,7 @@ cd tesis
 ```
 
 **2. Base de datos (Supabase):**
-Ejecutar [`db/schema.sql`](db/schema.sql) en el SQL Editor de Supabase (crea tablas, enums, vistas, triggers y las políticas RLS por espacio).
+Ejecutar [`db/schema.sql`](../db/schema.sql) en el SQL Editor de Supabase (crea tablas, enums, vistas, triggers y las políticas RLS por espacio).
 
 La plataforma es compartida: cada cuenta que confirma su email recibe su propio **espacio** y ve en el panel sólo lo de ese espacio. Sobre una base anterior a los espacios, el script pasa todo lo que había a un espacio `principal` a nombre del primer admin.
 
@@ -177,7 +178,7 @@ que un navegador remoto alcance los webhooks, hace falta un proxy HTTPS o
 túnel hacia ese puerto, con el editor protegido y un proxy de confianza para
 `X-Forwarded-For` (del que depende el rate limiting por IP). No exponer el
 editor de n8n directamente a Internet.
-Aplicar primero [`db/schema.sql`](db/schema.sql) en el entorno previsto y
+Aplicar primero [`db/schema.sql`](../db/schema.sql) en el entorno previsto y
 verificar sus permisos efectivos (incluidas las columnas nuevas de Checkout y
 movimientos); sólo después importar/activar workflows que dependen del esquema.
 El repositorio no demuestra que un despliegue ya haya recibido esa migración.
@@ -265,7 +266,7 @@ npm run test:escenarios                 # ejecuta el ciclo completo
 
 Dispara los webhooks reales y verifica el estado resultante en la base: alta de leads HOT/COLD, lectura de propuesta, **dos aceptaciones concurrentes → una sola factura**, pago idempotente, rechazo, pedido de cambios, estado del trabajo y token vencido. Mide cada paso y escribe `docs/evidencia-validacion.md`.
 
-> Qué observación del dictamen responde cada prueba: [`docs/verificacion-y-seguridad.md`](docs/verificacion-y-seguridad.md).
+> Qué observación del dictamen responde cada prueba: [`docs/verificacion-y-seguridad.md`](verificacion-y-seguridad.md).
 
 Validación funcional por escenarios (E1–E10) documentada en la tesis (Tabla 9 + Anexo A con las figuras).
 
@@ -325,11 +326,11 @@ tesis/
 - **Aceptación atómica:** `UPDATE ... WHERE lead_id = $1 AND estado IN ('PROPUESTA_ENVIADA','EN_SEGUIMIENTO')` — evita doble facturación ante aceptaciones concurrentes.
 - **Checkout y cobro:** una reserva atómica por factura/hito evita crear sesiones concurrentes; el UUID de intento impide que una respuesta obsoleta guarde otra sesión; la URL sólo se reutiliza antes de su vencimiento. Una reserva incierta o expirada no se renueva automáticamente: el flujo registra resultados sin ID y un cron barre reservas antiguas hacia `checkout_revisiones` para conciliación manual. El cron lee todas las revisiones pendientes sin ACK (incluidas las insertadas antes), espera la persistencia del aviso en el panel y sólo entonces marca `aviso_avisado_en`. Un fallo reintenta en el cron siguiente; una caída tras persistir y antes del ACK puede duplicar el aviso. El `UPDATE` condicional de la factura evita aplicar dos veces el mismo estado **en la base**, pero no impide por sí solo dos cargos externos. Un PaymentIntent confirmado que no se aplicó queda en `pagos_no_aplicados` para conciliación manual, no se reembolsa automáticamente.
 - **Movimientos de hitos:** sin `STRIPE_SECRET_KEY` el cron no reclama transferencias ni devoluciones. Con clave, marca el intento antes de llamar a Stripe; si falta el ID externo después de 15 minutos, registra `hitos_movimientos_revision` y un aviso crítico, sin reintento automático.
-- **Pago verificado:** el evento de Stripe (`/webhook/stripe`) sólo se aplica con la firma `Stripe-Signature` válida (HMAC SHA-256 del cuerpo crudo con `STRIPE_WEBHOOK_SECRET`, con tolerancia de 5 minutos contra reenvíos) y si el monto y la moneda coinciden con la factura. Detalle y procedimiento de revisión en [`docs/modulo-pagos.md`](docs/modulo-pagos.md) y [`docs/modulo-hitos.md`](docs/modulo-hitos.md).
+- **Pago verificado:** el evento de Stripe (`/webhook/stripe`) sólo se aplica con la firma `Stripe-Signature` válida (HMAC SHA-256 del cuerpo crudo con `STRIPE_WEBHOOK_SECRET`, con tolerancia de 5 minutos contra reenvíos) y si el monto y la moneda coinciden con la factura. Detalle y procedimiento de revisión en [`docs/modulo-pagos.md`](modulo-pagos.md) y [`docs/modulo-hitos.md`](modulo-hitos.md).
 - **Cierre y propuestas:** el cierre manual exige trabajo `ENTREGADO` y cobro registrado; no marca facturas pagadas a mano. La propuesta reclama un `propuesta_envio_intento_id` UUID y congela términos antes de Gmail; un fallo de envío exige verificarlo antes de reabrir. La finalización sólo aplica si siguen iguales el reclamo, token y espacio originales; un cambio concurrente devuelve conflicto 409 en vez de mutar al nuevo dueño. La reasignación de un pedido rechazado reinicia el reclamo y rota el token, sin prometer entrega atómica del correo. El ACK del subworkflow de avisos acredita persistencia en el panel, no entrega opcional por Gmail/Telegram.
 - **Dashboard con control de acceso:** Supabase Auth + compuerta de espacio propio en la página y en cada route handler; lee con la anon key bajo sesión, nunca la service key. Las acciones que pasan por n8n comprueban antes que el pedido sea del espacio de quien llama.
 - **RLS en la base:** las políticas de `authenticated` limitan las filas de negocio al espacio propio; las vistas usan `security_invoker` y `anon` no lee esas tablas. El rol de integración `n8n_writer` tiene políticas y permisos distintos (ver punto siguiente).
 - **Rol de n8n acotado, no limitado a cuatro tablas:** el esquema concede a `n8n_writer` operaciones por tabla/columna sobre leads, facturas, seguimientos y logs, y también permisos necesarios para espacios, tickets, avisos, bolsa, mensajes e hitos, entre otros. No tiene `BYPASSRLS` ni `DELETE` por diseño; sus políticas de escritura no restringen por espacio. Consultar los `GRANT` y políticas de `db/schema.sql` para el alcance exacto. El repositorio no verifica qué credencial utiliza un despliegue concreto.
 - **Secretos fuera del repo:** credenciales en n8n y en `.env.local` (ignorado por git). El workflow versionado usa `REEMPLAZAR_AL_IMPORTAR` en lugar de IDs reales, y **ninguna URL ni ID queda escrito a mano dentro de los nodos**: todo sale de variables de entorno.
-- **RLS verificable, no sólo declarada:** `npm run test:rls` ejecuta la batería de casos del esquema versionado contra un PostgreSQL desechable (ver [`docs/verificacion-y-seguridad.md`](docs/verificacion-y-seguridad.md)); las evidencias archivadas corresponden a sus fechas, no certifican un despliegue actual.
+- **RLS verificable, no sólo declarada:** `npm run test:rls` ejecuta la batería de casos del esquema versionado contra un PostgreSQL desechable (ver [`docs/verificacion-y-seguridad.md`](verificacion-y-seguridad.md)); las evidencias archivadas corresponden a sus fechas, no certifican un despliegue actual.
 - **Rate limiting del formulario:** el workflow versionado usa un contador atómico por IP, ruta y ventana fija; toma el último tramo de `X-Forwarded-For` detrás de un proxy de confianza. Al exceder el umbral corta el procesamiento interno de `lead/nuevo`, pero esa ruta conserva el acuse inmediato y no devuelve 429. Siguen pendientes un captcha validado del lado del servidor y la verificación del despliegue concreto.
