@@ -3,6 +3,8 @@ import type {ReactNode} from "react";
 
 import {Instrument_Sans, Instrument_Serif} from "next/font/google";
 
+import {modoDemo} from "@/lib/demo";
+
 import "./globals.css";
 
 const instrumentSans = Instrument_Sans({
@@ -50,9 +52,19 @@ export default async function RootLayout({children}: {children: ReactNode}) {
         >
           Saltar al contenido
         </a>
-        {/* El encabezado lo pone cada grupo: el de la plataforma en
-            (plataforma)/layout.tsx y el del desarrollador en /f/<slug>. */}
-        {children}
+        {modoDemo() ? (
+          // El body es una grilla de dos filas (contenido y pie): el aviso va
+          // junto al contenido para no ocupar la fila que se estira.
+          <div className="grid grid-cols-[minmax(0,1fr)] grid-rows-[auto_1fr]">
+            <p className="border-rule bg-ochre/10 text-ink border-b px-4 py-2 text-center text-[12px]">
+              Demo de portfolio: no ingreses datos reales. Los correos no llegan a sus destinatarios
+              y los datos pueden borrarse sin aviso.
+            </p>
+            {children}
+          </div>
+        ) : (
+          children
+        )}
         <footer className="px-6 py-10 text-center sm:px-10">
           <p className="text-mist text-[10px] tracking-[0.2em] uppercase">© 2026</p>
         </footer>

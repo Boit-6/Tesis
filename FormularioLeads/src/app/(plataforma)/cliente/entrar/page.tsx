@@ -1,4 +1,8 @@
+import Link from "next/link";
+
 import EntrarClienteForm from "./entrar-form";
+
+import {cuentasDemo} from "@/lib/demo";
 
 export default function EntrarClientePage() {
   return (
@@ -13,6 +17,16 @@ export default function EntrarClientePage() {
           tu cuenta.
         </p>
       </div>
+
+      {cuentasDemo().length > 0 && (
+        <p className="border-ochre bg-ochre/5 text-ink mb-8 border-l-2 px-5 py-3.5 text-[13px]">
+          En la demo el enlace no llega a tu correo.{" "}
+          <Link className="text-ochre underline-offset-4 hover:underline" href="/login">
+            Entrá con la cuenta de cliente de prueba
+          </Link>
+          .
+        </p>
+      )}
 
       <EntrarClienteForm />
     </main>

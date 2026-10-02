@@ -6,6 +6,7 @@ import {useRouter} from "next/navigation";
 
 import {createClient} from "@/lib/supabase/client";
 import {translateAuthError} from "@/lib/supabase/auth-errors";
+import {cuentasDemo, type CuentaDemo} from "@/lib/demo";
 
 const inputClass =
   "w-full border-b border-rule bg-transparent pt-1 pb-3 text-[15px] text-ink placeholder-mist outline-none transition duration-200 ease hover:border-mist focus:border-ochre";
@@ -36,8 +37,7 @@ export default function LoginForm() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function ingresar(credenciales: {email: string; password: string}) {
     setError(null);
 
     const supabase = createClient();
@@ -50,10 +50,7 @@ export default function LoginForm() {
 
     setLoading(true);
     try {
-      const {error: signInError} = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
+      const {error: signInError} = await supabase.auth.signInWithPassword(credenciales);
 
       if (signInError) throw signInError;
 
@@ -66,6 +63,17 @@ export default function LoginForm() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    void ingresar({email: email.trim(), password});
+  }
+
+  function entrarComoDemo(cuenta: CuentaDemo) {
+    setEmail(cuenta.email);
+    setPassword(cuenta.clave);
+    void ingresar({email: cuenta.email, password: cuenta.clave});
   }
 
   return (
@@ -125,6 +133,26 @@ export default function LoginForm() {
       >
         {loading ? "Ingresando..." : "Ingresar"}
       </button>
+
+      {cuentasDemo().length > 0 && (
+        <div className="border-rule flex flex-col gap-3 border-t pt-6">
+          <p className="text-faint text-[10px] tracking-[0.16em] uppercase">Cuentas de la demo</p>
+          {cuentasDemo().map((cuenta) => (
+            <button
+              key={cuenta.email}
+              className="border-rule hover:border-ochre ease flex flex-col items-start gap-1 border px-4 py-3 text-left transition duration-200 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={loading}
+              type="button"
+              onClick={() => entrarComoDemo(cuenta)}
+            >
+              <span className="text-ink text-[13px]">Entrar como {cuenta.rol.toLowerCase()}</span>
+              <span className="text-muted text-[12px]">
+                {cuenta.email} · {cuenta.clave}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <p className="text-muted text-center text-[13px]">
         ¿No tenés cuenta?{" "}
