@@ -54,10 +54,9 @@ Navegador ──▶ Next.js (Vercel) ──▶ n8n (webhooks + crons) ──▶ 
 
 ## Origen
 
-Trabajo Final de la Tecnicatura Universitaria en Programación (UTN FRM), aprobado en 2026, realizado en
-coautoría con Mateo Morgui. Esta es mi versión mantenida para portfolio: después de la tesis la convertí en
-una plataforma de varios desarrolladores, con bolsa de proyectos, mensajes, reputación y pago protegido por
-hitos. Según `git blame`, alrededor del 86 % del código actual es de mi autoría.
+Empezó como mi Trabajo Final de la Tecnicatura Universitaria en Programación (UTN FRM), aprobado en 2026,
+que hice con Mateo Morgui. Después de la tesis lo convertí en una plataforma de varios desarrolladores, con
+bolsa de proyectos, mensajes, reputación y pago protegido por hitos.
 
 📄 [Informe del Trabajo Final](FormularioLeads/Informe-Trabajo-Final.pdf) ·
 🔧 [Documentación técnica e instalación](docs/README-tecnico.md) ·
